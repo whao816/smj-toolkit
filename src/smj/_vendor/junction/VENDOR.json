@@ -1,0 +1,193 @@
+{
+  "schema": "smj.vendor.v1",
+  "upstream": "agenticdft/agenticdft/tools/junction",
+  "upstream_commit": null,
+  "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
+  "repo_commit": "fe48c29dcc5a172865cddb4387c15d936cfbc84d",
+  "files": {
+    "__init__.py": {
+      "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
+      "bytes": 380
+    },
+    "a2_viz.py": {
+      "sha256": "d4501a1136b1d47df1fc3a06c336eaf45fea548a51c4800687d4739fd1f486cb",
+      "bytes": 24894
+    },
+    "artifacts.py": {
+      "sha256": "e0e074aa7d22751292ca812a68422e93ce13b1f701a3126fd6d870dd9dfc4111",
+      "bytes": 9127
+    },
+    "concurrency.py": {
+      "sha256": "1c1969dbd2dcac56d4369687cbef82ecaf0b5c275e4098212e953c969095335f",
+      "bytes": 8153
+    },
+    "contacts.py": {
+      "sha256": "cc4e9031211a9a57b137ee8c3ae66c3bb67d41a905d44ae369f7b3208c7b7c06",
+      "bytes": 19261
+    },
+    "convert_ms_to_xyz.py": {
+      "sha256": "6d385d2299112ba6feed1bcdad6394dd3b92f16f98c04d16c22b4386f21efe13",
+      "bytes": 2262
+    },
+    "criteria.py": {
+      "sha256": "4aba167f550b4cf762ceba134a20e2b3ac629cb1d6f5be4a20d552dab6a3b886",
+      "bytes": 20047
+    },
+    "demo.py": {
+      "sha256": "501fb09f251c197206664e996a10f018f9cc8a61edeb597ce2e464169043e97e",
+      "bytes": 3452
+    },
+    "electrode.py": {
+      "sha256": "81ba6c06f26b5b0a6c0d8a02934af39bb20fdeecc5cec77be75b411bc51f7d49",
+      "bytes": 13430
+    },
+    "fingerprint.py": {
+      "sha256": "7b16cb19a13d89f0a4dbb65b58c3c9846560c1c6da2de78170283c455492b5fd",
+      "bytes": 5051
+    },
+    "fixtures.py": {
+      "sha256": "ff07b9e137a85b0fb79fcbe8403c6d60f0af4071aa493195cc52f2700687a040",
+      "bytes": 7207
+    },
+    "geometry.py": {
+      "sha256": "91d0088fb3388fd84150ac01f5b260c23691c3270b810ad989b15c7d85a2d47b",
+      "bytes": 8275
+    },
+    "independent_check.py": {
+      "sha256": "76dac0d97a8c5f5ae8bebc9cb091afd2da3d2158b8324ed266ff4b91bfe772b4",
+      "bytes": 7952
+    },
+    "inputs.py": {
+      "sha256": "d0847fa70f35e6cdbd6681cbc1a317fdc4d2619e89f11f4542f0bf482f75bfab",
+      "bytes": 20613
+    },
+    "jobwait.py": {
+      "sha256": "ae8b6b4a48cbd6e6b169768f00b51ded4e82f8e16178706cc386c3ada5f96997",
+      "bytes": 9557
+    },
+    "landauer.py": {
+      "sha256": "607b0cc502aa890eaa9b4da0ed214d057eada8bad13ddd6ae7c917539d4fce0c",
+      "bytes": 4202
+    },
+    "manifest.py": {
+      "sha256": "ab9071810cbbf550a3b0d82cfa6bad5bfb770f9bcf228efe3f4b1603f0645446",
+      "bytes": 10001
+    },
+    "mock.py": {
+      "sha256": "9f898c265c62032cc5affa845976b96d7ff2d0299f75c12ef0bd7361dfe532c5",
+      "bytes": 8292
+    },
+    "molecules.py": {
+      "sha256": "6ae88ca119b3043ae4140300b26bed28a6d4f3cf601621c779135c7f8bcf0bc6",
+      "bytes": 9533
+    },
+    "paramhash.py": {
+      "sha256": "31f3c1d1ea58575fb65fadf2bd45a4652b9e561b4f9691683b322a9b73081fbb",
+      "bytes": 4712
+    },
+    "preflight.py": {
+      "sha256": "3b780de58fa88dece2388453a152e216e43b8ef3c8feb9dd8a57c94413dd6427",
+      "bytes": 22349
+    },
+    "review.py": {
+      "sha256": "5494099a72e290cda251ea9cd9fabeef10ab21ebcd67cb47b1ce208c0db7b794",
+      "bytes": 12554
+    },
+    "self_energy.py": {
+      "sha256": "8d1ca379bd72da9ca6f4afe021b149572ada57975b87fcd2fd4bea3da4a1f134",
+      "bytes": 8013
+    },
+    "spectra.py": {
+      "sha256": "65888c0552386bf817119bff1bdf835a143c781f4361eb64d055fb62dc93653a",
+      "bytes": 6064
+    },
+    "submit.py": {
+      "sha256": "9e0058536e1626ad96981191b3ce28e233aa63701be7aa2ed44c71dc9f40962b",
+      "bytes": 11140
+    },
+    "surface_index.py": {
+      "sha256": "5dc0163d6cb12c72f98b5493459ab2de150dcd7fc297fbf36b2fbfe0c447b621",
+      "bytes": 14620
+    },
+    "tcontrol.py": {
+      "sha256": "95ad598efbd50a8ee008c7d6dfe61dec3295cafa9e24f140fad9d0eaad3b6768",
+      "bytes": 9978
+    },
+    "templates/control_orbital.in": {
+      "sha256": "d090d1aaa25ac31b7004318b837cbab178b7bcefc080afc05340942e44146b5a",
+      "bytes": 833
+    },
+    "templates/control_relax.in": {
+      "sha256": "275e27f867aa524b60ce1aa541d505345aa3d6491b24f08378d6b1949b619bb5",
+      "bytes": 769
+    },
+    "templates/control_scf.in": {
+      "sha256": "ccaef06fda05f6207ec61742f860a3f74b8e73e40ceff1f8a012a440ce92174a",
+      "bytes": 1209
+    },
+    "templates/gaussian_opt_freq.gjf": {
+      "sha256": "77a9e1d15d2df7d5d147e6d41d3d9cdb26bad1531227578989c451071f555a21",
+      "bytes": 118
+    },
+    "templates/sub_aims.sh": {
+      "sha256": "a693e6ceaa4e6fc3a3755ece3a9b5ee0e8b0fe4724d517ac71b540e3a4410e49",
+      "bytes": 953
+    },
+    "templates/sub_g16.sh": {
+      "sha256": "18c8bac9871bf88a8f3b5219c44fba11373a75b24fe7840304ed2fb1f9744a68",
+      "bytes": 775
+    },
+    "templates/sub_te.sh": {
+      "sha256": "a908a3af5e06f7c6d7179323c27298e04db1661bb39eafa64e6b0b67ba6ab107",
+      "bytes": 913
+    },
+    "templates/tcontrol.template": {
+      "sha256": "b2809a0a0b3220043b03a05e4d1eb0dc128644448327de3c2447932371a6d669",
+      "bytes": 566
+    },
+    "validate.py": {
+      "sha256": "f37859d8e68e71528b0abc60d0444e53855f869f418263e5642bb54d24f427fc",
+      "bytes": 19323
+    }
+  },
+  "local_patches": [
+    {
+      "id": "F2-te-present",
+      "commit": "bc7febf",
+      "files": [
+        "criteria.py",
+        "validate.py"
+      ],
+      "what": "无 TE.dat 时登记 te_present(engineering/error, missing=True)，physics_verdict([]) 返回 inconclusive 而非通过；validate_junction_run 接受 temperature 参数。",
+      "why": "原实现里空 aitranss_te/ 目录会得到 passed=True / 支持 H0，缺证据被当成通过（P0 fail-open）。",
+      "tests": [
+        "tests/test_criteria_failopen.py"
+      ]
+    },
+    {
+      "id": "F1-mos-aims-head",
+      "commit": "f7d3970",
+      "files": [
+        "artifacts.py"
+      ],
+      "what": "新增 AIMS_HEAD_STAGES=('aims_scf',)，只有 aims_scf 的 retrieval_plan 才带 mos.aims/omat.aims 的 head 条目。",
+      "why": "原先所有阶段都收到 head 条目，gaussian_opt 等阶段凭空多出必然 missing 的项；真正消费 head 的下载逻辑在 smj/remote.py（非 vendored）。",
+      "tests": [
+        "tests/test_remote_mos_head.py"
+      ]
+    },
+    {
+      "id": "F4-pending-message",
+      "commit": "fe48c29",
+      "files": [
+        "review.py"
+      ],
+      "what": "pending_message 不再提示主仓的 `agenticdft smj-review`，改为说明独立包的真实入口 `smj review --approve --who <名字>`。",
+      "why": "该提示指向独立包里不存在的命令（且该检查点模块本身未接线）。",
+      "tests": [
+        "tests/test_a2_approve.py"
+      ]
+    }
+  ],
+  "note": "0.1.1 本地补丁的权威记录；回迁主仓后应删除对应条目并重新 sync。本文件由 scripts/gen_vendor_json.py 生成，勿手改。"
+}

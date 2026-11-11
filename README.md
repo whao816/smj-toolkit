@@ -15,7 +15,7 @@
 | | |
 |---|---|
 | 输入 | 分子 `.xyz`（默认硫醇 -SH 锚定）+ 电极/锚点/输运窗口参数（`smj.yaml`） |
-| 输出 | `TE.dat`（透射谱）、`results.json`（`G/G0`、`S`、`k_e`、`ZT_e`）；`smj report` 另生成 `manifest.json` 与 `report.md` |
+| 输出 | `TE.dat`（透射谱）、`results.json`（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`）；`smj report` 另生成 `manifest.json`、`report.md` 与判定（`manifest.verdict`） |
 | 适用 | 单分子结 / 分子电子学：Au(111) 电极间硫醇锚定分子的电输运与热电 |
 | 不承诺 | 自带 Gaussian/FHI-aims/aitranss；自动替人选方法/基组/锚点；替代人工结构确认；把 20 Au/侧与 Au60 口径混比 |
 
@@ -36,31 +36,29 @@ molecule.xyz
 要求 **Python ≥ 3.10**；运行时依赖只有 **PyYAML** 与 **numpy**。
 
 ```bash
-# 源码可编辑安装（开发/集群内使用推荐）
-python -m pip install -e smj
+# 源码可编辑安装（在仓库根执行；pyproject.toml 在根，源码在 src/）
+python -m pip install -e .
 
-# 或构建 wheel 后安装（构建产物在 smj/dist/）
-python -m build smj
-python -m pip install smj/dist/smj_toolkit-*.whl   # bash/zsh 会展开通配符；PowerShell 请写具体文件名
+# 或构建 wheel 后安装（产物在 dist/）
+python scripts/gen_vendor_json.py           # 先刷新 vendored 补丁台账（VENDOR.json 随 wheel 分发）
+python scripts/build_wheel.py --check       # 只用标准库，不需要 setuptools/build；--check 按 RECORD 校验
+python -m pip install dist/smj_toolkit-0.1.1-py3-none-any.whl
 ```
 
 可选依赖：
 
 ```bash
-python -m pip install -e "smj[plot]"   # matplotlib，用于 T(E) 出图
-python -m pip install -e "smj[dev]"    # pytest，跑本包测试
-python -m pip install -e "smj[all]"    # plot + dev
+python -m pip install -e ".[plot]"   # matplotlib，用于 T(E) 出图与 A2 核对图
+python -m pip install -e ".[dev]"    # pytest，跑本包测试
+python -m pip install -e ".[all]"    # plot + dev
 ```
 
-安装后验证（在仓库根执行；`smj/scripts/` 不随 wheel 分发，只对源码 checkout 有意义）：
+安装后验证（在仓库根执行）：
 
 ```bash
 smj --help
-python smj/scripts/smoke_install.py
+smj verify      # Python/PyYAML/numpy、vendored junction、模板、6 个阶段模块
 ```
-
-`smoke_install.py` 只用标准库，逐项检查：`import smj` 与版本、vendored 核心可导入、
-`sync_core.py --check` 通过、console script 可用、`smj init` 生成的 yaml 可被加载。
 
 ## 2. 5 分钟快速开始
 
@@ -183,7 +181,7 @@ cluster:
     mkl_lib: /data/software/intel/mkl/lib/intel64
 ```
 
-`env` 的键与 vendored `inputs.py` 的 `ENV_SPECS` 同源（大小写不敏感的小写别名），
+`env` 的键与 vendored `inputs.py` 的 `ENV_SPECS` 同源（**区分大小写，请写小写**），
 常用项：
 
 | 键 | 用途 | 默认 |
@@ -201,6 +199,8 @@ cluster:
 直接失败。`smj preflight` 在**非 `dry-run`** 模式下检查 Gaussian 许可、FHI-aims 与
 aitranss 可执行文件，缺一项即 error（退出码 1）；`smj run` 不会自动替你跑 preflight，
 真跑前请先跑一次。`dry-run` 不触网、也不核对二进制，所以干跑通过不等于集群能跑。
+0.1.1 起提交前会再扫一遍作业脚本：仍含 `UNCONFIGURED` 时 `--submit` / `smj run` 直接
+拒绝（`StageError`，退出 1），不再让它到集群上才失败。
 
 ## 5. 三种运行模式与离线演练
 
@@ -245,9 +245,9 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 ```
 
 `--wait` 的轮询探针本身是一条 shell 命令，FakeTransport 需要按
-`@@SENT/@@QRC/@@ID` 协议模拟输出才能驱动（可参考
-`smj/tests/test_remote_semantics.py` 的 `_probe`）；只验证提交/清理逻辑时到
-`submit` 为止即可。FakeTransport 不模拟排队与真实程序行为。
+`@@SENT/@@QRC/@@ID` 协议模拟输出才能驱动（可参考 `tests/test_state_machine.py`
+的 `_SbatchTransport`）；只验证提交/清理逻辑时到 `submit` 为止即可。FakeTransport
+不模拟排队与真实程序行为。
 
 ## 6. run 目录布局
 
@@ -269,7 +269,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 │   └── aims.out  mos.aims  basis-indices.out
 ├── aitranss_te/
 │   ├── tcontrol  sub_te.sh  self.energy.in
-│   └── TE.dat  te.out  orbital_match.json
+│   └── TE.dat  te.out
 └── junction_analyze/
     └── results.json
 ```
@@ -283,29 +283,35 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 |---|---|---|
 | `smj preflight` | 提交前检查：分子可读/原子重叠、species 覆盖、建结几何闸门、资源上限；非 `dry-run` 时再加集群/SSH 连通、远端目录可写、二进制/许可 | 结构化 issues（error/warning/info），有 error 退出 1 |
 | `smj status` | 读 `state.json`，打印阶段/状态/job id/远端目录/耗时/备注 | 终端表格（`--json` 机器可读） |
-| `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（7 节：概览/阶段状态/输入摘要/资源/输运/失败原因/产物清单） | 报告文件；默认跳过已存在文件，`--force` 重写 |
-| `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`G/G0`、`S`、`k_e`、`ZT_e`），写 `junction_analyze/analysis.json`；出图与参考值比较用 Python API（`smj.analysis.analyze_run(..., plot=True, reference=...)`，需 `[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
-| `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差） | `review.json`；`blocked` 时退出 1 |
+| `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（7 节：概览/判定/阶段状态/输入摘要/资源/输运/失败原因/产物清单）；缺 `TE.dat` 时物理判定为「无法判定」而不是通过 | 报告文件；默认跳过已存在文件，`--force` 重写，`--no-checks` 不算判定 |
+| `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；出图与参考值比较用 Python API（`smj.analysis.analyze_run(..., plot=True, reference=...)`，需 `[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
+| `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差）；`--approve --who <名字>` 登记 A2 确认（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用 | `review.json`、`auN_build/a2_confirmation.json`；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
 | `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
 
 退出码：`0` 成功/作业已结束；`1` 失败或配置/输入错误；`2` 未完成（`--wait` 超时、
-作业可能仍在跑，或 `run` 有阶段停在 `waiting`）。argparse 用法错误也返回 2。
+作业可能仍在跑，或 `run` 有阶段停在 `waiting`），以及 **A2 签署被拒绝**
+（审计不过 / 出图失败 / 缺 metadata）。argparse 用法错误也返回 2。
+
+### 7.1 判定与 A2 红线
+
+- `smj report` 默认算物理判据并写进 `manifest.verdict`；缺 `TE.dat` 时登记
+  `te_present`（engineering/error）且结论是 `inconclusive`（**证据缺失 ≠ 通过，
+  也不等于否证 H0**），`report.md` 的「## 0.1 判定」会列出未过/未评估的判据。
+- `review.require_a2` 默认 `true`：没有 `a2_confirmation.json` 或指纹与当前
+  `geometry.in` 不一致时，`smj review` 直接 `blocked`。签署用
+  `smj review --approve --who <名字>`（A2 核对图落在 `auN_build/a2_surface_viz.png`，
+  审计结果落在 `auN_build/a2_surface_audit.json`）。
 
 ## 8. 与主仓的关系
 
-- **主仓是权威源**：`smj/smj/_vendor/junction/` 是 `agenticdft/agenticdft/tools/junction/`
-  的副本（含模板），算法改动一律先改主仓，再同步；不要手改 vendored 文件。
-- **同步与漂移门**：
-
-  ```bash
-  python smj/scripts/sync_core.py           # 主仓 → 本包（改写 3 处 import）
-  python smj/scripts/sync_core.py --check   # 比对内容/文件清单/VENDOR.json 的 git_head
-  ```
-
-  `--check` 不一致返回 1，可直接放进 CI；`VENDOR.json` 记录每个文件的 sha256 与同步时的
-  主仓 commit。
+- **主仓是权威源**：`src/smj/_vendor/junction/` 是 `agenticdft/agenticdft/tools/junction/`
+  的副本（含模板），算法改动一律先改主仓，再同步；不要随意手改 vendored 文件。
+- **本仓库的来历**：由 0.1.0 wheel 还原成源码树（wheel 本身不含 `scripts/`、`tests/`、
+  `VENDOR.json`），因此**没有** `sync_core.py` 可用；0.1.1 的本地补丁都登记在
+  `src/smj/_vendor/junction/VENDOR.json` 的 `local_patch` 字段里（逐条写明文件、原因、
+  过了哪条测试），便于日后回迁主仓。
 - 主仓的 VASP 运行根（`agenticdft/work/`）与本包无关；本包的 run 产物落在
   `run.dir/run.name/`（默认是 `smj.yaml` 所在目录下的 `./<name>/`），不写主仓 `results.db`。
 
@@ -317,8 +323,10 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 - **Windows 本机执行需要 bash**：`run.mode: local` 依赖 `bash`；`slurm-ssh` 还需要可用的
   `ssh`/`scp`（Git-Bash 自带 OpenSSH）与目标集群免密登录。沙箱内网络受限时，请在宿主
   shell 里执行真跑。
-- **结构确认是人的责任**：`aims_tip_relax` 与 `au60_build` 之后的结构检查点
-  （`smj review` / A2 确认）是红线，管线不会自动放行。
+- **结构确认是人的责任**：`au60_build` 之后的 A2 表面确认是红线，管线不会自动放行。
+  签署是 `smj review --approve --who <名字>`：审计不过或出图失败直接拒绝（退出 2），
+  签名绑定当前 `geometry.in` 的 sha256，几何一改旧签名即失效；`review.require_a2`
+  默认 `true`，没有有效签名时 `smj review` 为 `blocked`。
 - **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
   （未测晶格热导就不下总 ZT 结论）。
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑

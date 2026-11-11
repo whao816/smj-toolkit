@@ -67,6 +67,14 @@ python -m venv --system-site-packages .venv
 
 ### 1.3 `src/pyproject.toml`（唯一新增的打包文件）
 
+> **执行时的偏差（2026-11-11）**：pyproject.toml 实际放在**仓库根**（不是 `src/`）：
+> pytest 的 rootdir 与 `package-dir = {"" = "src"}` 都以根为基准更稳；`pip install -e .`
+> 也改成在根执行。另外本机系统 Python 没有 setuptools、`python -m venv` 的 ensurepip
+> 也失败，导致"可编辑安装"不可行，最终采用**等价方案**：改 `pyvenv.cfg` 的
+> `include-system-site-packages = true`、写入 `.venv/Lib/site-packages/smj_src.pth`
+> 指向 `D:\dsh_projects\AutoSMJ\src`、并用 `.venv/Scripts/smj.cmd` 作 console script
+> 替身（`import smj.cli; main()`）。`smj verify` 通过、`smj.cmd plan` 正常。
+
 ```toml
 [build-system]
 requires = ["setuptools>=68"]
@@ -86,7 +94,11 @@ dev = ["pytest>=8"]
 [project.scripts]
 smj = "smj.cli:main"
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["smj*"]
 
 [tool.setuptools.package-data]
@@ -95,6 +107,7 @@ smj = ["templates/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "-p no:cacheprovider"
 ```
 
 ### 1.4 基线冒烟脚本 `scripts/smoke.ps1`
@@ -279,22 +292,39 @@ if not has_basis:
 
 | 阶段 | 内容 | 产出 | 状态 |
 |---|---|---|---|
-| M0 | 源码树 + pyproject + venv + git 基线 + 冒烟脚本 | 可运行基线，`smj verify` 通过 | ☐ |
-| M1 | F2 判定层 | 5 测试绿，空目录不再 passed | ☐ |
-| M2 | F1 头回取 | 3 测试绿，链路打通（本地模拟） | ☐ |
-| M3 | F3 状态机 | 5 测试绿 | ☐ |
-| M4 | F4 A2 门 | 5 测试绿 | ☐ |
-| M5 | 文档修订 D4/D8/D9 + README §7 | 文档与代码一致 | ☐ |
-| M6 | 构建 0.1.1 wheel，干净 venv 安装，重跑冒烟 + 全部测试 | `dist/smj_toolkit-0.1.1-py3-none-any.whl` | ☐ |
-| M7 | 生成 `VENDOR.json`（sha256 + 本地补丁清单） | 可追溯 | ☐ |
+| M0 | 源码树 + pyproject + venv + git 基线 + 冒烟脚本 | 可运行基线，`smj verify` 通过 | ✅ 2026-11-11（`39a37b4`；pyproject 实际落在仓库根，见 §1.3 备注） |
+| M1 | F2 判定层 | 5 测试绿，空目录不再 passed | ✅ `bc7febf`（7 条，`tests/test_criteria_failopen.py`） |
+| M2 | F1 头回取 | 3 测试绿，链路打通（本地模拟） | ✅ `f7d3970`（4 条，`tests/test_remote_mos_head.py`） |
+| M3 | F3 状态机 | 5 测试绿 | ✅ `fd52550`（8 条，`tests/test_state_machine.py`） |
+| M4 | F4 A2 门 | 5 测试绿 | ✅ `fe48c29`（13 条，`tests/test_a2_approve.py`） |
+| M5 | 文档修订 D4/D8/D9 + README §7 | 文档与代码一致 | ✅ 2026-11-11（README §1/§4/§6/§7/§8/§9；新增 §7.1 判定与 A2 红线） |
+| M6 | 构建 0.1.1 wheel，干净 venv 安装，重跑冒烟 + 全部测试 | `dist/smj_toolkit-0.1.1-py3-none-any.whl` | ✅ 2026-11-11（238193 B / 69 条目；`pip install --target` 成功；从安装树 `python -m smj.cli verify` 六项全 ok；pytest 32 passed） |
+| M7 | 生成 `VENDOR.json`（sha256 + 本地补丁清单） | 可追溯 | ✅ 2026-11-11（`scripts/gen_vendor_json.py`；36 文件、3 条补丁，随 wheel 一起分发） |
 
 每完成一个里程碑：`git commit`，并在本表回填状态与验证证据（命令 + 关键输出）。
+
+### 7.1 M6 的两次返工（供回迁主仓时避坑）
+
+1. **模板路径错**：`smj verify` 的模板检查读的是 `smj/_vendor/junction/templates/`，
+   但最初 pyproject 的 package-data 与 `build_wheel.py` 的 glob 都写成 `smj/templates/*`，
+   结果第一次构建的 wheel 里**一个模板都没有**，从安装树跑 `verify` 报
+   `templates FAIL 缺少: sub_g16.sh, sub_aims.sh, sub_te.sh`。修正：package-data 改为
+   `"smj._vendor.junction" = ["templates/*", "VENDOR.json"]`，构建脚本加"没有
+   templates/* 就报错"的守卫。源码树里 `verify` 先前能通过，只是因为读到了源码目录，
+   掩盖了打包缺失 —— **打包验证必须从 wheel 解出的树里跑**。
+2. **`__version__` 漂移**：`src/smj/__init__.py` 仍写 `0.1.0`，而 pyproject 已是
+   `0.1.1`。构建脚本现在会比较两处版本，不一致直接拒绝构建。
+3. **本机 pip 的沙箱限制**：`tempfile.mkdtemp()` 建出的目录（mode 0700）在 DSH
+   Windows 沙箱里 ACL 不可访问（`WinError 5`，pytest 的 `tmp_path` 也因此不可用）。
+   `pip install --target` 内部要用 mkdtemp 暂存，直接跑必失败；M6 的安装验证是在
+   in-process 调用 pip、把 `tempfile.mkdtemp` 换成"默认 mode 的等价实现"后完成的。
+   这是本机沙箱问题，不是 wheel 问题：普通机器上 `pip install dist\*.whl` 即可。
 
 ---
 
 ## 8. 验收标准（Definition of Done）
 
-1. `pytest -q` 全绿（≥18 条），`scripts/smoke.ps1` 全通过；
+1. `pytest -q` 全绿（当前 32 条），`smj verify` 全通过；
 2. 四个"反转探针"成立：
    - 空 `aitranss_te/` 的 run → `failed`（`te_present`），不再是"支持 H0"；
    - `smj report` 后 `manifest.json["verdict"]` 非 `null`；

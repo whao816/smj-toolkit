@@ -315,3 +315,28 @@ checks: []
 - A2 出图：`matplotlib` 未安装，`render_figure` 与"无图拒绝签署"路径未执行。
 - 与主仓 `agenticdft/agenticdft/tools/junction/` 的逐字节漂移：`VENDOR.json` 缺失，无法比对。
 - 性能与并发：全部为单进程 dry-run，未做长作业/多 run 并发测试。
+
+---
+
+## 9. 补遗：0.1.1 的修复记录（2026-11-11）
+
+本报告分析的是 0.1.0（wheel 还原）。分析结束后，工作区已改造为可编辑源码仓库
+（`src/` 布局 + `pyproject.toml` + `tests/`），并按 `smj-修复计划.md` 修掉了四个优先项。
+以下结论不影响本报告对 0.1.0 的判断，但引用时请区分版本。
+
+| 编号 | 0.1.0 的问题 | 0.1.1 的修复 | 提交 | 测试 |
+|---|---|---|---|---|
+| F2（P0） | 缺 `TE.dat` 时 `validate_junction_run` 返回 `passed=true` / "支持 H0" | 登记 `te_present`（engineering，gate=error，`missing=True`）；证据缺失归入 `inconclusive`（新字段 `missing_evidence_criteria`），不再算否证 | `bc7febf` | `tests/test_criteria_failopen.py`（7） |
+| F1（P0） | `retrieval_plan` 的 `head` 从不被消费，mos.aims 不落地，第 5 阶段必断 | `remote.download()` 按 must 全量取 + head 用 `head -n 2` 取表头；`collect` 缺件直接 `StageError`（不再标 collected） | `f7d3970` | `tests/test_remote_mos_head.py`（4） |
+| F3（P1） | 状态机 5 处偏差（wait 回退、submit 黑名单漏 failed、prepare 不清旧结果、collect 缺件、skipped 语义） | `DONE_STATUSES` 统一判定；wait 拒绝已结束状态；submit 白名单 + UNCONFIGURED 拦截；prepare 清 `results`/`download_*` | `fd52550` | `tests/test_state_machine.py`（8） |
+| F4（P1） | 独立包无 A2 签署入口，`require_a2` 默认 False | 新增 `smj/a2.py` 与 `smj review --approve --who <名字>`（审计不过/出图失败退出码 2）；`require_a2` 三处默认改 True；修 vendored `pending_message` 文案 | `fe48c29` | `tests/test_a2_approve.py`（13） |
+
+打包与可追溯性：新增 `scripts/gen_vendor_json.py`（`VENDOR.json`：36 文件 sha256 + 3 条本地补丁）
+与 `scripts/build_wheel.py`（纯标准库 PEP 427 构建，可复现）；产物
+`dist/smj_toolkit-0.1.1-py3-none-any.whl`（238193 B，69 条目，RECORD 自检通过），
+从安装树跑 `smj verify` 六项全 ok，`pytest` 32 passed。
+
+**仍未修复**（计划中列为 P2/P3，0.1.1 未动）：资源估算先钳到 72h/128GiB 再比较导致
+`check_smj_budget` 恒 ok、`jobwait` 仅在 `queue_known` 时累计缺席、`preflight` 的
+`require_remote` 默认 False、`ZT` 的 `l1=0` 除零、能量列 `D→E` 只覆盖通道列、
+README 之外的 `smj-standalone-package.md` 未同步修订。

@@ -24,7 +24,7 @@ where = ["src"]
 include = ["smj*"]
 
 [tool.setuptools.package-data]
-smj = ["templates/*"]
+"smj._vendor.junction" = ["templates/*", "VENDOR.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
