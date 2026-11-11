@@ -53,6 +53,11 @@ STATUSES: tuple[str, ...] = (
     "pending", "prepared", "submitted", "waiting", "finished", "failed", "collected", "skipped",
 )
 
+#: "该阶段无需再做" 的状态集合。2026-11-11 本地补丁 F3：状态机里 is_done()、
+#: ``--run`` 的跳过判定、``--wait`` 的拒绝条件都引用这一个常量，避免三处各自
+#: 维护一份清单（此前 ``skipped`` 在 is_done 里算完成，``--run`` 却会重跑它）。
+DONE_STATUSES: tuple[str, ...] = ("finished", "collected", "skipped")
+
 _ALIASES = {
     "gaussian": "gaussian_opt",
     "g16": "gaussian_opt",
@@ -206,14 +211,14 @@ class RunState:
         return {name: self.stages[name].status for name in STAGE_ORDER}
 
     def is_done(self, name: str) -> bool:
-        return self.status(name) in ("finished", "collected", "skipped")
+        return self.status(name) in DONE_STATUSES
 
     def is_failed(self, name: str) -> bool:
         return self.status(name) == "failed"
 
     def first_incomplete(self) -> str | None:
         for name in STAGE_ORDER:
-            if self.status(name) not in ("finished", "collected", "skipped"):
+            if self.status(name) not in DONE_STATUSES:
                 return name
         return None
 
@@ -241,6 +246,15 @@ class RunState:
 
     def set_result(self, key: str, value: Any) -> None:
         self.results[key] = value
+        self.touch()
+
+    def clear_results(self, name: str) -> None:
+        """清空某阶段上一次解析出来的 results（2026-11-11 F3：重 prepare 时用）。
+
+        ``set(results=...)`` 是**合并**语义，无法把旧键去掉；重新 prepare 后
+        旧 results 仍然躺在 state.json 里，status/report 会显示已失效的数值。
+        """
+        self.stage(name).results.clear()
         self.touch()
 
     # -- 持久化 ------------------------------------------------------------ #

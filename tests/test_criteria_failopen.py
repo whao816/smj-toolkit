@@ -14,11 +14,7 @@
 """
 from __future__ import annotations
 
-import shutil
-import uuid
 from pathlib import Path
-
-import pytest
 
 from smj._vendor.junction.criteria import (
     CRITERIA,
@@ -27,16 +23,6 @@ from smj._vendor.junction.criteria import (
 )
 from smj._vendor.junction.validate import validate_junction_run
 from smj.report import build_manifest, render_report
-
-
-@pytest.fixture()
-def workdir() -> Path:
-    base = Path(".tmp") / ("t-" + uuid.uuid4().hex[:8])
-    base.mkdir(parents=True)
-    try:
-        yield base
-    finally:
-        shutil.rmtree(base, ignore_errors=True)
 
 
 def _spec(name: str) -> dict | None:

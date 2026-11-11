@@ -9,11 +9,7 @@
 from __future__ import annotations
 
 import json
-import shutil
-import uuid
 from pathlib import Path
-
-import pytest
 
 from smj._vendor.junction import artifacts
 from smj._vendor.junction.inputs import make_aitranss_input
@@ -22,16 +18,6 @@ from smj.remote import RemoteSession
 from smj.testing import FakeTransport
 
 REMOTE = "/remote/runs/r1"
-
-
-@pytest.fixture()
-def workdir() -> Path:
-    base = Path(".tmp") / ("f1-" + uuid.uuid4().hex[:8])
-    base.mkdir(parents=True)
-    try:
-        yield base
-    finally:
-        shutil.rmtree(base, ignore_errors=True)
 
 
 class _Ctx:

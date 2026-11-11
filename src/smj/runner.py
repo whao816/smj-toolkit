@@ -29,7 +29,14 @@ from .remote import (
     run_script_local,
     stage_script as default_stage_script,
 )
-from .state import RunLayout, RunState, normalize_stage, now_iso, stage_range
+from .state import (
+    DONE_STATUSES,
+    RunLayout,
+    RunState,
+    normalize_stage,
+    now_iso,
+    stage_range,
+)
 from .transport import Transport, make_transport
 
 if TYPE_CHECKING:  # pragma: no cover - 仅类型检查
@@ -214,6 +221,26 @@ class StageRunner:
         attr = getattr(stage, "script", None) if stage is not None else None
         return attr or default_stage_script(name)
 
+    def _reject_unconfigured(self, name: str, script: str, stage_dir: str | Path) -> None:
+        """脚本里仍有 ``UNCONFIGURED`` 占位时拒绝提交（2026-11-11 本地补丁 F3）。
+
+        六个脚本模板把集群可执行路径写成 ``${AIMS_BIN:-UNCONFIGURED}`` 这类占位；
+        未在 ``cluster.env`` 里配置时，sbatch 照样能提交，作业在远端立刻失败，
+        用户要等一轮排队 + 轮询才知道。这里在本地就挡住，并把缺的键名报出来。
+        """
+        path = Path(stage_dir) / script
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return  # 脚本还没落盘（例如 --force 前的探测）交给后续步骤报错
+        if "UNCONFIGURED" not in text:
+            return
+        hits = [line.strip() for line in text.splitlines() if "UNCONFIGURED" in line]
+        raise StageError(
+            "阶段 %s 的作业脚本 %s 仍含未配置的占位 UNCONFIGURED：%s；"
+            "请先在 smj.yaml 的 cluster.env 里填好对应路径（如 aims_bin / g16_bin / "
+            "aitranss_bin）再提交" % (name, script, "; ".join(hits[:3])))
+
     def _clean_stage_dir(self, name: str) -> None:
         """``run.clean: true`` 时清空阶段目录（只允许删 run 目录下的子目录）。"""
         stage_dir = self.layout.stage_dir(name).resolve()
@@ -249,6 +276,13 @@ class StageRunner:
             self._clean_stage_dir(key)
         stage_dir = self.layout.ensure_stage(key)
 
+        # 2026-11-11 本地补丁 F3：重新 prepare 时清掉上一次的采集结果与回取台账。
+        # 旧实现只把 status 改回 prepared，results / download_* 原样保留，
+        # status/report 于是把上一轮的数值当成"本次已产出"展示。
+        self.state.clear_results(key)
+        for stale in ("download_fetched", "download_head_fetched", "download_missing"):
+            self.state.stage(key).extra.pop(stale, None)
+
         self._log("[%s] prepare ..." % key)
         prepared = stage.prepare(self.context, stage_dir)
         payload = _prepared_payload(prepared)
@@ -281,22 +315,29 @@ class StageRunner:
         if self.dry_run:
             raise StageError(
                 "dry-run 模式只生成输入，不提交；去掉 --dry-run 或把 run.mode 改成 slurm-ssh")
-        if status in ("submitted", "waiting") and not force:
+        # 2026-11-11 本地补丁 F3：显式白名单。此前 failed 只是"没被任何分支拦住"
+        # 而意外可提交，语义靠默认分支兜底；现在 prepared / failed 明确可提交
+        # （failed 允许直接重提，方便临时错误后重试），其余状态一律要 --force。
+        if not force and status not in ("prepared", "failed"):
+            if status in ("submitted", "waiting"):
+                raise StageError(
+                    "阶段 %s 已提交（status=%s, job_id=%s）；重提交请加 --force"
+                    % (key, status, self.state.stage(key).job_id))
+            if status in DONE_STATUSES:
+                raise StageError("阶段 %s 已完成（status=%s）；重提交请加 --force" % (key, status))
+            if status == "pending":
+                raise StageError(
+                    "阶段 %s 尚未 prepare；先跑 `smj stage %s --prepare` 或直接用 `smj run`"
+                    % (key, key))
             raise StageError(
-                "阶段 %s 已提交（status=%s, job_id=%s）；重提交请加 --force"
-                % (key, status, self.state.stage(key).job_id))
-        if status in ("finished", "collected") and not force:
-            raise StageError("阶段 %s 已完成（status=%s）；重提交请加 --force" % (key, status))
-        if status == "pending":
-            raise StageError(
-                "阶段 %s 尚未 prepare；先跑 `smj stage %s --prepare` 或直接用 `smj run`"
-                % (key, key))
+                "阶段 %s 状态为 %r，不能提交；先 --prepare 或加 --force" % (key, status))
 
         script = self._stage_script(key)
         if not script:
             raise StageError("阶段 %s 没有作业脚本，无法提交" % key)
         args = list(SMJ_SCRIPT_ARGS.get(script, ()))
         stage_dir = self.layout.ensure_stage(key)
+        self._reject_unconfigured(key, script, stage_dir)
 
         if self.config.mode == "slurm-ssh":
             submission = self._session().submit(key, stage_dir, script=script)
@@ -346,6 +387,15 @@ class StageRunner:
         key = normalize_stage(name)
         state = self.state.stage(key)
         status = state.status
+
+        # 2026-11-11 本地补丁 F3：已结束/已采集的阶段不能再被 --wait 打回 waiting。
+        # 旧实现在 slurm-ssh 分支里先 set(status="waiting") 再轮询，于是对一个
+        # collected 阶段跑 `smj stage X --wait` 会把状态机回退（README 推荐的
+        # `--prepare --submit --wait` 组合正好能触发这一点）。
+        if status in DONE_STATUSES:
+            raise StageError(
+                "阶段 %s 已结束（status=%s）；--wait 只用于 submitted/waiting 的作业"
+                "（已结束未采集请用 --collect，重跑请用 --force）" % (key, status))
 
         if self.config.mode == "slurm-ssh":
             if not state.job_id:
@@ -509,6 +559,14 @@ class StageRunner:
                     stage=key, status="collected", ok=True,
                     message="已完成，跳过（--force 可重跑）"))
                 self._log("[%s] 已完成，跳过" % key)
+                continue
+            if not force and status == "skipped":
+                # 2026-11-11 F3：skipped 在 is_done() 里算完成，这里也必须一致，
+                # 否则链式 --run 会静默重跑一个用户显式跳过的阶段。
+                outcomes.append(StageOutcome(
+                    stage=key, status="skipped", ok=True,
+                    message="已标记 skipped，跳过（--force 可重跑）"))
+                self._log("[%s] 已跳过，跳过" % key)
                 continue
             if not force and status == "finished":
                 # 远端已结束但还没 collect：只补收尾，不重跑。
