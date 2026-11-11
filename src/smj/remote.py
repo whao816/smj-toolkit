@@ -361,25 +361,61 @@ class RemoteSession:
 
     # -- 回取 -------------------------------------------------------------- #
     def download_plan(self, stage: str) -> list[str]:
-        """该阶段应回取的文件清单（vendored retrieval_plan 的 ``must``）。"""
+        """该阶段应**全量**回取的文件清单（vendored retrieval_plan 的 ``must``）。"""
         plan = _artifacts.retrieval_plan(normalize_stage(stage))
         return list(plan.get("must") or ())
 
+    def download_plan_detail(self, stage: str) -> dict[str, Any]:
+        """完整回取计划：``must``（全量）+ ``head``（只取表头行数）+ ``skip``。
+
+        2026-11-11 本地补丁 F1：``mos.aims`` 属 head —— 旧实现只消费 ``must``，
+        ``head`` 里的 ``mos.aims`` 永远不回取，导致 aitranss_te 阶段读不到 nsaos
+        而在第 5 阶段必断（P0）。这里保留完整计划供 :meth:`download` 消费。
+        """
+        plan = _artifacts.retrieval_plan(normalize_stage(stage))
+        if plan.get("unknown"):
+            raise StageError(plan.get("reason") or "未知阶段: %s" % stage)
+        return {
+            "stage": normalize_stage(stage),
+            "must": list(plan.get("must") or ()),
+            "head": {str(k): int(v) for k, v in (plan.get("head") or {}).items()},
+            "skip": list(plan.get("skip") or ()),
+        }
+
     def download(self, stage: str, local_dir: str | Path, *,
                  names: Iterable[str] | None = None) -> dict[str, Any]:
-        """把阶段产物从远端拷回 ``local_dir``（缺文件只记录，不抛错）。"""
+        """把阶段产物从远端拷回 ``local_dir``（缺文件只记录，不抛错）。
+
+        ``must`` 全量 ``get``；``head`` 只取前 N 行（``get_head``），避免为读一个
+        ``nsaos`` 而拉回 0.9 GB 的 mos.aims。``names`` 显式指定时按全量处理。
+        """
         stage = normalize_stage(stage)
         remote_dir = self.stage_dir(stage)
-        wanted = list(names) if names is not None else self.download_plan(stage)
+        if names is not None:
+            full = list(names)
+            head: dict[str, int] = {}
+        else:
+            detail = self.download_plan_detail(stage)
+            full = detail["must"]
+            head = detail["head"]
         target = Path(local_dir)
         target.mkdir(parents=True, exist_ok=True)
         fetched: list[str] = []
+        head_fetched: list[str] = []
         missing: list[str] = []
         errors: dict[str, str] = {}
-        for name in wanted:
+        for name in full:
             result = self.transport.get(remote_join(remote_dir, name), target / name)
             if result.ok:
                 fetched.append(name)
+            else:
+                missing.append(name)
+                errors[name] = (result.err or result.out).strip()[:300]
+        for name, lines in head.items():
+            result = self.transport.get_head(remote_join(remote_dir, name),
+                                             target / name, int(lines))
+            if result.ok:
+                head_fetched.append(name)
             else:
                 missing.append(name)
                 errors[name] = (result.err or result.out).strip()[:300]
@@ -387,6 +423,7 @@ class RemoteSession:
             "stage": stage,
             "remote_dir": remote_dir,
             "fetched": fetched,
+            "head_fetched": head_fetched,
             "missing": missing,
             "errors": errors,
         }

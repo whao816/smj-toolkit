@@ -417,11 +417,18 @@ class StageRunner:
         if self.config.mode == "slurm-ssh" and not self.dry_run:
             self._log("[%s] 回取产物 ..." % key)
             download = self._session().download(key, stage_dir)
-            if download["missing"]:
-                self._log("[%s] 未取到: %s" % (key, ", ".join(download["missing"])))
             self.state.set(
                 key, download_fetched=download["fetched"],
+                download_head_fetched=download.get("head_fetched") or [],
                 download_missing=download["missing"])
+            if download["missing"]:
+                # 2026-11-11 本地补丁 F1/F3: 必须产物缺席时**不得**标 collected。
+                # 旧实现只记 note 仍标 collected，下游阶段随后在 StageBlocked 处
+                # 才炸，且状态机显示"已回取"，误导用户。
+                self._save()
+                raise StageError(
+                    "阶段 %s 回取缺件（远端产物不完整，拒绝标 collected）: %s"
+                    % (key, ", ".join(download["missing"])))
 
         self._log("[%s] collect ..." % key)
         collected = stage.collect(self.context, stage_dir)

@@ -67,6 +67,18 @@ class FakeTransport(Transport):
         dst.write_bytes(data)
         return CommandResult(0, "", "", command="get %s" % remote)
 
+    def get_head(self, remote: str, local: str | Path, lines: int = 2) -> CommandResult:
+        """模拟 ``head -n N``：只写前 N 行，用来验证 GB 级文件不会被整份拉回。"""
+        self.commands.append(("get_head", "%s -> %s (%d 行)" % (remote, local, lines)))
+        data = self.files.get(_norm(remote))
+        if data is None:
+            return CommandResult(1, "", "not found: %s" % remote, command="head %s" % remote)
+        text = data.decode("utf-8", "replace").splitlines(keepends=True)[:int(lines)]
+        dst = Path(local)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text("".join(text), encoding="utf-8")
+        return CommandResult(0, "", "", command="head %s" % remote)
+
     def mkdirs(self, remote: str) -> CommandResult:
         self.commands.append(("mkdirs", remote))
         return CommandResult(0, "", "", command="mkdir -p %s" % remote)

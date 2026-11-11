@@ -60,6 +60,19 @@ class Transport:
     def get(self, remote: str, local: str | Path) -> CommandResult:
         raise NotImplementedError
 
+    def get_head(self, remote: str, local: str | Path, lines: int = 2) -> CommandResult:
+        """只取远端文件前 ``lines`` 行（GB 级 mos.aims 本地只需要表头）。
+
+        默认实现走 ``run('head -n N')`` 把 stdout 落到本地；FakeTransport 覆写为
+        直接截断内存内容（2026-11-11 本地补丁 F1）。
+        """
+        result = self.run("head -n %d %s" % (int(lines), shlex.quote(str(remote))))
+        if result.ok:
+            path = Path(local)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(result.out, encoding="utf-8")
+        return result
+
     def mkdirs(self, remote: str) -> CommandResult:
         return self.run("mkdir -p %s" % shlex.quote(remote))
 

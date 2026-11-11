@@ -32,6 +32,10 @@ SMJ_ARTIFACTS = {
 # 实测体积: mos.aims 0.96 GB / omat.aims 0.48 GB -> 取前 2 行即可满足本地解析需要。
 AIMS_HEAD_ONLY = {'mos.aims': 2, 'omat.aims': 2}
 
+# 只有真正产出这两个文件的阶段才应把它们列进 head；否则 gaussian_opt /
+# aitranss_te 的回取计划会平白多出两个必然 missing 的文件（2026-11-11 本地补丁 F1）。
+AIMS_HEAD_STAGES = ('aims_scf',)
+
 # 单 run 体积告警门限(GiB)。**工程约定, 非物理判据** —— 目的是尽早暴露存储膨胀,
 # 本会话单 run 集群侧实测已 >2.2 GB。
 VOLUME_WARN_GIB = 2.0
@@ -48,7 +52,8 @@ def retrieval_plan(stage: str) -> dict:
                 'reason': '未知 smj 阶段(可用: %s)' % sorted(SMJ_ARTIFACTS)}
     must = list(spec.get('must') or [])
     head = dict(spec.get('head') or {})
-    head.update(AIMS_HEAD_ONLY)
+    if stage in AIMS_HEAD_STAGES:
+        head.update(AIMS_HEAD_ONLY)
     skip = list(spec.get('skip') or []) + [k for k in AIMS_HEAD_ONLY if k not in head]
     unknown = [k for k in head if k in must]
     return {'must': must, 'head': head, 'skip': sorted(set(skip)), 'unknown': unknown,
