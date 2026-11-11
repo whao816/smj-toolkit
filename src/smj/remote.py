@@ -43,6 +43,7 @@ from .transport import CommandResult, Transport, remote_join
 SMJ_STAGE_SCRIPTS: dict[str, str] = {
     "gaussian_opt": "sub_g16.sh",
     "aims_tip_relax": "sub_aims.sh",
+    "au_relax": "sub_aims.sh",
     "aims_scf": "sub_aims.sh",
     "aitranss_te": "sub_te.sh",
 }
@@ -61,7 +62,7 @@ SMJ_AITRANSS_UPLOADS: tuple[str, ...] = ("tcontrol", "sub_te.sh", "self.energy.i
 #: 每个脚本在远端目录里的旧产物（重提交前删除，避免拿上一轮结果）
 SMJ_STALE_UPLOADS: dict[str, tuple[str, ...]] = {
     "sub_g16.sh": ("mol.log",),
-    "sub_aims.sh": ("aims.out",),
+    "sub_aims.sh": ("aims.out", "geometry.in.next_step"),
     "sub_te.sh": ("TE.dat", "te.out"),
 }
 

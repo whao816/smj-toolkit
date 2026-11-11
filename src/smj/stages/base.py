@@ -33,6 +33,9 @@ class Prepared:
     artifacts: list[str] = field(default_factory=list)  # 该阶段期望的产物（相对 stage dir）
     notes: list[str] = field(default_factory=list)      # 人读提示（CLI 打印）
     commands: list[str] = field(default_factory=list)   # dry-run 时建议用户手工执行的命令
+    #: 2026-11-11 本地补丁 F-LIB：true = 该阶段被配置关闭（如 electrode.relax=false），
+    #: prepare 只做本地直通，collect 直接解析本地文件，不提交、不回取。
+    local_only: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -43,6 +46,7 @@ class Prepared:
             "artifacts": list(self.artifacts),
             "notes": list(self.notes),
             "commands": list(self.commands),
+            "local_only": self.local_only,
         }
 
     @classmethod
@@ -55,6 +59,7 @@ class Prepared:
             artifacts=list(data.get("artifacts") or []),
             notes=list(data.get("notes") or []),
             commands=list(data.get("commands") or []),
+            local_only=bool(data.get("local_only")),
         )
 
 

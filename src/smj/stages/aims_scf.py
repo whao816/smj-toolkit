@@ -1,8 +1,10 @@
 """aims_scf：Au60 结的 FHI-aims 自洽场计算（远端阶段）。
 
-prepare 把 ``au60_build/geometry.in`` 拷进本阶段目录（作业脚本里用相对路径），
-写 ``control.in`` + ``sub_aims.sh``；AIMS 跑完产出 ``aims.out``、
-``basis-indices.out`` 与 ``mos.aims`` —— 后两者是 aitranss_te 的必要输入。
+prepare 把 ``au_relax/geometry.in``（固定背层弛豫后的几何）拷进本阶段目录
+（作业脚本里用相对路径），写 ``control.in`` + ``sub_aims.sh``；AIMS 跑完产出
+``aims.out``、``basis-indices.out`` 与 ``mos.aims`` —— 后两者是 aitranss_te 的
+必要输入。``electrode.relax=false`` 时 au_relax 为本地直通，其 geometry.in
+就是 au60_build 的原几何，这里无需分支。
 """
 
 from __future__ import annotations
@@ -19,9 +21,9 @@ from .base import Collected, Prepared, Stage, register
 @register
 class AimsScfStage(Stage):
     name = "aims_scf"
-    depends = ("au60_build",)
+    depends = ("au_relax",)
     script = "sub_aims.sh"
-    input_hint = "消费 au60_build/geometry.in"
+    input_hint = "消费 au_relax/geometry.in（弛豫后的结几何）"
     outputs = ("aims.out",)
 
     # -- prepare ----------------------------------------------------------- #

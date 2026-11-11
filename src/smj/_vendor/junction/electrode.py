@@ -162,6 +162,27 @@ def electrode_for_metal(element: str, layers: int = 6, extras: int = 4,
                         au_per_electrode=au_per_electrode, a_lattice=a)
 
 
+@dataclass
+class LibraryElectrode:
+    """用 FHI-aims ``electrodes.library`` 预定义团簇当电极（手册 §5.3.1）。
+
+    ``atoms`` 的第 0 个必须是与分子接触的 tip（位于原点），其余原子是团簇体；
+    与 :class:`Electrode111` 共享 ``mount_electrode`` 的四元数贴装逻辑。
+    """
+
+    atoms: tuple[Vec, ...]
+    element: str = "Au"
+    layers: int = 0
+    extras: int = 0
+
+    @property
+    def au_per_electrode(self) -> int:
+        return len(self.atoms)
+
+    def new_electrode(self) -> list[Vec]:
+        return list(self.atoms)
+
+
 def mount_electrode(tip: Atom, linker: Atom, constructor: Electrode111) -> list[Atom]:
     bond_to_molecule = sub(linker.coord(), tip.coord())
     q = rotation_quaternion((0.0, 0.0, -1.0), bond_to_molecule)
@@ -170,6 +191,26 @@ def mount_electrode(tip: Atom, linker: Atom, constructor: Electrode111) -> list[
         pos = add(rotate(coord, q), tip.coord())
         mounted.append(Atom(getattr(constructor, 'element', 'Au'), *pos))
     return mounted
+
+
+def backplane_indices(atoms: list[Atom], electrode_indices: list[int],
+                      tip_index: int, linker_index: int,
+                      tol: float = 1e-3) -> list[int]:
+    """背层原子（1-based）：沿 tip→linker 反方向投影最远的那一整层。
+
+    弛豫阶段把这些原子全部冻结（``constrain_relaxation .true.``），防止电极塌陷；
+    与 :func:`surface_indices` 的关系：背层 ⊇ det-v1 选出的 3 个表面原子，
+    冻结整层后表面三元组在弛豫前后必然相同。
+    """
+    tip = atoms[tip_index]
+    linker = atoms[linker_index]
+    axis = unit(sub(tip.coord(), linker.coord()))
+    projected = [(dot(sub(atoms[i].coord(), tip.coord()), axis), i)
+                 for i in electrode_indices if 0 <= i < len(atoms)]
+    if not projected:
+        return []
+    far = max(p for p, _ in projected)
+    return sorted(i + 1 for p, i in projected if abs(p - far) <= tol)
 
 
 def surface_indices(atoms: list[Atom], electrode_indices: list[int], tip_index: int, linker_index: int) -> list[int]:
@@ -189,7 +230,9 @@ def append_au60(input_path: str | Path, output_path: str | Path,
                 element: str = "Au", a_lattice: float | None = None,
                 allowed_root: str | Path | None = None,
                 layers: int | None = None,
-                extras: int | None = None) -> dict:
+                extras: int | None = None,
+                cluster: object | None = None,
+                provenance: dict | None = None) -> dict:
     """贴装电极并落盘 geometry.in / electrode_metadata.json; 返回 metadata dict。
 
     ROB-08(2026-10-19 P2): allowed_root 给定时对**两个写点**(output_path 与
@@ -198,6 +241,10 @@ def append_au60(input_path: str | Path, output_path: str | Path,
     直接调用方(stages 等)不传则行为完全不变。
 
     W0-2(2026-11-04): layers/extras 显式给出时才改电极厚度; 缺省(None)逐字节回旧行为。
+
+    2026-11-11 (0.1.2, F-LIB): ``cluster`` 给定时改用 FHI-aims ``electrodes.library``
+    的预定义团簇（任意带 ``to_electrode()`` 或 ``atoms`` 的对象），``au_per_electrode``
+    由团簇大小决定；``provenance`` 写进 metadata 的 ``library_cluster``。
     """
     if allowed_root is not None:
         _root = Path(allowed_root).resolve()
@@ -222,7 +269,17 @@ def append_au60(input_path: str | Path, output_path: str | Path,
     if extras is not None:
         thick["extras"] = extras
     # P2-1: element='Au' 且未显式给晶格常数 -> 走 Electrode111 原路径(默认逐字节不变)
-    if element == "Au" and a_lattice is None:
+    if cluster is not None:
+        builder = getattr(cluster, "to_electrode", None)
+        if callable(builder):
+            constructor = builder()
+        else:
+            coords = tuple(getattr(cluster, "atoms"))
+            constructor = LibraryElectrode(
+                atoms=coords,
+                element=getattr(cluster, "element", element),
+                layers=len({round(float(c[2]), 4) for c in coords}))
+    elif element == "Au" and a_lattice is None:
         constructor = Electrode111(au_per_electrode=au_per_electrode, **thick)
     else:
         _a = a_lattice if a_lattice is not None else FCC_LATTICE_A.get(element)
@@ -248,10 +305,18 @@ def append_au60(input_path: str | Path, output_path: str | Path,
                                      left_tip, side='left', linker_index=left_linker)
     _right_tri = _pick_surface_triple(atoms, sorted(set([right_tip] + right_added_indices)),
                                       right_tip, side='right', linker_index=right_linker)
+    # 0.1.2 (F-RELAX): 背层整层索引 —— 弛豫阶段据此冻结，防止电极塌陷。
+    _left_back = backplane_indices(atoms, [left_tip] + left_added_indices,
+                                   left_tip, left_linker)
+    _right_back = backplane_indices(atoms, [right_tip] + right_added_indices,
+                                    right_tip, right_linker)
+    _au_eff = (len(constructor.new_electrode()) if cluster is not None else
+               (au_per_electrode if au_per_electrode is not None
+                else len(constructor.new_electrode())))
     metadata = {
         "input": str(input_path),
         "output": str(output_path),
-        "au_per_electrode": au_per_electrode if au_per_electrode is not None else len(constructor.new_electrode()),
+        "au_per_electrode": _au_eff,
         "original_atom_count": original_count,
         "left_tip_index": left_tip + 1,
         "right_tip_index": right_tip + 1,
@@ -262,12 +327,18 @@ def append_au60(input_path: str | Path, output_path: str | Path,
         # W0-3: 规则名与对称退化计数(>1 = 有多个几何等价的三角同分, 规则按坐标字典序取一个)
         "surface_rule": "det-v1",
         "surface_tie_counts": {"left": _left_tri.tie_count, "right": _right_tri.tie_count},
+        # 0.1.2: 两侧背层全部原子(1-based) —— au_relax 只冻结这些，不动其它。
+        "left_backplane_indices": _left_back,
+        "right_backplane_indices": _right_back,
         # W0-2: 精确的左右归属(1-based, 含 tip)。厚电极的贴装轴随分子倾斜,
         # 远层原子可能离对侧 tip 更近 —— 按距离划分会错分, 这里直接给出真值。
         "left_electrode_indices": [left_tip + 1] + [i + 1 for i in left_added_indices],
         "right_electrode_indices": [right_tip + 1] + [i + 1 for i in right_added_indices],
         "final_atom_count": len(atoms),
     }
+    if cluster is not None:
+        metadata["electrode_source"] = "library"
+        metadata["library_cluster"] = dict(provenance or {})
     if thick:
         # 仅在显式加厚时写入(既有调用方 metadata 逐字节不变)
         metadata["electrode_layers"] = getattr(constructor, "layers", None)

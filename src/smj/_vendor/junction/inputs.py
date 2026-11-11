@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import math
 import os
+from collections.abc import Iterable
 from pathlib import Path
 
 from .geometry import (Atom, add_tip_au, read_aims_geometry, read_xyz,
@@ -321,6 +322,51 @@ def make_aims_scf_input(geometry_in: str | Path, outdir: str | Path,
                'atom_count': len(read_aims_geometry(geom))}
     _write(out / 'input_summary.json', json.dumps(summary, indent=2, ensure_ascii=False))
     return {'control': str(out / 'control.in'), 'submit_script': str(sub), 'summary': summary}
+
+
+def make_au_relax_input(geometry_in: str | Path, outdir: str | Path,
+                        constrained: Iterable[int] = (),
+                        species_dir: str | Path | None = None,
+                        relax_force_threshold: str = '1.e-2',
+                        env: dict | None = None, vdw: str | None = None,
+                        xc: str = 'pbe', spin: str = 'none', charge: float = 0.0) -> dict:
+    """au_relax: 固定背层的几何弛豫输入(geometry.in + control.in + sub_aims.sh)。
+
+    手册 §5.3.1: 分子经锚定基接到预定义团簇后, **固定两侧背层**弛豫一次,
+    防止电极在结构优化时塌陷。``constrained`` 是 1-based 原子索引, 必须覆盖
+    两侧背层整层(背层 ⊇ det-v1 表面三元组), 这样弛豫前后表面索引必然一致。
+    """
+    e = _env(env)
+    if not species_dir:
+        raise ValueError('au_relax 需 species_dir(FHI-aims species 目录, 用户提供; 不虚构)')
+    src = Path(geometry_in)
+    if not src.exists():
+        raise FileNotFoundError('au_relax 缺上游 geometry.in: %s' % src)
+    atoms = read_aims_geometry(src)
+    idx = sorted({int(i) for i in constrained})
+    if not idx:
+        raise ValueError('au_relax 必须冻结两侧背层(constrained 为空); 无约束的弛豫会移动电极表面')
+    bad = [i for i in idx if not (1 <= i <= len(atoms))]
+    if bad:
+        raise ValueError('au_relax 的约束索引越界: %s (原子数 %d)' % (bad[:5], len(atoms)))
+    out = Path(outdir)
+    geom = out / 'geometry.in'
+    write_aims_geometry(geom, atoms, constrained=idx)
+    make_control(geom, out / 'control.in', 'relax', species_dir,
+                 xc=xc, spin=spin, charge=charge,
+                 force_threshold=relax_force_threshold, vdw=vdw)
+    sub = out / 'sub_aims.sh'
+    _write(sub, _render_aims_sub(e, e['ntasks']))
+    summary = {'species_dir': str(species_dir), 'xc': xc, 'spin': spin, 'charge': charge,
+               'force_threshold': relax_force_threshold, 'ntasks': e['ntasks'],
+               'partition': e['partition'],
+               'aims_gpus': str(e.get('aims_gpus') or '').strip() or 'cpu',
+               'vdw': str(vdw or ''),
+               'atom_count': len(atoms), 'constrained': idx,
+               'constrained_count': len(idx)}
+    _write(out / 'input_summary.json', json.dumps(summary, indent=2, ensure_ascii=False))
+    return {'geometry': str(geom), 'control': str(out / 'control.in'),
+            'submit_script': str(sub), 'summary': summary}
 
 
 def make_aitranss_input(scf_dir: str | Path, outdir: str | Path,

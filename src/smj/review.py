@@ -159,10 +159,18 @@ def _run_dir_of(target: Any) -> tuple[Path, Any]:
 
 
 def find_build_dir(run_dir: str | Path) -> Path | None:
-    """定位 ``auN_build``（含 2cn 的 au10_build 变体）。"""
+    """定位 A2 确认的对象：优先 ``au_relax``（弛豫后几何），否则 ``auN_build``。
+
+    0.1.2 起背层固定弛豫是独立阶段，A2 要看的是弛豫后真正送进 SCF 的那份
+    ``geometry.in``；``au_relax`` 存在且带完整几何/metadata 时以它为准，
+    否则回退建结阶段（``electrode.relax=false`` 或旧 run）。
+    """
     root = Path(run_dir)
     if not root.is_dir():
         return None
+    relaxed = root / "au_relax"
+    if (relaxed / GEOMETRY_FILE).is_file() and (relaxed / METADATA_FILE).is_file():
+        return relaxed
     preferred = root / "au60_build"
     if preferred.is_dir():
         return preferred

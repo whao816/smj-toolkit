@@ -29,11 +29,15 @@ ANCHORS: dict[str, dict[str, float]] = {
 LINEAR: dict[str, dict[str, float]] = {
     "gaussian_opt": {"wall0": 60.0, "per_atom_wall": 10.0, "mem0": 4.0, "per_atom_mem": 0.05},
     "aims_tip_relax": {"wall0": 180.0, "per_atom_wall": 30.0, "mem0": 8.0, "per_atom_mem": 0.10},
+    # au_relax：背层冻结后只弛豫中间区，原子数约为 au60 全体系的 1/3 自由度，
+    # 但每步力都要算全体系，墙钟按"整体系的一次 BFGS"估（比 SCF 略贵）。
+    "au_relax": {"wall0": 300.0, "per_atom_wall": 40.0, "mem0": 10.0, "per_atom_mem": 0.10},
 }
 
 NTASKS: dict[str, int] = {
     "gaussian_opt": 1,
     "aims_tip_relax": 4,
+    "au_relax": 4,
     "aims_scf": 4,
     "aitranss_te": 1,
 }
@@ -49,11 +53,14 @@ TIME_LIMIT_FACTOR = 1.9
 FLOOR_WALL: dict[str, int] = {
     "gaussian_opt": 900,
     "aims_tip_relax": 900,
+    "au_relax": 1800,
     "aims_scf": 1800,
     "aitranss_te": 1800,
 }
 
-SMJ_STAGES: tuple[str, ...] = ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te")
+SMJ_STAGES: tuple[str, ...] = (
+    "gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te",
+)
 
 
 def hhmmss(seconds: float) -> str:

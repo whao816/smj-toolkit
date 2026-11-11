@@ -189,6 +189,10 @@ def _inventory(run_dir: Path, stages: Iterable[str]) -> dict[str, dict]:
 # 输入 / 资源 / 输运 / 失败
 # --------------------------------------------------------------------------- #
 def _find_build_dir(run_dir: Path) -> Path | None:
+    # 0.1.2：报告里的"电极"几何优先用 au_relax（背层固定弛豫后、真正送 SCF 的那份）。
+    relaxed = run_dir / "au_relax"
+    if (relaxed / "geometry.in").is_file() and (relaxed / "electrode_metadata.json").is_file():
+        return relaxed
     for child in sorted(run_dir.iterdir()):
         if child.is_dir() and _BUILD_STAGE_RE.match(child.name):
             return child
@@ -267,7 +271,7 @@ def _stage_atoms(run_dir: Path, stage: str) -> int | None:
 def _resource_summary(run_dir: Path, state: RunState,
                       warnings: list[str]) -> dict[str, dict]:
     summary: dict[str, dict] = {}
-    for stage in ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te"):
+    for stage in ("gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te"):
         recorded = dict(state.stage(stage).resources or {})
         if recorded:
             summary[stage] = {"source": "state", **recorded,
@@ -546,7 +550,7 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     lines.append("| 阶段 | 墙钟 | --time | 内存 | rank/核 | 核时 | 来源 / 预算 |")
     lines.append("|---|---|---|---|---|---|---|")
     resources = man.get("resources") or {}
-    for stage in ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te"):
+    for stage in ("gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te"):
         item = resources.get(stage)
         if not item:
             lines.append("| `%s` | — | — | — | — | — | 未估算 |" % stage)

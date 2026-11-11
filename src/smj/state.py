@@ -40,13 +40,16 @@ STAGE_ORDER: tuple[str, ...] = (
     "gaussian_opt",
     "aims_tip_relax",
     "au60_build",
+    "au_relax",
     "aims_scf",
     "aitranss_te",
     "junction_analyze",
 )
 
 #: 远程阶段（需要 Slurm 作业）；au60_build / junction_analyze 是纯本地阶段。
-REMOTE_STAGES: tuple[str, ...] = ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te")
+REMOTE_STAGES: tuple[str, ...] = (
+    "gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te",
+)
 LOCAL_STAGES: tuple[str, ...] = ("au60_build", "junction_analyze")
 
 STATUSES: tuple[str, ...] = (
@@ -71,6 +74,10 @@ _ALIASES = {
     "build": "au60_build",
     "au60-build": "au60_build",
     "electrode": "au60_build",
+    "au-relax": "au_relax",
+    "aurelax": "au_relax",
+    "relax_au": "au_relax",
+    "backplane_relax": "au_relax",
     "scf": "aims_scf",
     "aims": "aims_scf",
     "aims-scf": "aims_scf",

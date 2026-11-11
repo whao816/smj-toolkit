@@ -81,6 +81,7 @@ def _prepared_payload(prepared: Any) -> dict[str, Any]:
         "artifacts": list(getattr(prepared, "artifacts", ()) or ()),
         "notes": list(getattr(prepared, "notes", ()) or ()),
         "commands": list(getattr(prepared, "commands", ()) or ()),
+        "local_only": bool(getattr(prepared, "local_only", False)),
     }
 
 
@@ -287,16 +288,18 @@ class StageRunner:
         prepared = stage.prepare(self.context, stage_dir)
         payload = _prepared_payload(prepared)
         artifacts = payload.get("artifacts") or list(getattr(stage, "outputs", ()) or ())
+        local_only = bool(payload.get("local_only"))
         self.state.set(
             key, status="prepared", prepared_at=now_iso(),
             job_id=None, remote_dir=None, submitted_at=None, finished_at=None,
             collected_at=None, elapsed_s=None, exit_code=None, note=None, error=None,
             artifacts=list(artifacts),
             resources=dict(payload.get("resources") or {}),
-            script=payload.get("script") or getattr(stage, "script", None),
+            script=None if local_only else (payload.get("script") or getattr(stage, "script", None)),
             inputs=[str(p) for p in payload.get("inputs") or ()],
             notes=list(payload.get("notes") or ()),
             commands=list(payload.get("commands") or ()),
+            local_only=local_only,
         )
         self._save()
         for note in payload.get("notes") or ():
@@ -464,7 +467,8 @@ class StageRunner:
         stage_dir = self.layout.ensure_stage(key)
 
         download: dict[str, Any] | None = None
-        if self.config.mode == "slurm-ssh" and not self.dry_run:
+        local_only = bool(self.state.stage(key).extra.get("local_only"))
+        if self.config.mode == "slurm-ssh" and not self.dry_run and not local_only:
             self._log("[%s] 回取产物 ..." % key)
             download = self._session().download(key, stage_dir)
             self.state.set(
@@ -509,7 +513,7 @@ class StageRunner:
                 outcome.message = "dry-run：已生成输入，未提交"
                 return outcome
 
-            if not getattr(stage, "needs_submit", True):
+            if outcome.prepared.get("local_only") or not getattr(stage, "needs_submit", True):
                 outcome.collected = self.collect(key)
                 outcome.status = "collected"
                 return outcome

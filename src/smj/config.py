@@ -19,6 +19,7 @@ from typing import Any, Mapping
 import yaml
 
 from .errors import ConfigError
+from .electrode_library import DEFAULT_CLUSTER
 
 DEFAULT_CONFIG_NAME = "smj.yaml"
 MODES = ("dry-run", "local", "slurm-ssh")
@@ -129,14 +130,19 @@ class MoleculeConfig:
 class ElectrodeConfig:
     """电极 / 结几何参数（au60_build 与 aims_tip_relax、aitranss_te 共用）。"""
 
-    au_per_electrode: int | None = 30     # None/30 = 完整 Au60；20 = 每侧 20 个
+    au_per_electrode: int | None = 30     # 仅 builtin：每侧 Au 数；None/30 = 完整 Au60
     left_anchor: str = "S"
     right_anchor: str = "S"
     au_tip_distance: float = 2.35
     anchor_au_s_target: float = 2.40
     strip_thiol_h: bool = True
     vdw: bool = True
-    nlayers: int = 3                      # Aitranss 中心区层数
+    nlayers: int | None = None            # Aitranss 中心区层数；None = 按库文件头部建议
+    source: str = "library"               # library = FHI-aims 预定义团簇；builtin = 原三角岛
+    library_dir: str | None = None        # electrodes.library 目录；None = 常见路径/远端探测
+    library_cluster: str = DEFAULT_CLUSTER
+    relax: bool = True                    # au_relax：固定背层的几何弛豫（手册 §5.3.1 要求）
+    relax_force_threshold: str = "1.e-2"  # BFGS 力收敛阈值（Hartree/Bohr）
 
 
 @dataclass
@@ -276,6 +282,7 @@ _MOLECULE_KEYS = {"xyz", "charge", "multiplicity", "method", "basis"}
 _ELECTRODE_KEYS = {
     "au_per_electrode", "left_anchor", "right_anchor", "au_tip_distance",
     "anchor_au_s_target", "strip_thiol_h", "vdw", "nlayers",
+    "source", "library_dir", "library_cluster", "relax", "relax_force_threshold",
 }
 _TRANSPORT_KEYS = {"temperature", "energy_window", "ener", "estep", "eend"}
 _CLUSTER_KEYS = {
@@ -323,6 +330,9 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
 
 def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeConfig:
     _warn_unknown("electrode", data, _ELECTRODE_KEYS, warnings)
+    source = _as_str(data.get("source") or "library", "electrode.source")
+    if source not in ("library", "builtin"):
+        raise ConfigError("electrode.source 应为 library/builtin 之一，实际是 %r" % source)
     au = data.get("au_per_electrode", 30)
     au_value = None if au is None else _as_int(au, "electrode.au_per_electrode", minimum=1)
     if au_value is not None and au_value > 30:
@@ -330,6 +340,16 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
     target = _as_float(data.get("anchor_au_s_target", 2.40), "electrode.anchor_au_s_target")
     if not (1.5 <= target <= 4.0):
         raise ConfigError("electrode.anchor_au_s_target 应在 1.5–4.0 Å，实际是 %s" % target)
+    nlayers_raw = data.get("nlayers", None)
+    nlayers = None if nlayers_raw is None else _as_int(nlayers_raw, "electrode.nlayers", minimum=1)
+    if nlayers is not None and not (1 <= nlayers <= 8):
+        raise ConfigError("electrode.nlayers 应在 1–8，实际是 %d（null = 按库文件建议）" % nlayers)
+    library_dir = data.get("library_dir")
+    library_dir = _as_str(library_dir, "electrode.library_dir") if library_dir else None
+    cluster_rel = _as_str(data.get("library_cluster") or DEFAULT_CLUSTER, "electrode.library_cluster")
+    if not cluster_rel.strip():
+        raise ConfigError("electrode.library_cluster 不能为空（应为 library_dir 下的相对路径）")
+    threshold = _as_str(data.get("relax_force_threshold") or "1.e-2", "electrode.relax_force_threshold")
     cfg = ElectrodeConfig(
         au_per_electrode=au_value,
         left_anchor=_as_str(data.get("left_anchor") or "S", "electrode.left_anchor"),
@@ -338,7 +358,12 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
         anchor_au_s_target=target,
         strip_thiol_h=_as_bool(data.get("strip_thiol_h", True), "electrode.strip_thiol_h"),
         vdw=_as_bool(data.get("vdw", True), "electrode.vdw"),
-        nlayers=_as_int(data.get("nlayers", 3), "electrode.nlayers", minimum=1),
+        nlayers=nlayers,
+        source=source,
+        library_dir=library_dir,
+        library_cluster=cluster_rel,
+        relax=_as_bool(data.get("relax", True), "electrode.relax"),
+        relax_force_threshold=threshold,
     )
     if not (1.0 <= cfg.au_tip_distance <= 5.0):
         raise ConfigError("electrode.au_tip_distance 应在 1.0–5.0 Å，实际是 %s" % cfg.au_tip_distance)
@@ -474,6 +499,8 @@ def load_config(path: str | Path | None = None) -> RunConfig:
         config.paths.templates = str(config.resolve(config.paths.templates))
     if config.paths.species_defaults:
         config.paths.species_defaults = str(config.resolve(config.paths.species_defaults))
+    if config.electrode.library_dir:
+        config.electrode.library_dir = str(config.resolve(config.electrode.library_dir))
     return config
 
 
@@ -496,14 +523,19 @@ molecule:
   basis: 6-31g(d)
 
 electrode:
-  au_per_electrode: 30      # 每侧 Au 原子数（最大 30 = 完整 Au60）
+  source: library           # library = FHI-aims electrodes.library 预定义团簇；builtin = 自建三角岛
+  library_dir: null         # electrodes.library 目录；null = 本机常见路径 / slurm-ssh 远端探测
+  library_cluster: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims
+  au_per_electrode: 30      # 仅 builtin：每侧 Au 原子数（最大 30 = 完整 Au60）
   left_anchor: S
   right_anchor: S
   au_tip_distance: 2.35
   anchor_au_s_target: 2.40
   strip_thiol_h: true
   vdw: true
-  nlayers: 3                # Aitranss 中心区层数
+  relax: true                     # au_relax：固定两侧背层做几何弛豫（手册 §5.3.1）
+  relax_force_threshold: 1.e-2
+  nlayers: null             # Aitranss 中心区层数；null = 按库文件头部 -nlayers 建议
 
 transport:
   temperature: 300.0

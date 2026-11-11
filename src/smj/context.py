@@ -141,7 +141,7 @@ class StageContext:
                 env.setdefault("g16_gres", cluster.gres)
             return env
 
-        if stage in ("aims_tip_relax", "aims_scf"):
+        if stage in ("aims_tip_relax", "au_relax", "aims_scf"):
             env.setdefault("ntasks", cluster.ntasks or res.get("ntasks") or 4)
             env.setdefault("aims_mem", cluster.mem or res.get("mem") or "16G")
             env.setdefault("aims_walltime", cluster.time_limit or res.get("time_limit") or "02:00:00")

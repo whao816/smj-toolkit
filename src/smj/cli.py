@@ -3,7 +3,7 @@
 子命令一览::
 
     smj init      写一份 smj.yaml 模板
-    smj plan      打印 6 个阶段、依赖与当前状态
+    smj plan      打印 7 个阶段、依赖与当前状态
     smj preflight 提交前检查（调用 smj.preflight）
     smj stage     单阶段操作：--prepare / --submit / --wait / --collect / --run
     smj run       按 --from/--to 链式推进（prepare → submit → wait → collect）
@@ -816,9 +816,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
           "缺少: %s" % ", ".join(missing) if missing else str(templates))
 
     try:
-        importlib.import_module("smj.stages")
+        import importlib as _importlib
 
-        check("stages", True, "6 个阶段模块可导入")
+        _stages = _importlib.import_module("smj.stages")
+        from smj.stages.base import all_stages as _all_stages
+
+        _registered = [s.name for s in _all_stages()]
+        _missing = [name for name in STAGE_ORDER if name not in _registered]
+        check("stages", not _missing,
+              "%d 个阶段模块可导入%s" % (len(_registered),
+                                       "" if not _missing else "；缺 %s" % ", ".join(_missing)))
     except Exception as exc:  # noqa: BLE001
         check("stages", False, "smj.stages 不可导入: %s" % exc)
 
@@ -900,7 +907,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # plan ------------------------------------------------------------------ #
     plan = subparsers.add_parser(
-        "plan", help="打印 6 个阶段、依赖与当前状态",
+        "plan", help="打印 7 个阶段、依赖与当前状态",
         description="只读：不生成文件、不连远端。")
     _add_common(plan)
     plan.set_defaults(handler=cmd_plan)

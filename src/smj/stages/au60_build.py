@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .._vendor.junction.electrode import append_au60
 from .._vendor.junction.fingerprint import attach_fingerprint
+from ..electrode_library import resolve_cluster
 from ..errors import StageError
 from ._helpers import est_record
 from .base import Collected, Prepared, Stage, register
@@ -34,10 +35,23 @@ class Au60BuildStage(Stage):
         electrode = ctx.config.electrode
         geometry = stage_dir / "geometry.in"
         metadata_path = stage_dir / "electrode_metadata.json"
+        notes: list[str] = []
+        cluster = None
+        if getattr(electrode, "source", "builtin") == "library":
+            # 0.1.2: 用 FHI-aims electrodes.library 的预定义团簇（手册 §5.3.1）。
+            cluster = resolve_cluster(ctx, electrode)
+            if (electrode.nlayers and cluster.nlayers_suggested
+                    and int(electrode.nlayers) != int(cluster.nlayers_suggested)):
+                notes.append(
+                    "警告: tcontrol nlayers=%s 与库文件建议值 %s 不一致 —— 手册要求取"
+                    "库文件头部建议值，请核对 electrode.nlayers"
+                    % (electrode.nlayers, cluster.nlayers_suggested))
         try:
             metadata = append_au60(
                 source, geometry, metadata_path,
                 au_per_electrode=electrode.au_per_electrode,
+                cluster=cluster,
+                provenance=cluster.provenance() if cluster is not None else None,
             )
         except ValueError as exc:
             raise StageError("au60_build 无法装配电极: %s" % exc) from exc
@@ -49,20 +63,31 @@ class Au60BuildStage(Stage):
         surface = metadata.get("surface_indices") or {}
         left_surface = surface.get("left_surface_indices") or metadata.get("left_surface_indices")
         right_surface = surface.get("right_surface_indices") or metadata.get("right_surface_indices")
-        ctx.log("au60_build: %d → %d 原子（本地阶段）"
-                % (metadata.get("original_atom_count", "?"), metadata.get("final_atom_count", natoms)))
+        ctx.log("au60_build: %d → %d 原子（本地阶段，%s 电极）"
+                % (metadata.get("original_atom_count", "?"),
+                   metadata.get("final_atom_count", natoms),
+                   "库团簇" if cluster is not None else "自建三角岛"))
+        if cluster is not None:
+            notes.append("库团簇: %s（%d 原子，建议 nlayers=%s，sha256 %s…）"
+                         % (cluster.relpath, cluster.natoms,
+                            cluster.nlayers_suggested, cluster.sha256[:12]))
+        notes.extend([
+            "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
+            "Au 每侧目标 %s 个（%s），最终 %d 原子"
+            % (metadata.get("au_per_electrode"),
+               "库团簇整簇贴装" if cluster is not None else "按完整原子层截断",
+               metadata.get("final_atom_count", natoms)),
+            "表面原子（1-based）left=%s right=%s，背层 left=%s right=%s，指纹 %s…"
+            % (left_surface, right_surface,
+               metadata.get("left_backplane_indices"), metadata.get("right_backplane_indices"),
+               str(metadata.get("surface_fingerprint"))[:12]),
+        ])
         return self.prepared(
             ctx, stage_dir,
             inputs=[source],
             artifacts=list(self.outputs),
             resources=est_record(estimate),
-            notes=[
-                "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
-                "Au 每侧目标 %s 个（按完整原子层截断），最终 %d 原子"
-                % (metadata.get("au_per_electrode"), metadata.get("final_atom_count", natoms)),
-                "表面原子（1-based）left=%s right=%s，指纹 %s…"
-                % (left_surface, right_surface, str(metadata.get("surface_fingerprint"))[:12]),
-            ],
+            notes=notes,
             commands=[],
         )
 
@@ -93,6 +118,12 @@ class Au60BuildStage(Stage):
                 "left_tip_index": metadata.get("left_tip_index"),
                 "right_tip_index": metadata.get("right_tip_index"),
                 "surface_fingerprint": fingerprint,
+                "electrode_source": metadata.get("electrode_source") or "builtin",
+                "library_cluster": metadata.get("library_cluster"),
+                "backplane_indices": {
+                    "left": metadata.get("left_backplane_indices"),
+                    "right": metadata.get("right_backplane_indices"),
+                },
                 "surface_indices": {
                     "left": surface.get("left_surface_indices")
                     or metadata.get("left_surface_indices"),

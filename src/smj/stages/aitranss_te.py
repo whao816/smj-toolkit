@@ -9,6 +9,7 @@ aitranss 跑完产出 ``TE.dat``（collect 只做轻量核对，真正的量在 
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .._vendor.junction.geometry import read_aims_geometry
@@ -37,15 +38,17 @@ class AitranssTeStage(Stage):
             raise StageBlocked(
                 self.name, "缺 aims_scf/geometry.in（tcontrol 需要结几何）", [str(scf_geometry)])
         metadata = self._metadata(ctx)
-        geometry = ctx.artifact("au60_build", "geometry.in")
+        geometry = ctx.artifact("au_relax", "geometry.in")
         if not geometry.is_file():
-            # 独立运行（--scf-dir）时 au60_build 目录可能不在：SCF 目录里的几何是同一份。
+            geometry = ctx.artifact("au60_build", "geometry.in")
+        if not geometry.is_file():
+            # 独立运行（--scf-dir）时上游目录可能不在：SCF 目录里的几何是同一份。
             geometry = scf_geometry
         natoms = self.count_aims_atoms(scf_geometry)
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)
         ener, estep, eend = ctx.config.transport.resolved_window()
-        nlayers = ctx.config.electrode.nlayers
+        nlayers = self._resolve_nlayers(ctx.config.electrode.nlayers, metadata)
         try:
             written = make_aitranss_input(
                 scf_dir, stage_dir, metadata=metadata, nlayers=nlayers,
@@ -131,12 +134,30 @@ class AitranssTeStage(Stage):
                 raise StageBlocked(
                     self.name, "显式 metadata 不存在: %s" % override, [str(override)])
             return override
-        candidate = ctx.artifact("au60_build", "electrode_metadata.json")
-        if not candidate.is_file():
-            raise StageBlocked(
-                self.name,
-                "缺 au60_build/electrode_metadata.json（tcontrol 需要六个表面索引，"
-                "self.energy.in 需要左右 tip 索引）",
-                [str(candidate)],
-            )
-        return candidate
+        # 0.1.2：au_relax 会重写 metadata（指纹 + relax 记录）；存在时以它为准，
+        # 否则回退 au60_build（electrode.relax=false 时两者等价）。
+        for stage in ("au_relax", "au60_build"):
+            candidate = ctx.artifact(stage, "electrode_metadata.json")
+            if candidate.is_file():
+                return candidate
+        raise StageBlocked(
+            self.name,
+            "缺 au_relax（或 au60_build）/electrode_metadata.json（tcontrol 需要六个表面索引，"
+            "self.energy.in 需要左右 tip 索引）",
+            [str(ctx.artifact("au60_build", "electrode_metadata.json"))],
+        )
+
+    @staticmethod
+    def _resolve_nlayers(configured: int | None, metadata: Path) -> int:
+        """``electrode.nlayers`` 为 null 时用库文件建议值（手册 §5.3.2），再回退 3。"""
+        if configured is not None:
+            return int(configured)
+        try:
+            data = json.loads(Path(metadata).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return 3
+        suggested = (data.get("library_cluster") or {}).get("nlayers_suggested")
+        try:
+            return int(suggested) if suggested else 3
+        except (TypeError, ValueError):
+            return 3

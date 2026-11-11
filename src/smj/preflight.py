@@ -50,7 +50,7 @@ _ENV_ALIASES = {
 }
 
 #: 资源检查的阶段（本地阶段 au60_build 不计集群预算）。
-_RESOURCE_STAGES = ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te")
+_RESOURCE_STAGES = ("gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te")
 
 #: 分子重叠检查的规模上限（超过只提示，不做 O(N^2)）。
 _OVERLAP_MAX_ATOMS = 2000

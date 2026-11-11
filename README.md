@@ -19,16 +19,17 @@
 | 适用 | 单分子结 / 分子电子学：Au(111) 电极间硫醇锚定分子的电输运与热电 |
 | 不承诺 | 自带 Gaussian/FHI-aims/aitranss；自动替人选方法/基组/锚点；替代人工结构确认；把 20 Au/侧与 Au60 口径混比 |
 
-六阶段链（顺序固定，但可单独执行任意阶段）：
+七阶段链（顺序固定，但可单独执行任意阶段）：
 
 ```text
 molecule.xyz
   └─ gaussian_opt      Gaussian 16 opt+freq            → opt.xyz
       └─ aims_tip_relax  FHI-aims 加 Au 针尖 + 弛豫      → geometry.in.next_step
-          └─ au60_build  本地追加 Au(111) 电极（Au60）   → geometry.in + electrode_metadata.json
-              └─ aims_scf     FHI-aims 静态 SCF          → aims.out / mos.aims
-                  └─ aitranss_te  aitranss 透射          → TE.dat
-                      └─ junction_analyze  Landauer 积分 → results.json
+          └─ au60_build  本地贴装 Au(111) 电极（库团簇）  → geometry.in + electrode_metadata.json
+              └─ au_relax    FHI-aims 背层固定弛豫        → 弛豫后的 geometry.in（背层冻结）
+                  └─ aims_scf     FHI-aims 静态 SCF      → aims.out / mos.aims
+                      └─ aitranss_te  aitranss 透射      → TE.dat
+                          └─ junction_analyze  Landauer  → results.json
 ```
 
 ## 1. 安装
@@ -57,7 +58,7 @@ python -m pip install -e ".[all]"    # plot + dev
 
 ```bash
 smj --help
-smj verify      # Python/PyYAML/numpy、vendored junction、模板、6 个阶段模块
+smj verify      # Python/PyYAML/numpy、vendored junction、模板、7 个阶段模块
 ```
 
 ## 2. 5 分钟快速开始
@@ -72,7 +73,7 @@ smj init . --name demo --xyz molecule.xyz --mode dry-run
 # 2) 编辑 ./smj.yaml：分子路径、电极参数；真跑时补 cluster 段
 #    （见 §4；只想先看输入装配的话保持 run.mode: dry-run 即可）
 
-# 3) 看六阶段计划、依赖与当前状态
+# 3) 看七阶段计划、依赖与当前状态
 smj plan
 
 # 4) 只生成第一阶段输入（人工检查 mol.gjf / sub_g16.sh）
@@ -110,12 +111,13 @@ smj run --from aims_scf --to aitranss_te
 |---|---|---|---|---|
 | `gaussian_opt` | `molecule.xyz`（或 `--xyz`） | `mol.gjf`、`sub_g16.sh`、`input_summary.json`；collect 后 `mol.log`、`opt.xyz`、`gaussian_summary.json` | 是（Gaussian） | `smj stage gaussian_opt --run --xyz molecule.xyz` |
 | `aims_tip_relax` | `gaussian_opt/opt.xyz`（或 `--geometry`） | `geometry.in`、`control.in`、`sub_aims.sh`；collect 后 `geometry.in.next_step` | 是（FHI-aims） | `smj stage aims_tip_relax --run --geometry gaussian_opt/opt.xyz` |
-| `au60_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json` | **否**（本地） | `smj stage au60_build --run --geometry aims_tip_relax/geometry.in.next_step` |
-| `aims_scf` | `au60_build/geometry.in`（或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run --geometry au60_build/geometry.in` |
+| `au60_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json`（含背层索引与库团簇来源） | **否**（本地） | `smj stage au60_build --run --geometry aims_tip_relax/geometry.in.next_step` |
+| `au_relax` | `au60_build/geometry.in` + metadata | `geometry.in`（两侧背层全部 `constrain_relaxation`）、`control.in`、`sub_aims.sh`；collect 后 `geometry.in.next_step` | 是（FHI-aims） | `smj stage au_relax --run` |
+| `aims_scf` | `au_relax/geometry.in`（回退 `au60_build/geometry.in`，或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run` |
 | `aitranss_te` | `aims_scf/`（或 `--scf-dir`） | `tcontrol`、`sub_te.sh`；collect 后 `TE.dat`、`te.out` | 是（aitranss） | `smj stage aitranss_te --run --scf-dir /path/to/scf` |
 | `junction_analyze` | `aitranss_te/TE.dat`（或 `--te`） | `results.json` | **否**（本地） | `smj stage junction_analyze --run --te TE.dat` |
 
-FHI-aims 阶段（`aims_tip_relax`/`aims_scf`）还需要 `cluster.species_dir` 或
+FHI-aims 阶段（`aims_tip_relax`/`au_relax`/`aims_scf`）还需要 `cluster.species_dir` 或
 `paths.species_defaults` 指向 species 目录；缺失时 `prepare` 直接 `StageBlocked`
 （`smj preflight` 也会报 error）。`--geometry` 在三个消费几何的阶段
 （`aims_tip_relax`/`au60_build`/`aims_scf`）都可用，但语义不同：`aims_tip_relax`
@@ -123,6 +125,14 @@ FHI-aims 阶段（`aims_tip_relax`/`aims_scf`）还需要 `cluster.species_dir` 
 与 `aims_scf` 要的才是 FHI-aims 几何。`aitranss_te` 除 SCF 目录外还要
 `au60_build/electrode_metadata.json`（六个表面索引与左右 tip 索引），可用
 `--metadata` 覆盖。
+
+`au60_build` 默认用 FHI-aims 自带的 `electrodes.library` 预定义团簇贴装电极（手册
+§5.3.1 的要求），由 `electrode.source`、`electrode.library_dir`、`electrode.library_cluster`
+控制（默认 `fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims`）；库文件不进
+wheel，只在 metadata 里记 `sha256` 与相对路径。`electrode.nlayers: null` 表示取库文件头部
+建议的层数。`electrode.source: builtin` 回到旧的自建三角岛。`electrode.relax: true`
+（默认）让 `au_relax` 在贴装后冻住两侧背层整层、做一次小力阈值弛豫（手册 §5.3.1 的
+"固定两个背层做一次弛豫"）；置 `false` 时该阶段本地直通（写 `relax_skipped.json`）。
 
 动作开关（每个阶段通用）：
 
@@ -288,7 +298,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差）；`--approve --who <名字>` 登记 A2 确认（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用 | `review.json`、`auN_build/a2_confirmation.json`；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
-| `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
+| `smj plan` | 打印七阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
 
 退出码：`0` 成功/作业已结束；`1` 失败或配置/输入错误；`2` 未完成（`--wait` 超时、
 作业可能仍在跑，或 `run` 有阶段停在 `waiting`），以及 **A2 签署被拒绝**
