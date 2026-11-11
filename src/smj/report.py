@@ -400,22 +400,25 @@ def build_manifest(target: Any, *, run_id: str | None = None,
     }
 
     if include_checks:
-        te_dir = run_dir / "aitranss_te"
-        if te_dir.is_dir():
-            try:
-                from smj._vendor.junction.validate import validate_junction_run  # lazy: vendored
-                verdict = validate_junction_run(
-                    run_dir, results={"junction": transport or {}}, system=system)
-                manifest["verdict"] = {
-                    key: verdict.get(key) for key in
-                    ("passed", "engineering_passed", "errors", "warnings",
-                     "physics_verdict", "wording", "allowed_action",
-                     "failed_criteria", "inconclusive_criteria",
-                     "not_applicable_criteria")
-                }
-                manifest["checks"] = verdict.get("checks", [])
-            except Exception as exc:  # noqa: BLE001
-                manifest["verdict"] = {"error": "validate_junction_run 失败: %s" % exc}
+        # 2026-11-11 本地补丁 (smj F2): 不再用 `aitranss_te/` 目录是否存在当门。
+        # 空目录曾经直接判 passed; 现在统一交给 validate_junction_run, 缺 TE.dat 时
+        # criteria 会给出 error 级 te_present, 结果是 failed 而不是"支持 H0"。
+        try:
+            from smj._vendor.junction.validate import validate_junction_run  # lazy: vendored
+            verdict = validate_junction_run(
+                run_dir, results={"junction": transport or {}}, system=system,
+                temperature=input_summary.get("temperature_K"))
+            manifest["verdict"] = {
+                key: verdict.get(key) for key in
+                ("passed", "engineering_passed", "errors", "warnings",
+                 "physics_verdict", "wording", "allowed_action",
+                 "failed_criteria", "inconclusive_criteria",
+                 "missing_evidence_criteria",
+                 "not_applicable_criteria")
+            }
+            manifest["checks"] = verdict.get("checks", [])
+        except Exception as exc:  # noqa: BLE001
+            manifest["verdict"] = {"error": "validate_junction_run 失败: %s" % exc}
     manifest["totals"] = totals
     return manifest
 
@@ -464,6 +467,38 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     lines.append("| 阶段状态 | %s |" % _cell(summary))
     lines.append("| 首个未完成阶段 | `%s` |" % _cell(state.get("first_incomplete")))
     lines.append("| 生成时间 | %s |" % _cell(man.get("generated_at")))
+    lines.append("")
+
+    lines.append("## 0.1 判定")
+    lines.append("")
+    verdict = man.get("verdict")
+    if isinstance(verdict, dict) and verdict.get("physics_verdict"):
+        lines.append("| 项 | 值 |")
+        lines.append("|---|---|")
+        lines.append("| 工程判定 | %s |"
+                     % ("通过" if verdict.get("passed") else
+                        "未通过（errors=%s）" % _cell(verdict.get("errors"))))
+        lines.append("| 物理判定 | %s（%s） |"
+                     % (_cell(verdict.get("wording")),
+                        _cell(verdict.get("physics_verdict"))))
+        lines.append("| 允许动作 | %s |" % _cell(verdict.get("allowed_action")))
+        lines.append("")
+        failed = list(verdict.get("failed_criteria") or [])
+        inconclusive = list(verdict.get("inconclusive_criteria") or [])
+        missing = list(verdict.get("missing_evidence_criteria") or [])
+        if failed:
+            lines.append("- 否证 H0 的 error 级判据: %s" % ", ".join("`%s`" % x for x in failed))
+        if missing:
+            lines.append("- 证据缺失（无法判定, 非否证）: %s"
+                         % ", ".join("`%s`" % x for x in missing))
+        if inconclusive:
+            lines.append("- 未过的 warn 级判据: %s" % ", ".join("`%s`" % x for x in inconclusive))
+        if not failed and not inconclusive and not missing:
+            lines.append("- 全部判据通过（仅代表判据层面未被否证）。")
+    elif isinstance(verdict, dict) and verdict.get("error"):
+        lines.append("> 判定不可用: %s" % _cell(verdict.get("error")))
+    else:
+        lines.append("> 未计算判定（`--no-checks`，或 manifest 由旧版本生成）。")
     lines.append("")
 
     lines.append("## 1. 阶段状态")

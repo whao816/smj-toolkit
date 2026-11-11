@@ -621,7 +621,8 @@ def cmd_report(args: argparse.Namespace) -> int:
     config = _load_config(args)
     module = _optional_module(_AUX_MODULES["report"][0], "report（报告生成）")
     func = _find_callable(module, _AUX_MODULES["report"][1])
-    result = _invoke(func, config, force=args.force)
+    result = _invoke(func, config, force=args.force,
+                     include_checks=not args.no_checks)
     data = _as_mapping(result)
     ok = _truthy_ok(data)
     if args.json:
@@ -931,6 +932,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="调用 smj.report；需要已 collect 的结果。")
     _add_common(report)
     report.add_argument("--force", action="store_true", help="覆盖已存在的报告")
+    report.add_argument("--no-checks", action="store_true",
+                        help="不计算物理判据（默认会算并写入 manifest.verdict）")
     report.set_defaults(handler=cmd_report)
 
     analyze = subparsers.add_parser(

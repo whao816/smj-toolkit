@@ -31,6 +31,11 @@ CRITERIA = [
     {'name': 'scf_converged', 'kind': 'engineering', 'gate': 'error', 'implemented': True,
      'band': None, 'source': None, 'note': 'FHI-aims 自洽收敛标记(程序语义)'},
 
+    # 2026-11-11 本地补丁 (smj F2): 产物缺失必须是 error 级判据, 不能被"零判据"静默判过。
+    {'name': 'te_present', 'kind': 'engineering', 'gate': 'error', 'implemented': True,
+     'band': None, 'source': None,
+     'note': 'transmission 产物存在性(程序语义); 缺失时物理判据无法评估, 不得判 passed'},
+
     {'name': 'grid_independence', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
      'band': [0.01, None], 'source': dict(THY, locator='—'),
      'note': '抽稀后 L0/L1/L2 相对变化 <1%(任务卡 §5.1.3); 本会话实测 <=0.09%'},
@@ -177,8 +182,16 @@ def physics_verdict(checks) -> dict:
     applicable=False 的 check(判据不适用于该体系族, 见 SYSTEM_FAMILIES)只进
     not_applicable_criteria, **不参与** failed/inconclusive 归约。
     """
+    if not checks:
+        # 2026-11-11 本地补丁 (smj F2): 空判据列表不是"通过", 而是"无法评估"。
+        return {'physics_verdict': 'inconclusive',
+                'wording': VERDICT_WORDING['inconclusive'],
+                'allowed_action': ALLOWED_ACTION['inconclusive'],
+                'failed_criteria': [], 'inconclusive_criteria': ['no_checks'],
+                'missing_evidence_criteria': [],
+                'not_applicable_criteria': [], 'unregistered_checks': []}
     fam = {c['name']: c for c in CRITERIA}
-    errs, warns, unknown, not_app = [], [], [], []
+    errs, warns, unknown, not_app, missing = [], [], [], [], []
     for c in checks or []:
         if c.get('applicable') is False:    # 判据对此体系不作闸门(A, 2026-10-24)
             not_app.append(c.get('name'))
@@ -191,12 +204,17 @@ def physics_verdict(checks) -> dict:
             continue
         gate = spec.get('gate', 'warn')
         if gate == 'error':
-            errs.append(c.get('name'))
+            # 2026-11-11 本地补丁 (smj F2): "证据缺失"与"证据否定假设"必须分开归约。
+            # 缺 TE.dat 时没有观测可反驳 H0, 说"否证 H0"是错的; 只能"无法判定"。
+            if c.get('missing'):
+                missing.append(c.get('name'))
+            else:
+                errs.append(c.get('name'))
         elif gate == 'warn':
             warns.append(c.get('name'))
     if errs:
         v = 'failed'
-    elif warns or unknown:
+    elif warns or unknown or missing:
         # 未登记判据未过时**不得**判 passed(否则新增闸门一旦忘登记就会被静默放过)
         v = 'inconclusive'
     else:
@@ -204,6 +222,7 @@ def physics_verdict(checks) -> dict:
     return {'physics_verdict': v, 'wording': VERDICT_WORDING[v],
             'allowed_action': ALLOWED_ACTION[v],
             'failed_criteria': errs, 'inconclusive_criteria': warns,
+            'missing_evidence_criteria': missing,
             'not_applicable_criteria': not_app,
             'unregistered_checks': unknown}
 
@@ -218,10 +237,13 @@ PEAK_PROMINENCE = 0.1   # 工程约定(**非物理判据**): 局部极大点的�
 PEAK_SEARCH_WINDOW_EV = 1.0   # 与 t_ef_no_peak_near_ef 的比较窗一致(Thygesen 2005 p.12)
 
 
-def _check(name, value, ok, detail, applicable: bool = True):
-    return {'name': name, 'value': value, 'passed': bool(ok),
-            'severity': 'error' if name in _ERROR_GATED else 'warn', 'detail': detail,
-            'applicable': bool(applicable)}
+def _check(name, value, ok, detail, applicable: bool = True, missing: bool = False):
+    out = {'name': name, 'value': value, 'passed': bool(ok),
+           'severity': 'error' if name in _ERROR_GATED else 'warn', 'detail': detail,
+           'applicable': bool(applicable)}
+    if missing:     # 2026-11-11 本地补丁 (smj F2): 该 check 未过是因为产物缺失
+        out['missing'] = True
+    return out
 
 
 _ERROR_GATED = {c['name'] for c in CRITERIA if c.get('gate') == 'error'}
@@ -274,7 +296,11 @@ def significant_peaks(rows, prominence=PEAK_PROMINENCE, half_window=200):
 
 
 def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None) -> list:
-    """从 run 产物实算物理判据; 无产物则返回 [](不臆断, 上游 validate 已 fail-closed)。
+    """从 run 产物实算物理判据; 无产物则返回一条 error 级 ``te_present``。
+
+    2026-11-11 本地补丁 (smj F2): 旧实现返回 ``[]``, 而 ``physics_verdict([])``
+    会落到 ``else: 'passed'`` —— 一个只有空 ``aitranss_te/`` 目录的 run 因此被
+    判"支持 H0"。缺产物只能意味着"无法评估", 不能意味着"通过"。
 
     system: 体系标识(TaskCard.material 等), 决定带 applies_to 的判据是否作闸门;
     未登记体系按适用处理(fail-safe, 见 system_family/applies)。
@@ -284,7 +310,9 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None) -> l
     d = Path(run_dir)
     te = d / 'TE.dat'
     if not te.exists():
-        return []
+        return [_check('te_present', None, False,
+                       '缺 TE.dat: 物理判据无法评估, 不得视为通过(2026-11-11 本地补丁 F2)',
+                       missing=True)]
     try:
         res = analyze_te(te, temperature=temperature)
         rows = read_te(te)

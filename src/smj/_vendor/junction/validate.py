@@ -51,11 +51,15 @@ def _find_artifact(run_dir: Path, name: str):
     return None
 
 
-def validate_junction_run(run_dir, task_card=None, results=None, system=None) -> dict:
+def validate_junction_run(run_dir, task_card=None, results=None, system=None,
+                          temperature: float | None = None) -> dict:
     """smj run 校验: 按 run_dir(扁平阶段目录或含阶段子目录的 run 根)内实际产物判定。
 
     system: 体系标识(缺省取 task_card.material), 供 criteria 的判据适用域使用;
     未登记体系按"全部判据适用"处理(A, 2026-10-24 窄口径)。
+    temperature: 判据评估温度(K)。None -> 300.0(旧行为); 生产路径应由调用方
+    传 ``transport.temperature``(2026-11-11 本地补丁 F2), 否则同一 run 的
+    results.json 与 verdict 用的不是同一个温度。
     """
     run_dir = Path(run_dir)
     if system is None and task_card is not None:
@@ -138,7 +142,9 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None) ->
     from .criteria import PHYSICAL_NAMES, evaluate_run_criteria, physics_verdict
     # 判据读取 TE.dat; 用实际定位到的目录(阶段子目录布局)而不是 run_dir 本身
     checks.extend(evaluate_run_criteria(te.parent if te is not None else run_dir,
-                                        system=system))
+                                        system=system,
+                                        temperature=300.0 if temperature is None
+                                        else float(temperature)))
     # A(2026-10-24): applicable=False(判据不适用于该体系族)的 check 不作闸门, 不计入
     # errs/warns —— 否则 2CN 的 seebeck_sign 会把工程判定与科学判定一起拉垮。
     _appl = lambda c: c.get('applicable') is not False      # noqa: E731
