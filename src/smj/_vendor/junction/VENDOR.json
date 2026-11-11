@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
-  "repo_commit": "fe48c29dcc5a172865cddb4387c15d936cfbc84d",
+  "repo_commit": "00294d91ed1ab69c37e18958578e8101e6701c96",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -14,8 +14,8 @@
       "bytes": 24894
     },
     "artifacts.py": {
-      "sha256": "e0e074aa7d22751292ca812a68422e93ce13b1f701a3126fd6d870dd9dfc4111",
-      "bytes": 9127
+      "sha256": "c778d75a706c46bcf4ad031b4fc9cc307621364d5cda3af497221bad4cd255bc",
+      "bytes": 9346
     },
     "concurrency.py": {
       "sha256": "1c1969dbd2dcac56d4369687cbef82ecaf0b5c275e4098212e953c969095335f",
@@ -38,8 +38,8 @@
       "bytes": 3452
     },
     "electrode.py": {
-      "sha256": "81ba6c06f26b5b0a6c0d8a02934af39bb20fdeecc5cec77be75b411bc51f7d49",
-      "bytes": 13430
+      "sha256": "9287476ff7a89155042390491c8206f9c0497d6f0a7ab9ef91db3ff2ad6afa11",
+      "bytes": 16578
     },
     "fingerprint.py": {
       "sha256": "7b16cb19a13d89f0a4dbb65b58c3c9846560c1c6da2de78170283c455492b5fd",
@@ -58,8 +58,8 @@
       "bytes": 7952
     },
     "inputs.py": {
-      "sha256": "d0847fa70f35e6cdbd6681cbc1a317fdc4d2619e89f11f4542f0bf482f75bfab",
-      "bytes": 20613
+      "sha256": "9e31a7fb5e71ea62f7d45072d97992b6e305355db4ff6ad5702a0f3e30d2e8ee",
+      "bytes": 23164
     },
     "jobwait.py": {
       "sha256": "ae8b6b4a48cbd6e6b169768f00b51ded4e82f8e16178706cc386c3ada5f96997",
@@ -185,6 +185,33 @@
       "what": "pending_message 不再提示主仓的 `agenticdft smj-review`，改为说明独立包的真实入口 `smj review --approve --who <名字>`。",
       "why": "该提示指向独立包里不存在的命令（且该检查点模块本身未接线）。",
       "tests": [
+        "tests/test_a2_approve.py"
+      ]
+    },
+    {
+      "id": "F-LIB-library-electrode",
+      "commit": "00294d9",
+      "files": [
+        "electrode.py",
+        "inputs.py"
+      ],
+      "what": "新增 LibraryElectrode（直接吃 FHI-aims electrodes.library 的预定义团簇）、backplane_indices（按输运轴取背层整层）；append_au60 接受 cluster/provenance 并写 electrode_source / library_cluster / left|right_backplane_indices；新增 make_au_relax_input（背层整层 constrain_relaxation + bfgs）。",
+      "why": "手册 §5.3.1 要求用 electrodes.library 的预定义团簇，并在贴装后固定两个背层做一次弛豫；原独立包只能自建三角岛、且没有弛豫阶段。",
+      "tests": [
+        "tests/test_library_au_relax.py"
+      ]
+    },
+    {
+      "id": "F-RELAX-au-relax-stage",
+      "commit": "00294d9",
+      "files": [
+        "artifacts.py",
+        "review.py"
+      ],
+      "what": "artifacts 登记 au_relax 的回取清单；review.find_build_dir 优先 run_dir/au_relax（A2 审计对象改为真正送 SCF 的弛豫后几何）。",
+      "why": "0.1.2 新增 au_relax 阶段；不登记会被 download 视为 unknown，A2 也会继续审计未弛豫的 au60_build 几何。",
+      "tests": [
+        "tests/test_library_au_relax.py",
         "tests/test_a2_approve.py"
       ]
     }

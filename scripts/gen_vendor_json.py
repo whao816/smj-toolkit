@@ -1,8 +1,8 @@
 """重新生成 ``src/smj/_vendor/junction/VENDOR.json``（本地补丁台账）。
 
 为什么需要它：0.1.0 的 wheel **没有**带 VENDOR.json（README 却说它记录 sha256 与
-主仓 commit），而 0.1.1 在 vendored 目录里做了 4 处本地补丁（F2 判据、F1 头回取、
-F4 提示文案），必须留下可追溯的记录，否则下次从主仓 sync 会静默覆盖。
+主仓 commit），而 0.1.1/0.1.2 在 vendored 目录里做了 4 类本地补丁（F2 判据、F1 头回取、
+F4 提示文案、F-LIB 库电极与 au_relax），必须留下可追溯的记录，否则下次从主仓 sync 会静默覆盖。
 
 本脚本只用标准库，输出确定性内容（文件按路径排序；不写时间戳到 files 之外时
 可选择 --no-timestamp 便于 diff）。用法::
@@ -54,6 +54,28 @@ LOCAL_PATCHES = [
                 "的真实入口 `smj review --approve --who <名字>`。",
         "why": "该提示指向独立包里不存在的命令（且该检查点模块本身未接线）。",
         "tests": ["tests/test_a2_approve.py"],
+    },
+    {
+        "id": "F-LIB-library-electrode",
+        "commit": "00294d9",
+        "files": ["electrode.py", "inputs.py"],
+        "what": "新增 LibraryElectrode（直接吃 FHI-aims electrodes.library 的预定义团簇）、"
+                "backplane_indices（按输运轴取背层整层）；append_au60 接受 cluster/provenance "
+                "并写 electrode_source / library_cluster / left|right_backplane_indices；"
+                "新增 make_au_relax_input（背层整层 constrain_relaxation + bfgs）。",
+        "why": "手册 §5.3.1 要求用 electrodes.library 的预定义团簇，并在贴装后固定两个背层"
+               "做一次弛豫；原独立包只能自建三角岛、且没有弛豫阶段。",
+        "tests": ["tests/test_library_au_relax.py"],
+    },
+    {
+        "id": "F-RELAX-au-relax-stage",
+        "commit": "00294d9",
+        "files": ["artifacts.py", "review.py"],
+        "what": "artifacts 登记 au_relax 的回取清单；review.find_build_dir 优先 "
+                "run_dir/au_relax（A2 审计对象改为真正送 SCF 的弛豫后几何）。",
+        "why": "0.1.2 新增 au_relax 阶段；不登记会被 download 视为 unknown，"
+               "A2 也会继续审计未弛豫的 au60_build 几何。",
+        "tests": ["tests/test_library_au_relax.py", "tests/test_a2_approve.py"],
     },
 ]
 

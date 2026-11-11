@@ -340,3 +340,25 @@ checks: []
 `check_smj_budget` 恒 ok、`jobwait` 仅在 `queue_known` 时累计缺席、`preflight` 的
 `require_remote` 默认 False、`ZT` 的 `l1=0` 除零、能量列 `D→E` 只覆盖通道列、
 README 之外的 `smj-standalone-package.md` 未同步修订。
+
+## 10. 0.1.2 补遗（库电极 + 背层固定弛豫）
+
+0.1.2 依据 FHI-aims 手册 §5.3.1 补上了两处与官方流程的差距，两者都在
+commit `00294d9` 里：
+
+- **库电极**：`electrode.source: library`（默认）直接读 `electrodes.library` 里的
+  `fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims`，用 `mount_electrode`
+  的四元数贴装；库文件不进 wheel，metadata 记 `library_cluster.{file,relpath,sha256,
+  natoms,nlayers_suggested}` 作为 provenance。`source: builtin` 保留 0.1.1 的自建三角岛。
+  库文件缺失时的报错给出三条出路（`library_dir` / `SMJ_ELECTRODE_LIBRARY` / `builtin`）。
+- **背层固定弛豫**：新增第 4 阶段 `au_relax`（aims BFGS），`prepare` 给两侧背层整层加
+  `constrain_relaxation .true.`，`collect` 要求 `Have a nice day` + `geometry.in.next_step`、
+  校验冻结原子位移 ≤1e-4 Å、且用 det-v1 重算的表面三元组必须与 `au60_build` metadata 一致，
+  然后才允许 `aims_scf`/`aitranss_te` 消费；A2 审计对象也随之改为弛豫后的几何
+  （`find_build_dir` 优先 `au_relax`）。`electrode.relax: false` 时该阶段本地直通并写
+  `relax_skipped.json`。
+- 测试从 32 条扩到 **48 条**（`tests/test_library_au_relax.py` 16 条：解析硬规则、
+  au60_build 库装配、au_relax 的四条 fail-closed、relax=false 直通、nlayers auto）；
+  `smj verify` 的 stages 项改为动态检查 7 个阶段。
+- 产物：`dist/smj_toolkit-0.1.2-py3-none-any.whl`（251694 B，71 条目，RECORD 自检通过；
+  解包树 `smj verify` 全 ok），`VENDOR.json` 记 5 条本地补丁（新增 F-LIB、F-RELAX）。

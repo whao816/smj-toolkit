@@ -72,6 +72,8 @@ smj init . --name demo --xyz molecule.xyz --mode dry-run
 
 # 2) 编辑 ./smj.yaml：分子路径、电极参数；真跑时补 cluster 段
 #    （见 §4；只想先看输入装配的话保持 run.mode: dry-run 即可）
+#    注意：0.1.2 默认 electrode.source: library，需要 FHI-aims 的 electrodes.library
+#    （用 electrode.library_dir 指向它，或写 source: builtin 回退到自建电极）
 
 # 3) 看七阶段计划、依赖与当前状态
 smj plan

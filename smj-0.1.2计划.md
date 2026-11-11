@@ -107,5 +107,5 @@ metadata 新增键：
 | M2 au_relax | ✅ 代码+测试 | — |
 | M3 下游/A2 | ✅ aims_scf/aitranss_te/review/report 已接线 | — |
 | M4 文档 | ✅ README 七阶段/库电极/背层弛豫 | — |
-| M5 wheel | ⏳ | — |
-| M6 收尾 | ⏳ | — |
+| M5 wheel | ✅ 251694 B/71 条目，解包树 verify 全 ok | `87e8cd0` |
+| M6 收尾 | ✅ README/分析报告补遗，全量 pytest 48 passed | `87e8cd0` |
