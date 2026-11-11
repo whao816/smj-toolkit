@@ -1,0 +1,339 @@
+# smj — 单分子结输运计算链（独立包）
+
+> 从**分子结构**到**透射谱**的端到端自动化：Gaussian 优化 → FHI-aims 加针尖/弛豫 →
+> 本地构建 Au(111) 电极 → FHI-aims 静态 SCF → aitranss 透射 → Landauer 分析。
+> 整链可一把跑完，也可**逐阶段独立运行**；每个阶段的输入/产物都落在
+> `<run.dir>/<run.name>/<stage>/`，状态机在 `state.json` 里可查、可恢复。
+>
+> 本包是 AgenticDFT 主仓 SMJ 链的独立打包（发行名 `smj-toolkit`，
+> import 名 `smj`，命令行 `smj`）。**主仓仍是权威源**：算法以
+> `agenticdft/agenticdft/tools/junction/` 为准，本包内是只读副本，由
+> `scripts/sync_core.py --check` 守漂移。
+
+## 0. 定位与边界
+
+| | |
+|---|---|
+| 输入 | 分子 `.xyz`（默认硫醇 -SH 锚定）+ 电极/锚点/输运窗口参数（`smj.yaml`） |
+| 输出 | `TE.dat`（透射谱）、`results.json`（`G/G0`、`S`、`k_e`、`ZT_e`）；`smj report` 另生成 `manifest.json` 与 `report.md` |
+| 适用 | 单分子结 / 分子电子学：Au(111) 电极间硫醇锚定分子的电输运与热电 |
+| 不承诺 | 自带 Gaussian/FHI-aims/aitranss；自动替人选方法/基组/锚点；替代人工结构确认；把 20 Au/侧与 Au60 口径混比 |
+
+六阶段链（顺序固定，但可单独执行任意阶段）：
+
+```text
+molecule.xyz
+  └─ gaussian_opt      Gaussian 16 opt+freq            → opt.xyz
+      └─ aims_tip_relax  FHI-aims 加 Au 针尖 + 弛豫      → geometry.in.next_step
+          └─ au60_build  本地追加 Au(111) 电极（Au60）   → geometry.in + electrode_metadata.json
+              └─ aims_scf     FHI-aims 静态 SCF          → aims.out / mos.aims
+                  └─ aitranss_te  aitranss 透射          → TE.dat
+                      └─ junction_analyze  Landauer 积分 → results.json
+```
+
+## 1. 安装
+
+要求 **Python ≥ 3.10**；运行时依赖只有 **PyYAML** 与 **numpy**。
+
+```bash
+# 源码可编辑安装（开发/集群内使用推荐）
+python -m pip install -e smj
+
+# 或构建 wheel 后安装（构建产物在 smj/dist/）
+python -m build smj
+python -m pip install smj/dist/smj_toolkit-*.whl   # bash/zsh 会展开通配符；PowerShell 请写具体文件名
+```
+
+可选依赖：
+
+```bash
+python -m pip install -e "smj[plot]"   # matplotlib，用于 T(E) 出图
+python -m pip install -e "smj[dev]"    # pytest，跑本包测试
+python -m pip install -e "smj[all]"    # plot + dev
+```
+
+安装后验证（在仓库根执行；`smj/scripts/` 不随 wheel 分发，只对源码 checkout 有意义）：
+
+```bash
+smj --help
+python smj/scripts/smoke_install.py
+```
+
+`smoke_install.py` 只用标准库，逐项检查：`import smj` 与版本、vendored 核心可导入、
+`sync_core.py --check` 通过、console script 可用、`smj init` 生成的 yaml 可被加载。
+
+## 2. 5 分钟快速开始
+
+```bash
+# 0) 建一个工作目录，把 molecule.xyz 放进去（init 只写配置，不复制/生成结构）
+mkdir smj-demo && cd smj-demo
+
+# 1) 生成配置骨架（默认 dry-run，不提交任何作业）
+smj init . --name demo --xyz molecule.xyz --mode dry-run
+
+# 2) 编辑 ./smj.yaml：分子路径、电极参数；真跑时补 cluster 段
+#    （见 §4；只想先看输入装配的话保持 run.mode: dry-run 即可）
+
+# 3) 看六阶段计划、依赖与当前状态
+smj plan
+
+# 4) 只生成第一阶段输入（人工检查 mol.gjf / sub_g16.sh）
+smj stage gaussian_opt --prepare
+
+# 5) 干跑整链：逐阶段 prepare，不提交（预期停在缺上游产物的下一阶段，退出码 1）
+smj run --dry-run
+```
+
+配置在 `./smj.yaml`，run 目录是 `./demo/`（`run.dir=.`、`run.name=demo`，
+即 `<run.dir>/<run.name>/`）。`dry-run` 的终点是 `prepared`：
+它**不会**伪造 `mol.log`/`opt.xyz` 让整链看起来跑通，所以整链干跑会停在需要上游产物的
+下一阶段（该阶段标 `failed`，阻塞原因写进 note，`smj run` 退出码 1）——这是刻意的
+fail-closed 语义，不是缺陷。
+
+真跑把 `run.mode` 改成 `slurm-ssh`，补齐 `cluster.host/remote_root/partition` 与
+`cluster.env`，然后（仍在 `smj-demo/` 下）：
+
+```bash
+smj preflight          # 提交前检查
+smj run                # 整链
+# 或从某阶段续跑 / 跑到某阶段：
+smj run --from aims_scf --to aitranss_te
+```
+
+## 3. 逐阶段独立运行
+
+阶段之间只通过文件耦合：每个阶段读上游 stage 目录里的约定文件，覆盖参数优先。
+因此任意阶段都可以单独 `--prepare` / `--submit` / `--wait` / `--collect`。
+
+下表示例省略 `-c <path>`（默认读当前目录的 `smj.yaml`）；在别处执行请加
+`--config my-run/smj.yaml`。`--run` 在 `dry-run` 模式下只 prepare（见 §2）。
+
+| 阶段 | 默认输入 | 主要产物 | 需提交？ | 示例命令 |
+|---|---|---|---|---|
+| `gaussian_opt` | `molecule.xyz`（或 `--xyz`） | `mol.gjf`、`sub_g16.sh`、`input_summary.json`；collect 后 `mol.log`、`opt.xyz`、`gaussian_summary.json` | 是（Gaussian） | `smj stage gaussian_opt --run --xyz molecule.xyz` |
+| `aims_tip_relax` | `gaussian_opt/opt.xyz`（或 `--geometry`） | `geometry.in`、`control.in`、`sub_aims.sh`；collect 后 `geometry.in.next_step` | 是（FHI-aims） | `smj stage aims_tip_relax --run --geometry gaussian_opt/opt.xyz` |
+| `au60_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json` | **否**（本地） | `smj stage au60_build --run --geometry aims_tip_relax/geometry.in.next_step` |
+| `aims_scf` | `au60_build/geometry.in`（或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run --geometry au60_build/geometry.in` |
+| `aitranss_te` | `aims_scf/`（或 `--scf-dir`） | `tcontrol`、`sub_te.sh`；collect 后 `TE.dat`、`te.out` | 是（aitranss） | `smj stage aitranss_te --run --scf-dir /path/to/scf` |
+| `junction_analyze` | `aitranss_te/TE.dat`（或 `--te`） | `results.json` | **否**（本地） | `smj stage junction_analyze --run --te TE.dat` |
+
+FHI-aims 阶段（`aims_tip_relax`/`aims_scf`）还需要 `cluster.species_dir` 或
+`paths.species_defaults` 指向 species 目录；缺失时 `prepare` 直接 `StageBlocked`
+（`smj preflight` 也会报 error）。`--geometry` 在三个消费几何的阶段
+（`aims_tip_relax`/`au60_build`/`aims_scf`）都可用，但语义不同：`aims_tip_relax`
+要**已优化分子的 XYZ**（`opt.xyz`），不是 FHI-aims 的 `geometry.in`；`au60_build`
+与 `aims_scf` 要的才是 FHI-aims 几何。`aitranss_te` 除 SCF 目录外还要
+`au60_build/electrode_metadata.json`（六个表面索引与左右 tip 索引），可用
+`--metadata` 覆盖。
+
+动作开关（每个阶段通用）：
+
+| 开关 | 含义 | 什么时候用 |
+|---|---|---|
+| `--prepare` | 只生成输入/作业脚本，不提交 | 人工检查 `control.in`、资源申请 |
+| `--submit` | 清理残留 → 上传 → `sbatch`，记录 job id | 想让排队与准备分离 |
+| `--wait` | 轮询到结束；超时不判失败 | 长作业先退出，稍后回来再等 |
+| `--collect` | 回取产物并解析（可单独执行） | 手工跑完/从别处拷回产物后只解析 |
+| `--run` | prepare → submit → wait → collect（默认） | 一把梭；本地阶段 = prepare → collect |
+
+覆盖参数只改变**本阶段读哪个文件**，不会改动上游 `state.json`；独立跑出的产物不会自动
+把上游阶段标成 `collected`。常用组合：
+
+```bash
+# 只做输入装配，拷到集群手工提交
+smj stage aims_scf --prepare --geometry /data/run/au60_build/geometry.in --config smj.yaml
+
+# 外部已有 TE.dat，只做分析（--te 也可给 aitranss_te 输出目录）
+smj stage junction_analyze --run --te /data/te/TE.dat --config smj.yaml
+```
+
+## 4. Slurm 配置
+
+`cluster` 段只在 `run.mode: slurm-ssh` 时必需；`dry-run` / `local` 下可留空。
+`slurm-ssh` 至少要求 `host`、`remote_root`、`partition`，缺一直接报配置错误。
+
+```yaml
+run:
+  name: bdt-trans
+  dir: .                 # run 根目录；最终产物在 <dir>/<name>/
+  mode: slurm-ssh        # dry-run | local | slurm-ssh
+  clean: false           # true 时 prepare 前清空本阶段目录（仅限 run 目录内）
+  keep_going: false      # true 时整链遇到失败继续跑后续阶段
+
+cluster:
+  host: cluster.example.edu
+  user: yourname
+  port: 22
+  key: ~/.ssh/id_ed25519
+  remote_root: /data/yourname/smj
+  partition: main
+  ntasks: 4
+  gres: ""
+  account: ""
+  qos: ""
+  species_dir: /data/software/fhi-aims/species_defaults/defaults_2020/light
+  time_limit: ""
+  mem: ""
+  poll_seconds: 60
+  timeout_hours: 6
+  env:
+    g16root: /data/software/gaussian/g16
+    aims_bin: /data/software/fhi-aims/bin/aims.221103.scalapack.mpi.x
+    aitranss_bin: /data/software/aitranss/aitranss
+    mkl_lib: /data/software/intel/mkl/lib/intel64
+```
+
+`env` 的键与 vendored `inputs.py` 的 `ENV_SPECS` 同源（大小写不敏感的小写别名），
+常用项：
+
+| 键 | 用途 | 默认 |
+|---|---|---|
+| `g16root` / `g16_module` | Gaussian 安装根 / module 名 | 空（`g16root` 或 `g16_module` 二选一） |
+| `g16_scratch` / `g16_mem` / `g16_walltime` / `g16_gres` | Gaussian 临时目录/内存/墙钟/GRES | `16G` / `01:00:00` / 空 |
+| `aims_prefix` / `aims_module` / `aims_bin` / `aims_ld_module` | FHI-aims 定位方式 | 空（三者择一） |
+| `aims_mem` / `aims_walltime` / `aims_gpus` | FHI-aims 资源 | `16G` / `02:00:00` / 空 |
+| `aitranss_bin` | aitranss 可执行文件 | 空 |
+| `mkl_lib` | aitranss 依赖的 MKL 库路径 | 空 |
+| `te_mem` / `te_walltime` / `te_gres` | aitranss 资源 | `8G` / `02:00:00` / 空 |
+
+缺省值不静默成功：输入渲染器在缺 `g16root`/`g16_scratch` 等键时，会把
+`UNCONFIGURED` 写进作业脚本（例如 `export g16root=UNCONFIGURED`），这样的脚本在集群上会
+直接失败。`smj preflight` 在**非 `dry-run`** 模式下检查 Gaussian 许可、FHI-aims 与
+aitranss 可执行文件，缺一项即 error（退出码 1）；`smj run` 不会自动替你跑 preflight，
+真跑前请先跑一次。`dry-run` 不触网、也不核对二进制，所以干跑通过不等于集群能跑。
+
+## 5. 三种运行模式与离线演练
+
+| 模式 | 行为 | 适用 |
+|---|---|---|
+| `dry-run` | 只 `prepare`，产出输入/脚本；不建传输层、不提交 | 本机装配输入、CI、评审 |
+| `local` | 在本机 `bash <script>` 同步执行，哨兵 `.dsh_done` 记退出码 | 有 Gaussian/FHI-aims 的工作站、调试 |
+| `slurm-ssh` | 上传 → `sbatch` → 轮询 → 回取 | 真实集群 |
+
+`local` 需要 `bash`（Windows 上装 Git-Bash/WSL 并加入 PATH）；没有 bash 时
+`LocalTransport` 会明确报错并建议改用 `dry-run`。
+
+不想连集群也想演练远端链路时，用 `smj.testing.FakeTransport`（内存实现
+`run/put/get/mkdirs`，记录每条命令；`simulate_done(remote_dir, rc)` 可造哨兵）：
+
+```python
+from smj.config import load_config
+from smj.runner import StageRunner
+from smj.testing import FakeTransport
+from smj.transport import CommandResult
+
+transport = FakeTransport()
+
+def on_run(command, cwd, timeout):
+    if "sbatch" in command:                    # 假调度器：给出可解析的 job id
+        return CommandResult(0, "Submitted batch job 4242")
+    return None                                 # 其余命令按默认成功处理
+
+transport.on_run = on_run
+config = load_config("smj.yaml")               # 在 run 配置所在目录执行
+# 演练远端链路要求 run.mode 为 slurm-ssh（local 走本机 bash，不演练上传/sbatch）；
+# 不想改文件时可在内存里改（下面的 host 等只用于通过字段检查）：
+config.run.mode = "slurm-ssh"
+config.cluster.host = "fake-cluster"
+config.cluster.remote_root = "/tmp/smj-fake"
+config.cluster.partition = "main"
+runner = StageRunner(config, transport=transport, dry_run=False)
+runner.prepare("gaussian_opt")
+sub = runner.submit("gaussian_opt")            # 只走内存：清理 → 上传 → 记录 job_id=4242
+print(sub["job_id"], sub["cleaned"], len(sub["uploaded"]))
+print(transport.commands[-2:])                 # 看实际发出的命令
+```
+
+`--wait` 的轮询探针本身是一条 shell 命令，FakeTransport 需要按
+`@@SENT/@@QRC/@@ID` 协议模拟输出才能驱动（可参考
+`smj/tests/test_remote_semantics.py` 的 `_probe`）；只验证提交/清理逻辑时到
+`submit` 为止即可。FakeTransport 不模拟排队与真实程序行为。
+
+## 6. run 目录布局
+
+```text
+<run.dir>/<run.name>/            # smj.yaml 的 run.dir 是 run 根，默认 "." → ./<name>/
+├── state.json                   # 阶段状态机（status/job_id/时间戳/资源/results）
+├── manifest.json                # 产物清单（sha256、大小、阶段、回取模式）
+├── report.md                    # 人读报告：概览/阶段状态/输入摘要/资源/输运/失败/产物
+├── gaussian_opt/                # 每阶段一个目录，输入+产物都在里面
+│   ├── mol.gjf  sub_g16.sh  input_summary.json
+│   └── mol.log  opt.xyz  gaussian_summary.json
+├── aims_tip_relax/
+│   ├── geometry.in  control.in  sub_aims.sh
+│   └── geometry.in.next_step  aims.out
+├── au60_build/
+│   └── geometry.in  electrode_metadata.json
+├── aims_scf/
+│   ├── control.in  sub_aims.sh  geometry.in
+│   └── aims.out  mos.aims  basis-indices.out
+├── aitranss_te/
+│   ├── tcontrol  sub_te.sh  self.energy.in
+│   └── TE.dat  te.out  orbital_match.json
+└── junction_analyze/
+    └── results.json
+```
+
+`state.json` 是唯一状态来源：`smj status` 读它；`smj report` 由它 + 产物目录生成
+`manifest.json`/`report.md`（默认不覆盖已存在的报告，`--force` 才重写）。
+
+## 7. 附带功能
+
+| 命令 | 作用 | 产物/输出 |
+|---|---|---|
+| `smj preflight` | 提交前检查：分子可读/原子重叠、species 覆盖、建结几何闸门、资源上限；非 `dry-run` 时再加集群/SSH 连通、远端目录可写、二进制/许可 | 结构化 issues（error/warning/info），有 error 退出 1 |
+| `smj status` | 读 `state.json`，打印阶段/状态/job id/远端目录/耗时/备注 | 终端表格（`--json` 机器可读） |
+| `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（7 节：概览/阶段状态/输入摘要/资源/输运/失败原因/产物清单） | 报告文件；默认跳过已存在文件，`--force` 重写 |
+| `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`G/G0`、`S`、`k_e`、`ZT_e`），写 `junction_analyze/analysis.json`；出图与参考值比较用 Python API（`smj.analysis.analyze_run(..., plot=True, reference=...)`，需 `[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
+| `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差） | `review.json`；`blocked` 时退出 1 |
+| `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
+| `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
+| `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
+
+退出码：`0` 成功/作业已结束；`1` 失败或配置/输入错误；`2` 未完成（`--wait` 超时、
+作业可能仍在跑，或 `run` 有阶段停在 `waiting`）。argparse 用法错误也返回 2。
+
+## 8. 与主仓的关系
+
+- **主仓是权威源**：`smj/smj/_vendor/junction/` 是 `agenticdft/agenticdft/tools/junction/`
+  的副本（含模板），算法改动一律先改主仓，再同步；不要手改 vendored 文件。
+- **同步与漂移门**：
+
+  ```bash
+  python smj/scripts/sync_core.py           # 主仓 → 本包（改写 3 处 import）
+  python smj/scripts/sync_core.py --check   # 比对内容/文件清单/VENDOR.json 的 git_head
+  ```
+
+  `--check` 不一致返回 1，可直接放进 CI；`VENDOR.json` 记录每个文件的 sha256 与同步时的
+  主仓 commit。
+- 主仓的 VASP 运行根（`agenticdft/work/`）与本包无关；本包的 run 产物落在
+  `run.dir/run.name/`（默认是 `smj.yaml` 所在目录下的 `./<name>/`），不写主仓 `results.db`。
+
+## 9. 已知限制
+
+- **不自带 DFT 软件**：Gaussian 16、FHI-aims、aitranss 的二进制、许可证与 species 基组
+  都不随包分发，需要集群/工作站已有并按 §4 配好路径；没有它们时只能 `dry-run` 或跑两个
+  本地阶段。
+- **Windows 本机执行需要 bash**：`run.mode: local` 依赖 `bash`；`slurm-ssh` 还需要可用的
+  `ssh`/`scp`（Git-Bash 自带 OpenSSH）与目标集群免密登录。沙箱内网络受限时，请在宿主
+  shell 里执行真跑。
+- **结构确认是人的责任**：`aims_tip_relax` 与 `au60_build` 之后的结构检查点
+  （`smj review` / A2 确认）是红线，管线不会自动放行。
+- **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
+  （未测晶格热导就不下总 ZT 结论）。
+- **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
+  `smj stage <stage> --wait` 即可。
+- **资源估算是申请下限**：132 原子锚点外推，体系明显偏离时应按实测回填，不要当保证值。
+
+## 10. 故障排查（最短路径）
+
+| 现象 | 先看 |
+|---|---|
+| `smj init` 说配置已存在 | 加 `--force`，或换目录 |
+| 阶段卡在 `pending` | 先 `--prepare`；`smj status` 看 note |
+| `--submit` 报"尚未 prepare" | 先 `smj stage <stage> --prepare` |
+| 远端提交失败 | `smj preflight`；看 `cluster.env` 的 `g16root`/`aims_bin`/`aitranss_bin` |
+| 轮询一直 `waiting` | 正常排队或超时；`smj stage <stage> --wait` 可重复执行 |
+| `failed` 且 exit_code 非 0 | 看 `<stage>/slurm-*.out`、`aims.out`/`mol.log` 尾部 |
+| 报告没更新 | `smj report --force`（默认跳过已存在文件） |
+| 独立复核与管线不一致 | `smj analyze` 的 `independent_check` 结果，先查单位/口径 |

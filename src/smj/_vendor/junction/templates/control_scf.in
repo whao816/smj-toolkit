@@ -1,0 +1,31 @@
+################################################################################
+# FHI-aims static SCF for aitranss
+################################################################################
+  xc                 {xc}{vdw_line}
+  spin               {spin}
+  fixed_spin_moment  {fixed_spin_moment}
+  relativistic       atomic_zora scalar
+  charge             {charge}
+
+  occupation_type    gaussian {occupation_width}
+  mixer              pulay
+  n_max_pulay        10
+  charge_mix_param   0.2
+  sc_accuracy_rho    1E-5
+  sc_accuracy_eev    1E-3
+  sc_accuracy_etot   1E-6
+  sc_iter_limit      {sc_iter_limit}
+
+  # Use the serial/LAPACK eigenvalue path (KS_method serial). The default
+  # ELPA/ELSI (ScaLAPACK) path switches FHI-aims to the PM_index packed-matrix
+  # format, whose omat.aims layout is NOT readable by aitranss (negative overlap
+  # eigenvalues). Serial keeps the standard triangular overlap layout.
+  KS_method serial
+  output aitranss
+  output mulliken
+  restart aims.restart
+
+################################################################################
+# Species blocks appended below
+################################################################################
+{species_blocks}

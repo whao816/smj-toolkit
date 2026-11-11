@@ -1,0 +1,21 @@
+################################################################################
+# FHI-aims Au-tip geometry relaxation
+################################################################################
+  xc                 {xc}{vdw_line}
+  spin               {spin}
+  charge             {charge}
+  relativistic       atomic_zora scalar
+
+  relax_geometry     bfgs {force_threshold}
+  aggregated_energy_tolerance 1.0e-1
+
+  output cube eigenstate HOMO-1
+  output cube eigenstate HOMO
+  output cube eigenstate LUMO
+  output cube eigenstate LUMO+1
+  output dipole
+
+################################################################################
+# Species blocks appended below
+################################################################################
+{species_blocks}

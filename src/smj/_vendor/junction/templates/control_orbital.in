@@ -1,0 +1,24 @@
+################################################################################
+# FHI-aims conductive orbital cube output
+################################################################################
+  xc                 {xc}
+  spin               {spin}
+  relativistic       atomic_zora scalar
+  charge             {charge}
+
+  occupation_type    gaussian {occupation_width}
+  mixer              pulay
+  n_max_pulay        10
+  charge_mix_param   0.2
+  sc_accuracy_rho    1E-5
+  sc_accuracy_eev    1E-3
+  sc_accuracy_etot   1E-6
+  sc_iter_limit      {sc_iter_limit}
+
+  cube_default_size_safeguard 1E+9
+{state_outputs}
+
+################################################################################
+# Species blocks appended below
+################################################################################
+{species_blocks}

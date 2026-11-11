@@ -1,0 +1,9 @@
+%chk={name}.chk
+%nprocshared={nproc}
+# opt freq {method}/{basis} fchk
+
+{name}
+
+{charge} {multiplicity}
+{coordinates}
+

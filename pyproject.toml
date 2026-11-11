@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smj-toolkit"
+version = "0.1.1"
+description = "Single-molecule junction transport workflow (standalone)"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6,<7", "numpy>=1.24"]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+smj = "smj.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["smj*"]
+
+[tool.setuptools.package-data]
+smj = ["templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

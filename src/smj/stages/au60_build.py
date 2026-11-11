@@ -1,0 +1,107 @@
+"""au60_build：单分子层的 Au(111) 电极装配（本地阶段，不提交）。
+
+输入是 ``aims_tip_relax/geometry.in.next_step``（分子 + 两枚 Au tip），
+输出是补全两侧 Au(111) 电极后的 ``geometry.in`` 与 ``electrode_metadata.json``。
+prepare 即产出；collect 只做一致性解析/汇总，不再改文件。
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from .._vendor.junction.electrode import append_au60
+from .._vendor.junction.fingerprint import attach_fingerprint
+from ..errors import StageError
+from ._helpers import est_record
+from .base import Collected, Prepared, Stage, register
+
+
+@register
+class Au60BuildStage(Stage):
+    name = "au60_build"
+    depends = ("aims_tip_relax",)
+    needs_submit = False
+    input_hint = "消费 aims_tip_relax/geometry.in.next_step"
+    outputs = ("geometry.in", "electrode_metadata.json")
+
+    # -- prepare（本地阶段：直接产出） -------------------------------------- #
+    def prepare(self, ctx, stage_dir: Path) -> Prepared:
+        stage_dir = Path(stage_dir)
+        # --geometry 覆盖：阶段独立运行时直接给"分子 + 两枚 Au tip"的几何文件。
+        source = ctx.upstream(
+            self.name, "geometry.in.next_step", override=ctx.override_path("geometry"))
+        electrode = ctx.config.electrode
+        geometry = stage_dir / "geometry.in"
+        metadata_path = stage_dir / "electrode_metadata.json"
+        try:
+            metadata = append_au60(
+                source, geometry, metadata_path,
+                au_per_electrode=electrode.au_per_electrode,
+            )
+        except ValueError as exc:
+            raise StageError("au60_build 无法装配电极: %s" % exc) from exc
+        # 指纹写回 metadata：surface_fingerprint = sha256(geometry.in)，
+        # 下游 review 用它确认"确认过的表面"和"实际算的表面"是同一份文件。
+        metadata = attach_fingerprint(stage_dir)
+        natoms = self.count_aims_atoms(geometry)
+        estimate = ctx.estimate(self.name, natoms)
+        surface = metadata.get("surface_indices") or {}
+        left_surface = surface.get("left_surface_indices") or metadata.get("left_surface_indices")
+        right_surface = surface.get("right_surface_indices") or metadata.get("right_surface_indices")
+        ctx.log("au60_build: %d → %d 原子（本地阶段）"
+                % (metadata.get("original_atom_count", "?"), metadata.get("final_atom_count", natoms)))
+        return self.prepared(
+            ctx, stage_dir,
+            inputs=[source],
+            artifacts=list(self.outputs),
+            resources=est_record(estimate),
+            notes=[
+                "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
+                "Au 每侧目标 %s 个（按完整原子层截断），最终 %d 原子"
+                % (metadata.get("au_per_electrode"), metadata.get("final_atom_count", natoms)),
+                "表面原子（1-based）left=%s right=%s，指纹 %s…"
+                % (left_surface, right_surface, str(metadata.get("surface_fingerprint"))[:12]),
+            ],
+            commands=[],
+        )
+
+    # -- collect（解析/汇总） ---------------------------------------------- #
+    def collect(self, ctx, stage_dir: Path) -> Collected:
+        stage_dir = Path(stage_dir)
+        geometry = ctx.require_stage_file(self.name, "geometry.in")
+        meta_path = ctx.require_stage_file(self.name, "electrode_metadata.json")
+        try:
+            metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise StageError("au60_build 无法解析 electrode_metadata.json: %s" % exc) from exc
+        if not isinstance(metadata, dict):
+            raise StageError("au60_build 的 electrode_metadata.json 不是 JSON 对象")
+        expected = metadata.get("final_atom_count")
+        actual = self.count_aims_atoms(geometry)
+        if expected is not None and int(expected) != actual:
+            raise StageError(
+                "au60_build 原子数不一致：metadata 记 %s，geometry.in 实际 %d"
+                % (expected, actual))
+        fingerprint = metadata.get("surface_fingerprint")
+        surface = metadata.get("surface_indices") or {}
+        results = {
+            "au60_build": {
+                "final_atom_count": actual,
+                "original_atom_count": metadata.get("original_atom_count"),
+                "au_per_electrode": metadata.get("au_per_electrode"),
+                "left_tip_index": metadata.get("left_tip_index"),
+                "right_tip_index": metadata.get("right_tip_index"),
+                "surface_fingerprint": fingerprint,
+                "surface_indices": {
+                    "left": surface.get("left_surface_indices")
+                    or metadata.get("left_surface_indices"),
+                    "right": surface.get("right_surface_indices")
+                    or metadata.get("right_surface_indices"),
+                },
+            }
+        }
+        notes = ["本地阶段产物已就绪；surface_fingerprint 供审阅确认使用" if fingerprint
+                 else "electrode_metadata.json 缺 surface_fingerprint：审阅确认无法绑定几何"]
+        return self.collected(
+            ctx, stage_dir, artifacts=list(self.outputs), results=results, notes=notes)

@@ -1,0 +1,29 @@
+#input data for the "aitranss" module
+$aims_input on
+$landauer on
+$coord   file=geometry.in
+$natoms  {natoms}
+$basis   file=basis-indices.out
+$read_omat file=omat.aims
+$scfmo   file=mos.aims
+$nsaos   {nsaos}
+$lsurc   {lsurc}
+$lsurx   {lsurx}
+$lsury   {lsury}
+$rsurc   {rsurc}
+$rsurx   {rsurx}
+$rsury   {rsury}
+$nlayers {nlayers}
+$s1i     0.1d0
+$s2i     0.05d0
+$s3i     0.025d0
+$ener    {ener}
+$estep   {estep}
+$eend    {eend}
+$output  file=TE.dat
+$testing off
+$ecp off
+$self_energy file=self.energy.in
+$valence_electrons  {valence_electrons}
+$efermi   {efermi}
+$end
