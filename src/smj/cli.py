@@ -648,6 +648,33 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
 def cmd_review(args: argparse.Namespace) -> int:
     config = _load_config(args)
+
+    # 2026-11-11 F4：--approve 先把 A2 人工确认登记下来（fail-closed），
+    # 再走常规复核，让用户在同一条命令里看到"签了之后门过没过"。
+    if getattr(args, "approve", False):
+        if not (args.who or "").strip():
+            print("错误: --approve 需要 --who <签署人>（A2 确认必须记录是谁看的）")
+            return 2
+        from .a2 import approve_a2  # 本地模块，非可选依赖
+
+        approval = approve_a2(
+            config, who=args.who, stage=args.stage, no_figure=args.no_figure,
+            png=args.png, tcontrol=args.tcontrol, force=args.force)
+        if args.json:
+            _emit_json(approval.to_dict())
+        else:
+            print("A2 签署: %s" % approval.status)
+            print("  %s" % approval.reason)
+            for key in ("build_dir", "who", "when", "fingerprint",
+                        "audit_path", "png_path"):
+                value = approval.get(key)
+                if value:
+                    print("  %s: %s" % (key, value))
+            if approval.checks_failed:
+                print("  未通过检查: %s" % ", ".join(approval.checks_failed))
+        if not approval.ok:
+            return approval.exit_code
+
     module = _optional_module(_AUX_MODULES["review"][0], "review（结构复核）")
     func = _find_callable(module, _AUX_MODULES["review"][1])
     kwargs: dict[str, Any] = {"force": args.force}
@@ -945,9 +972,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     review = subparsers.add_parser(
         "review", help="结构复核（A2 偏差图等）",
-        description="调用 smj.review；不通过时退出码为 1。")
+        description="调用 smj.review；不通过时退出码为 1。"
+                    "加 --approve --who <名字> 先登记 A2 人工确认（审计/出图"
+                    "不通过时退出码为 2）。")
     _add_common(review)
     review.add_argument("--force", action="store_true", help="覆盖已有复核结果")
+    review.add_argument("--approve", action="store_true",
+                        help="登记 A2 人工确认（须配合 --who；审计不通过则拒绝签署）")
+    review.add_argument("--who", default=None, metavar="NAME",
+                        help="A2 签署人（写进 a2_confirmation.json）")
+    review.add_argument("--stage", default=None, metavar="DIR",
+                        help="auN_build 目录（缺省自动定位 run 下的 auN_build）")
+    review.add_argument("--png", default=None, metavar="PATH",
+                        help="A2 核对图输出路径（缺省 <auN_build>/a2_surface_viz.png）")
+    review.add_argument("--tcontrol", default=None, metavar="PATH",
+                        help="aitranss_te/tcontrol（用于核对表面索引一致性）")
+    review.add_argument("--no-figure", action="store_true",
+                        help="不出图直接签署（显式声明已看过图；无 matplotlib 时用）")
     review.add_argument("--accept-deviation", type=float, metavar="FRAC",
                         help="放宽 A2 相对偏差门槛（如 0.2）")
     review.set_defaults(handler=cmd_review)

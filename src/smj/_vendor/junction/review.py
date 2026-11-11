@@ -228,10 +228,18 @@ def evaluate(step_dir, stage, system=None) -> dict | None:
 
 
 def pending_message(run_id: str, info: dict) -> str:
-    """停下来的可操作提示(写进 rec.results['error'], CLI 原样打印)。"""
+    """停下来的可操作提示(写进 rec.results['error'], CLI 原样打印)。
+
+    2026-11-11 本地补丁 F4: 原提示指向主仓的 `agenticdft smj-review <run> --approve`,
+    独立包 smj-toolkit 里没有这个命令。且独立包**没有**接线检查点 xyz
+    (structure_review.json)的 CLI —— 唯一接线的类似门是 auN_build 的 A2 表面
+    三元组确认, 由 `smj review --approve --who <名字>` 登记(fingerprint 机制,
+    审计/出图不通过时拒绝签署, 退出码 2)。这里如实说明, 不再给不存在的命令。
+    """
     return (ERROR_PREFIX
-            + '阶段 %s 已写出待检结构 %s(原子 %d, 指纹 %s)。请先检查该 xyz; '
-              '确认无误后运行 `agenticdft smj-review %s --approve`(缺省会立即续算, '
-              '加 --no-continue 只登记确认); 若结构有问题, 调整旋钮(左右锚定原子/Au tip '
+            + '阶段 %s 已写出待检结构 %s(原子 %d, 指纹 %s)。请先人工检查该 xyz; '
+              '独立包不提供检查点 xyz 的签署命令, 与它对应的真实门是 A2 表面确认: '
+              '`smj review --approve --who <你的名字>`(审计/出图不通过会拒绝, 退出码 2)。'
+              '若结构有问题, 调整旋钮(左右锚定原子/Au tip '
               '距离/每侧电极原子数等)后按原任务重跑, 不要带着错几何进集群。'
-              % (info['stage'], info['xyz'], info['atoms'], info['fingerprint'][:12], run_id));
+              % (info['stage'], info['xyz'], info['atoms'], info['fingerprint'][:12]));

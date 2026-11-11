@@ -210,7 +210,7 @@ class PathsConfig:
 class ReviewConfig:
     """结构复核 / 报告（附带功能）的开关。"""
 
-    require_a2: bool = False              # 默认不强制 A2 偏差图（需要 matplotlib）
+    require_a2: bool = True               # 默认强制 A2 表面确认（本地补丁 F4：红线默认生效）
     a2_deviation: float = 0.15            # A2 对比的相对偏差门槛
     accept_deviation: float | None = None # 覆盖 A2 默认门槛
 
@@ -412,7 +412,7 @@ def _parse_review(data: Mapping[str, Any], warnings: list[str]) -> ReviewConfig:
     _warn_unknown("review", data, _REVIEW_KEYS, warnings)
     accept = data.get("accept_deviation")
     return ReviewConfig(
-        require_a2=_as_bool(data.get("require_a2", False), "review.require_a2"),
+        require_a2=_as_bool(data.get("require_a2", True), "review.require_a2"),
         a2_deviation=_as_float(data.get("a2_deviation", 0.15), "review.a2_deviation"),
         accept_deviation=_as_float(accept, "review.accept_deviation") if accept is not None else None,
     )
@@ -535,7 +535,7 @@ paths:
   species_defaults: null
 
 review:
-  require_a2: false
+  require_a2: true
   a2_deviation: 0.15
 """
 
