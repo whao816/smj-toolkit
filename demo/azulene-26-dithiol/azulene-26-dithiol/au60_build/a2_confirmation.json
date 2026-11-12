@@ -1,0 +1,17 @@
+{
+  "fingerprint": "9b8d6dd4f53832dd2fbb96dc715b74c7c37e467d4b2ac706fd304ffabdf74331",
+  "indices": {
+    "left_surface_indices": [
+      46,
+      47,
+      50
+    ],
+    "right_surface_indices": [
+      82,
+      83,
+      86
+    ]
+  },
+  "who": "dsh-agent(demo)",
+  "when": "2026-11-11T23:49:28+00:00"
+}

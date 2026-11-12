@@ -1,0 +1,106 @@
+{
+  "schema": "smj.review.v1",
+  "generated_at": "2026-11-12T07:49:21+08:00",
+  "run_id": "azulene-26-dithiol",
+  "status": "blocked",
+  "ok": false,
+  "accepted": false,
+  "config": {
+    "require_a2": true,
+    "a2_deviation": 0.15,
+    "accept_deviation": null
+  },
+  "issues": [
+    {
+      "severity": "error",
+      "code": "a2_missing",
+      "message": "ReviewConfig.require_a2=True，但缺 A2 人工确认记录（a2_confirmation.json）：须确认表面原子并把指纹写入 a2_confirmation.json 后重新复核"
+    }
+  ],
+  "errors": 1,
+  "warnings": 0,
+  "a2": {
+    "present": false,
+    "valid": false,
+    "confirmation": null,
+    "audit": null,
+    "recorded": null,
+    "current": null,
+    "deviation": null,
+    "reason": "尚无 A2 确认记录（D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au60_build\\a2_confirmation.json）",
+    "current_indices": {
+      "left": [
+        46,
+        47,
+        50
+      ],
+      "right": [
+        82,
+        83,
+        86
+      ]
+    }
+  },
+  "structure": {
+    "passed": true,
+    "errors": 0,
+    "warnings": 1,
+    "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au60_build\\geometry.in",
+    "metadata": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au60_build\\electrode_metadata.json",
+    "checks": [
+      {
+        "name": "junction_geom_surface_valid",
+        "value": {
+          "left": [
+            46,
+            47,
+            50
+          ],
+          "right": [
+            82,
+            83,
+            86
+          ]
+        },
+        "passed": true,
+        "severity": "info",
+        "detail": "左右表面索引合法且不相交(左 3 / 右 3 个, 共 92 原子)"
+      },
+      {
+        "name": "junction_geom_surface_side",
+        "value": {
+          "axis": "x"
+        },
+        "passed": true,
+        "severity": "info",
+        "detail": "左右表面索引均位于输运轴(x)正确一侧"
+      },
+      {
+        "name": "junction_geom_contacts",
+        "value": null,
+        "passed": true,
+        "severity": "info",
+        "detail": "92 原子无重叠(元素对下限 + 3 A 预筛; C-H 1.09 合法、Au-H 1.16 属重叠)"
+      },
+      {
+        "name": "junction_geom_anchor_aus",
+        "value": 2.4,
+        "passed": true,
+        "severity": "info",
+        "detail": "S17-Au19 = 2.4000 A 落在有源带 2.40-2.49 A (Thygesen 2005 p.12; Jackson 2009)"
+      },
+      {
+        "name": "junction_geom_electrode_extent",
+        "value": {
+          "left": 16.316,
+          "right": 16.255
+        },
+        "passed": true,
+        "severity": "info",
+        "detail": "电极沿输运轴(x)延伸: 左 16.32 A / 右 16.25 A(仅报告; 下限 N 无源待定)"
+      }
+    ]
+  },
+  "review_path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\review.json",
+  "written": true
+}

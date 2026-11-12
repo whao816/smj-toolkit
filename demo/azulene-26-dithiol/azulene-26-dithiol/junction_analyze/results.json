@@ -1,0 +1,22 @@
+{
+  "source": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\TE.dat",
+  "temperature_K": 300.0,
+  "points": 190,
+  "L0": 0.7461471866885822,
+  "L1": -0.005805668801406427,
+  "L2": 0.0015474951380115456,
+  "log10_G_over_G0_like": -0.12717549416069496,
+  "S_uV_per_K": 25.936208945458937,
+  "k_e_pW_per_K": 388.0044674097863,
+  "ZT_electronic": 0.030068860697093802,
+  "fermi_nearest": {
+    "E_Hartree": -0.1885,
+    "E_minus_Ef_eV": -0.00129433,
+    "T": 0.7618455393
+  },
+  "max_transmission": {
+    "E_Hartree": -0.2019,
+    "E_minus_Ef_eV": -0.36592688,
+    "T": 1.307197457
+  }
+}

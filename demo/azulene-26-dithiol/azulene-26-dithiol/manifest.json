@@ -1,0 +1,598 @@
+{
+  "schema": "smj.report.v1",
+  "run_id": "azulene-26-dithiol",
+  "root": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol",
+  "generated_at": "2026-11-12T14:49:05+08:00",
+  "spec": {},
+  "state": {
+    "created_at": "2026-11-12T07:34:10+08:00",
+    "updated_at": "2026-11-12T14:48:09+08:00",
+    "stages": {
+      "gaussian_opt": "collected",
+      "aims_tip_relax": "collected",
+      "au60_build": "collected",
+      "au_relax": "collected",
+      "aims_scf": "collected",
+      "aitranss_te": "collected",
+      "junction_analyze": "collected"
+    },
+    "details": {
+      "gaussian_opt": {
+        "job_id": null,
+        "exit_code": null,
+        "elapsed_s": null,
+        "note": "复用主仓 B3LYP/def2-TZVP opt+freq（0 虚频）日志",
+        "error": null
+      },
+      "aims_tip_relax": {
+        "job_id": "26020",
+        "exit_code": 0,
+        "elapsed_s": 187.5,
+        "note": null,
+        "error": null
+      },
+      "au60_build": {
+        "job_id": null,
+        "exit_code": null,
+        "elapsed_s": null,
+        "note": null,
+        "error": null
+      },
+      "au_relax": {
+        "job_id": "26029",
+        "exit_code": 0,
+        "elapsed_s": 4210.4,
+        "note": null,
+        "error": null
+      },
+      "aims_scf": {
+        "job_id": "26033",
+        "exit_code": 0,
+        "elapsed_s": 2230.9,
+        "note": null,
+        "error": null
+      },
+      "aitranss_te": {
+        "job_id": "26035",
+        "exit_code": 0,
+        "elapsed_s": 186.3,
+        "note": null,
+        "error": null
+      },
+      "junction_analyze": {
+        "job_id": null,
+        "exit_code": null,
+        "elapsed_s": null,
+        "note": null,
+        "error": null
+      }
+    },
+    "first_incomplete": null,
+    "is_done": true,
+    "warnings": []
+  },
+  "inputs": {
+    "run_id": "azulene-26-dithiol",
+    "mode": null,
+    "temperature_K": null,
+    "spec": {},
+    "molecule": {
+      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt\\opt.xyz",
+      "atom_count": 20
+    },
+    "electrode": {
+      "stage": "au_relax",
+      "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au_relax\\geometry.in",
+      "atom_count": 92,
+      "au_per_electrode": 37,
+      "left_surface_indices": [
+        46,
+        47,
+        50
+      ],
+      "right_surface_indices": [
+        82,
+        83,
+        86
+      ],
+      "anchor_s_au_distance_A": null,
+      "surface_fingerprint": "0a5af56c3eb707fa49e434c4438172699d6cb7a8fa2e21d840d3a39cbb3e63f0"
+    },
+    "te": {
+      "source": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\TE.dat",
+      "efermi_Ha": -0.188452434085,
+      "bias_V": 0.0,
+      "points": 190
+    }
+  },
+  "stages": {
+    "gaussian_opt": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt",
+      "n_files": 6,
+      "bytes": 418718,
+      "files": [
+        {
+          "name": "gaussian_summary.json",
+          "bytes": 390,
+          "retrieval": "skip",
+          "sha256": "a6b7c135b20c0c12c64cc723150239ec86c1e4abe9e96c09b202a8420955ff52"
+        },
+        {
+          "name": "input_summary.json",
+          "bytes": 201,
+          "retrieval": "skip",
+          "sha256": "5fa145f9ce86d4cae1103bbfd3d1ae77c1eeb0cb249b7fa76b2f54eca1ca2302"
+        },
+        {
+          "name": "mol.gjf",
+          "bytes": 1172,
+          "retrieval": "full",
+          "sha256": "97aa1299478a23735c28862645e196c0164bc044549698df5283ca9983088f60"
+        },
+        {
+          "name": "mol.log",
+          "bytes": 414871,
+          "retrieval": "full",
+          "sha256": "2a5b13347cb53c03f1b21f2d212d978ad18db012b6de051b5781316888cb5850"
+        },
+        {
+          "name": "opt.xyz",
+          "bytes": 1186,
+          "retrieval": "skip",
+          "sha256": "e252cfcce71c9e34542c62e914d49be4954602d70b8a3468141b0792cdb7b3cf"
+        },
+        {
+          "name": "sub_g16.sh",
+          "bytes": 898,
+          "retrieval": "full",
+          "sha256": "1c23d79d94daafd1407efc83b7e4899a0e966ee21518ed5c9761146d7df7032e"
+        }
+      ]
+    },
+    "aims_tip_relax": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_tip_relax",
+      "n_files": 8,
+      "bytes": 12604484,
+      "files": [
+        {
+          "name": ".dsh_done",
+          "bytes": 28,
+          "retrieval": "full",
+          "sha256": "5011d02f3e6dd02fe555df5fb38e6957086ca96a3cb4baf1ab67d8e6e55aa0ba"
+        },
+        {
+          "name": "aims.out",
+          "bytes": 12587426,
+          "retrieval": "full",
+          "sha256": "f625af15ad5a64dede3c6c51fd6bffbd9435416d59835c6ba53a48f31fca182f"
+        },
+        {
+          "name": "control.in",
+          "bytes": 10665,
+          "retrieval": "full",
+          "sha256": "14ebdb8615a387bfccdfa10c0e0f38059b6a4124f49cea2194edf8bf8ce5c28d"
+        },
+        {
+          "name": "geometry.in",
+          "bytes": 1354,
+          "retrieval": "full",
+          "sha256": "55615e5c2f2ae24af53ce5b1bc64ad491d8a94421bc523219ad4e81476a9410a"
+        },
+        {
+          "name": "geometry.in.next_step",
+          "bytes": 1811,
+          "retrieval": "full",
+          "sha256": "4e3b7affa05a70ba52456e973b9d92e1686449a02ea14157e706b7a521c4a1d5"
+        },
+        {
+          "name": "input_summary.json",
+          "bytes": 1007,
+          "retrieval": "skip",
+          "sha256": "49a943d8cd8e7aa068e9ebeb319729068f9857dc7229f66957be931c34d1e280"
+        },
+        {
+          "name": "opt_neutral.xyz",
+          "bytes": 1132,
+          "retrieval": "skip",
+          "sha256": "e670287b3df2e79d1a17a15f6c7355f4b5f8e336c7338fc609cc6d21d3232655"
+        },
+        {
+          "name": "sub_aims.sh",
+          "bytes": 1061,
+          "retrieval": "full",
+          "sha256": "476f59d782df63035ad9eea4e65c0d38b773b7a0358ddd1a24f0c2f4b6c2bfba"
+        }
+      ]
+    },
+    "au60_build": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au60_build",
+      "n_files": 5,
+      "bytes": 201255,
+      "files": [
+        {
+          "name": "a2_confirmation.json",
+          "bytes": 322,
+          "retrieval": "unknown",
+          "sha256": "5fa8edf807a5636e0a2c14503ba3ae5b9f1c94145655a429032d882aafb37af1"
+        },
+        {
+          "name": "a2_surface_audit.json",
+          "bytes": 12968,
+          "retrieval": "unknown",
+          "sha256": "69e4ee76cd6ffed4a7f71854fe4e56264b9c57fb3b87a9095c99a61c4be29de6"
+        },
+        {
+          "name": "a2_surface_viz.png",
+          "bytes": 179605,
+          "retrieval": "unknown",
+          "sha256": "3903ea99561d8e0f947083d3f7aa1fecd669cebff6114049e0b2ccbaf84f4199"
+        },
+        {
+          "name": "electrode_metadata.json",
+          "bytes": 2582,
+          "retrieval": "unknown",
+          "sha256": "69af7f05196d857b4382e8e3fff1a4119efd3cd01b596f8a3ec09aade14b6839"
+        },
+        {
+          "name": "geometry.in",
+          "bytes": 5778,
+          "retrieval": "unknown",
+          "sha256": "9b8d6dd4f53832dd2fbb96dc715b74c7c37e467d4b2ac706fd304ffabdf74331"
+        }
+      ]
+    },
+    "aims_scf": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_scf",
+      "n_files": 9,
+      "bytes": 1680712,
+      "files": [
+        {
+          "name": ".dsh_done",
+          "bytes": 28,
+          "retrieval": "full",
+          "sha256": "150d064d53f8db82952462bf6d7e5d4387f8eb3867781a6c9ccc40692bf7b64d"
+        },
+        {
+          "name": "aims.out",
+          "bytes": 1524665,
+          "retrieval": "full",
+          "sha256": "275126b950dd43abf2bb433db531aad5a1ff0614df49ea8bffe56cd06e3ad771"
+        },
+        {
+          "name": "basis-indices.out",
+          "bytes": 135381,
+          "retrieval": "full",
+          "sha256": "94c15a49300be93ecb504627404521e632cf82456a82f751e73c62f16f833b9d"
+        },
+        {
+          "name": "control.in",
+          "bytes": 11075,
+          "retrieval": "full",
+          "sha256": "4c04cbf59b38c70169a086edd36d265451e41131d21234b235ea4c9ae05f2ba9"
+        },
+        {
+          "name": "geometry.in",
+          "bytes": 8015,
+          "retrieval": "full",
+          "sha256": "0a5af56c3eb707fa49e434c4438172699d6cb7a8fa2e21d840d3a39cbb3e63f0"
+        },
+        {
+          "name": "input_summary.json",
+          "bytes": 315,
+          "retrieval": "skip",
+          "sha256": "9e67a640f6a198ad84ea3be74794cd72617cc8ec9793cd45bd3aa83081f71c0e"
+        },
+        {
+          "name": "mos.aims",
+          "bytes": 112,
+          "retrieval": "head",
+          "sha256": "b46be87920fc8d60dffcb56e5808c5e26f8bf053450397781745bee29277fd4e"
+        },
+        {
+          "name": "omat.aims",
+          "bytes": 60,
+          "retrieval": "head",
+          "sha256": "8132484c670041781fa2a6e52ae91611599bb9140b012ea4cd2f2ba1bd1f71ed"
+        },
+        {
+          "name": "sub_aims.sh",
+          "bytes": 1061,
+          "retrieval": "full",
+          "sha256": "2f9bb70fcdcc854619e5051bfdae8c2597e15c38fbda52f92652bc2e6418a1cb"
+        }
+      ]
+    },
+    "aitranss_te": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te",
+      "n_files": 7,
+      "bytes": 44461,
+      "files": [
+        {
+          "name": ".dsh_done",
+          "bytes": 28,
+          "retrieval": "full",
+          "sha256": "7d9f9f192bd125c6bae296d370e09c3cf2d969cee3b4bf945361b3d8844066b6"
+        },
+        {
+          "name": "input_summary.json",
+          "bytes": 500,
+          "retrieval": "skip",
+          "sha256": "5b59079aa646f24bcd1eb4503e6e44858b0f54f2a233ee09b1bde0b60cec8465"
+        },
+        {
+          "name": "self.energy.in",
+          "bytes": 8602,
+          "retrieval": "full",
+          "sha256": "2988deaf8408fb298a3c804be31c68b21fe5b3d419e3cf0bc63d3f2bdc1056ef"
+        },
+        {
+          "name": "sub_te.sh",
+          "bytes": 1030,
+          "retrieval": "full",
+          "sha256": "6270da26ce0b0108f642aa7922b59c15b7b82d0051aea71d13f135bac4b62711"
+        },
+        {
+          "name": "tcontrol",
+          "bytes": 530,
+          "retrieval": "full",
+          "sha256": "218a9b67faa61ea554414afadba08d64b25d25ff0c27cb61b9276299bfd0a8f4"
+        },
+        {
+          "name": "TE.dat",
+          "bytes": 10400,
+          "retrieval": "full",
+          "sha256": "01d89887fe024487be8bc01c02143f6247a717777456e659d53931753aee956b"
+        },
+        {
+          "name": "te.out",
+          "bytes": 23371,
+          "retrieval": "full",
+          "sha256": "9c00599d798883b05bab406808ab24997e433b81d8fb11380a05ba2f47a7f86d"
+        }
+      ]
+    },
+    "junction_analyze": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\junction_analyze",
+      "n_files": 1,
+      "bytes": 644,
+      "files": [
+        {
+          "name": "results.json",
+          "bytes": 644,
+          "retrieval": "unknown",
+          "sha256": "6a716b99b495ad7dc7b7bf67b39db302c6f473f1baacc4efc4d19a53764b7da8"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "gaussian_opt": {
+      "source": "state",
+      "walltime": "00:15:00",
+      "time_limit": "00:29:00",
+      "mem": "6G",
+      "ntasks": 1,
+      "cpus": null,
+      "cores": 1,
+      "atoms": 20,
+      "core_h": 0.25,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点线性外推：墙钟 60+10·N s，内存 4.0+0.05·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    },
+    "aims_tip_relax": {
+      "source": "state",
+      "walltime": "00:18:00",
+      "time_limit": "00:34:00",
+      "mem": "13G",
+      "ntasks": 4,
+      "cpus": null,
+      "cores": 4,
+      "atoms": 22,
+      "core_h": 1.17,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    },
+    "au_relax": {
+      "source": "state",
+      "walltime": "01:23:00",
+      "time_limit": "02:38:00",
+      "mem": "24G",
+      "ntasks": 4,
+      "cpus": null,
+      "cores": 4,
+      "atoms": 92,
+      "core_h": 5.53,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 300+40·N s，内存 10.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    },
+    "aims_scf": {
+      "source": "state",
+      "walltime": "00:31:00",
+      "time_limit": "00:58:00",
+      "mem": "8G",
+      "ntasks": 4,
+      "cpus": null,
+      "cores": 4,
+      "atoms": 92,
+      "core_h": 2.03,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点 132 原子 4320 s / 13.3 GiB；墙钟 x N^3.0、内存 x N^2.0 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    },
+    "aitranss_te": {
+      "source": "state",
+      "walltime": "00:30:00",
+      "time_limit": "00:57:00",
+      "mem": "6G",
+      "ntasks": 1,
+      "cpus": 1,
+      "cores": 1,
+      "atoms": 92,
+      "core_h": 0.5,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点 132 原子 2552 s / 8.0 GiB；墙钟 x N^3.0、内存 x N^1.5 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    }
+  },
+  "transport": {
+    "source": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\TE.dat",
+    "points": 190,
+    "temperature_K": 300.0,
+    "L0": 0.7461471866885822,
+    "L1": -0.005805668801406427,
+    "L2": 0.0015474951380115456,
+    "log10_G_over_G0_like": -0.12717549416069496,
+    "S_uV_per_K": 25.936208945458937,
+    "k_e_pW_per_K": 388.0044674097863,
+    "ZT_electronic": 0.030068860697093802,
+    "fermi_nearest": {
+      "E_Hartree": -0.1885,
+      "E_minus_Ef_eV": -0.00129433,
+      "T": 0.7618455393
+    },
+    "max_transmission": {
+      "E_Hartree": -0.2019,
+      "E_minus_Ef_eV": -0.36592688,
+      "T": 1.307197457
+    },
+    "state_results": {
+      "aitranss_te": {
+        "points": 190,
+        "te_bytes": 10400,
+        "max_transmission": 1.307197457,
+        "has_te_out": true
+      }
+    }
+  },
+  "failures": [],
+  "warnings": [],
+  "verdict": {
+    "passed": true,
+    "engineering_passed": true,
+    "errors": 0,
+    "warnings": 1,
+    "physics_verdict": "inconclusive",
+    "wording": "无法判定",
+    "allowed_action": "停; 须补数据或降级声明",
+    "failed_criteria": [],
+    "inconclusive_criteria": [
+      "t_ef_no_peak_near_ef"
+    ],
+    "missing_evidence_criteria": [],
+    "not_applicable_criteria": [
+      "t_ef_magnitude",
+      "g_in_theory_band",
+      "seebeck_sign"
+    ]
+  },
+  "checks": [
+    {
+      "name": "gaussian_termination",
+      "value": true,
+      "passed": true,
+      "severity": "info",
+      "detail": "Gaussian Normal termination"
+    },
+    {
+      "name": "gaussian_no_imaginary",
+      "value": 0,
+      "passed": true,
+      "severity": "info",
+      "detail": "无虚频(结构稳定)"
+    },
+    {
+      "name": "aims_tip_relax",
+      "value": true,
+      "passed": true,
+      "severity": "info",
+      "detail": "geometry.in.next_step 存在(tip relax 完成)"
+    },
+    {
+      "name": "aims_scf",
+      "value": true,
+      "passed": true,
+      "severity": "info",
+      "detail": "aims.out 存在且无失败标记(SCF 完成)"
+    },
+    {
+      "name": "aitranss_te",
+      "value": 190,
+      "passed": true,
+      "severity": "info",
+      "detail": "TE.dat 含 190 数据行"
+    },
+    {
+      "name": "efermi_source",
+      "value": -0.188452434085,
+      "passed": true,
+      "severity": "info",
+      "detail": "efermi 取自 TE.dat 表头(aitranss 实际使用值)"
+    },
+    {
+      "name": "t_ef_magnitude",
+      "value": 0.7618455393,
+      "passed": false,
+      "severity": "error",
+      "detail": "T(E_F)=0.7618 带 0.03-0.40 G0 (Thygesen 2005 p.13)[适用域: 不适用(仅记录, 不作闸门); 体系族 Au-(2,6-azulenedithiol)-Au]",
+      "applicable": false
+    },
+    {
+      "name": "t_ef_no_peak_near_ef",
+      "value": 0.0938,
+      "passed": false,
+      "severity": "warn",
+      "detail": "E_F 近旁 -0.0938 eV 处有显著峰(T=0.9497); 基准要求 1.0 eV 内无峰 (Thygesen 2005 p.12; 突出度门限 0.10 为工程约定)",
+      "applicable": true
+    },
+    {
+      "name": "g_in_theory_band",
+      "value": 0.7461471866885822,
+      "passed": false,
+      "severity": "error",
+      "detail": "G=0.7461 G0 带 0.03-0.40 (任务卡 §4.2)[适用域: 不适用(仅记录, 不作闸门); 体系族 Au-(2,6-azulenedithiol)-Au]",
+      "applicable": false
+    },
+    {
+      "name": "seebeck_sign",
+      "value": 25.936208945458937,
+      "passed": true,
+      "severity": "error",
+      "detail": "S=+25.9362 uV/K 应为正(Reddy 2007 +8.7+-2.1)[适用域: 不适用(仅记录, 不作闸门); 体系族 Au-(2,6-azulenedithiol)-Au]",
+      "applicable": false
+    },
+    {
+      "name": "k_e_zt_order",
+      "value": {
+        "k_e": 388.0044674097863,
+        "ZT_e": 0.030068860697093802
+      },
+      "passed": true,
+      "severity": "warn",
+      "detail": "k_e=388.0045 pW/K, ZT_e=0.030069 应非负(来源待补)",
+      "applicable": true
+    }
+  ],
+  "totals": {
+    "bytes": 14950274,
+    "gib": 0.014,
+    "stages": 6
+  }
+}

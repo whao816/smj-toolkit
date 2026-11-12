@@ -1,0 +1,62 @@
+# smj-toolkit 运行配置（smj init 生成，demo 调整）
+# 路径均相对本文件所在目录；${VAR} / ~ 会先展开。
+run:
+  name: azulene-26-dithiol
+  dir: .
+  mode: slurm-ssh            # dry-run | local | slurm-ssh
+
+molecule:
+  xyz: molecule.xyz
+  family: AZ            # 判据标定族：Au-(2,6-azulenedithiol)-Au
+  charge: 0
+  multiplicity: 1
+  method: b3lyp
+  basis: def2-tzvp
+
+electrode:
+  source: library           # library = FHI-aims electrodes.library 预定义团簇；builtin = 自建三角岛
+  library_dir: null         # null = slurm-ssh 模式下从集群 AIMS 安装目录探测 electrodes.library
+  library_cluster: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims
+  au_per_electrode: 30      # 仅 builtin：每侧 Au 原子数（最大 30 = 完整 Au60）
+  left_anchor: S
+  right_anchor: S
+  au_tip_distance: 2.35
+  anchor_au_s_target: 2.40
+  strip_thiol_h: true
+  vdw: true
+  relax: true                     # au_relax：固定两侧背层做几何弛豫（手册 §5.3.1）
+  relax_force_threshold: 5.e-2
+  relax_freeze: electrodes          # 电极按理想晶格建好，只让分子弛豫（Au 全冻结；默认 backplane 只冻背层）
+  nlayers: null             # Aitranss 中心区层数；null = 按库文件头部 -nlayers 建议
+
+transport:
+  temperature: 300.0
+  energy_window: [-0.2075, 0.0002, -0.1695]   # [ener, estep, eend] (eV)；demo 用窄窗换墙钟
+
+cluster:
+  host: gpu-outside        # ~/.ssh/config 别名
+  user: haow
+  port: 22
+  key: null
+  remote_root: /home/haow/smj-demo-runs
+  partition: main
+  ntasks: 4
+  gres: gpu:0
+  account: null
+  mem: 9G                  # 节点当前只剩 ~12.7G 空闲；demo 先压到 10G 排队
+  species_dir: D:\dsh_projects\AutoSMJ\demo\azulene-26-dithiol\species
+  poll_seconds: 30
+  timeout_hours: 3
+  env:                      # 集群部署路径
+    aims_bin: /data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x
+    aims_ld_module: fhi-aims/221103-cuda12.8-oneapi2025.3
+    aitranss_bin: /data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x
+    mkl_lib: /opt/intel/oneapi/2025.3/lib
+
+paths:
+  templates: null
+  species_defaults: species
+
+review:
+  require_a2: true
+  a2_deviation: 0.15

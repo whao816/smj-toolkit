@@ -1,0 +1,16 @@
+# 大产物不进库
+azulene-26-dithiol/**/aims.out
+azulene-26-dithiol/**/slurm-*.out
+azulene-26-dithiol/**/mos.aims
+azulene-26-dithiol/**/omat.aims
+azulene-26-dithiol/**/basis-indices.out
+azulene-26-dithiol/**/te.out
+azulene-26-dithiol/**/self.energy.in
+azulene-26-dithiol/**/tcontrol
+azulene-26-dithiol/**/sub_*.sh
+azulene-26-dithiol/**/control.in
+azulene-26-dithiol/**/input_summary.json
+azulene-26-dithiol/**/mol.log
+azulene-26-dithiol/**/mol.gjf
+azulene-26-dithiol/**/TE.pdf
+azulene-26-dithiol/**/*.next_step

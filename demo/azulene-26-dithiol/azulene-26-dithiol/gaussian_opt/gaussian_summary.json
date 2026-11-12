@@ -1,0 +1,9 @@
+{
+  "log": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt\\mol.log",
+  "normal_termination": true,
+  "final_scf_energy_hartree": -1182.42130005,
+  "imaginary_frequency_count": 0,
+  "imaginary_frequencies_cm-1": [],
+  "atom_count": 20,
+  "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt\\opt.xyz"
+}

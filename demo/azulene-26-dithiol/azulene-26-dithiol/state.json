@@ -1,0 +1,498 @@
+{
+  "schema": "smj.state.v1",
+  "run": "azulene-26-dithiol",
+  "created_at": "2026-11-12T07:34:10+08:00",
+  "updated_at": "2026-11-12T14:48:09+08:00",
+  "stages": {
+    "gaussian_opt": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-12T07:34:10+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": null,
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": "复用主仓 B3LYP/def2-TZVP opt+freq（0 虚频）日志",
+      "error": null,
+      "artifacts": [
+        "opt.xyz",
+        "mol.log",
+        "gaussian_summary.json"
+      ],
+      "resources": {
+        "walltime": "00:15:00",
+        "time_limit": "00:29:00",
+        "mem": "6G",
+        "ntasks": 1,
+        "cpus": null,
+        "cores": 1,
+        "atoms": 20,
+        "core_h": 0.25,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点线性外推：墙钟 60+10·N s，内存 4.0+0.05·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "gaussian": {
+          "normal_termination": true,
+          "final_scf_energy_hartree": -1182.42130005,
+          "imaginary_frequency_count": 0,
+          "atom_count": 20
+        }
+      },
+      "script": "sub_g16.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt\\mol.gjf",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt\\sub_g16.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt\\input_summary.json"
+      ],
+      "notes": [
+        "20 原子，b3lyp/def2-tzvp，nproc=16，partition=main",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_g16.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [],
+      "download_head_fetched": [],
+      "download_missing": [
+        "mol.gjf",
+        "mol.log",
+        "sub_g16.sh",
+        ".dsh_done"
+      ]
+    },
+    "aims_tip_relax": {
+      "status": "collected",
+      "job_id": "26020",
+      "remote_dir": "/home/haow/smj-demo-runs/azulene-26-dithiol/aims_tip_relax",
+      "prepared_at": "2026-11-12T07:43:03+08:00",
+      "submitted_at": "2026-11-12T07:43:12+08:00",
+      "finished_at": "2026-11-12T07:47:40+08:00",
+      "collected_at": "2026-11-12T07:48:00+08:00",
+      "elapsed_s": 187.5,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in.next_step"
+      ],
+      "resources": {
+        "walltime": "00:18:00",
+        "time_limit": "00:34:00",
+        "mem": "13G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 22,
+        "core_h": 1.17,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_tip_relax": {
+          "source": "geometry.in.next_step",
+          "atom_count": 20,
+          "relaxed_au_s_A": {
+            "left": 2.400000001778204,
+            "right": 2.400000001778205
+          },
+          "left_anchor": 17,
+          "right_anchor": 18,
+          "contact_pinned": true,
+          "target_A": 2.4,
+          "delta_A": {
+            "left": 1.7782042505132267e-09,
+            "right": 1.7782051386916464e-09
+          }
+        }
+      },
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_tip_relax\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_tip_relax\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_tip_relax\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_tip_relax\\input_summary.json"
+      ],
+      "notes": [
+        "22 原子（分子 20 + 2 Au tip），锚定原子 17/18（S）",
+        "Au–S 放置距离 2.4 Å（pin_contact=True），species 目录 D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+        "prepare 只写输入与作业脚本，未提交任何远端命令",
+        "去质子：移除 2 个 S–H 氢（原几何存档 opt_neutral.xyz）"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "aims.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": []
+    },
+    "au60_build": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-12T07:48:44+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-12T07:49:16+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in",
+        "electrode_metadata.json"
+      ],
+      "resources": {
+        "basis": "au60_build 为纯本地阶段，无集群资源",
+        "local": true
+      },
+      "results": {
+        "au60_build": {
+          "final_atom_count": 92,
+          "original_atom_count": 20,
+          "au_per_electrode": 37,
+          "left_tip_index": 19,
+          "right_tip_index": 20,
+          "surface_fingerprint": "9b8d6dd4f53832dd2fbb96dc715b74c7c37e467d4b2ac706fd304ffabdf74331",
+          "electrode_source": "library",
+          "library_cluster": {
+            "file": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "relpath": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+            "natoms": 37,
+            "nlayers_suggested": 3,
+            "fetched_from": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims"
+          },
+          "backplane_indices": {
+            "left": [
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54
+            ],
+            "right": [
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90
+            ]
+          },
+          "surface_indices": {
+            "left": [
+              46,
+              47,
+              50
+            ],
+            "right": [
+              82,
+              83,
+              86
+            ]
+          }
+        }
+      },
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_tip_relax\\geometry.in.next_step"
+      ],
+      "notes": [
+        "库团簇: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims（37 原子，建议 nlayers=3，sha256 8e676297c47c…）",
+        "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
+        "Au 每侧目标 37 个（库团簇整簇贴装），最终 92 原子",
+        "表面原子（1-based）left=[46, 47, 50] right=[82, 83, 86]，背层 left=[40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54] right=[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90]，指纹 9b8d6dd4f538…"
+      ],
+      "commands": [],
+      "local_only": false
+    },
+    "au_relax": {
+      "status": "collected",
+      "job_id": "26029",
+      "remote_dir": "/home/haow/smj-demo-runs/azulene-26-dithiol/au_relax",
+      "prepared_at": "2026-11-12T12:19:48+08:00",
+      "submitted_at": "2026-11-12T12:19:56+08:00",
+      "finished_at": "2026-11-12T13:30:18+08:00",
+      "collected_at": "2026-11-12T13:36:08+08:00",
+      "elapsed_s": 4210.4,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "aims.out",
+        "sub_aims.sh",
+        "input_summary.json",
+        "electrode_metadata.json"
+      ],
+      "resources": {
+        "walltime": "01:23:00",
+        "time_limit": "02:38:00",
+        "mem": "24G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 92,
+        "core_h": 5.53,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 300+40·N s，内存 10.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "au_relax": {
+          "enabled": true,
+          "atom_count": 92,
+          "normal_termination": true,
+          "force_threshold": "0.05",
+          "surface_indices_verified": true
+        }
+      },
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au_relax\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au_relax\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au_relax\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au_relax\\input_summary.json"
+      ],
+      "notes": [
+        "92 原子，relax_freeze=electrodes，冻结 74 个（left 背层=[40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54] right 背层=[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90]）",
+        "force_threshold=0.05，ntasks=8，partition=main",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "aims.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": []
+    },
+    "aims_scf": {
+      "status": "collected",
+      "job_id": "26033",
+      "remote_dir": "/home/haow/smj-demo-runs/azulene-26-dithiol/aims_scf",
+      "prepared_at": "2026-11-12T13:47:22+08:00",
+      "submitted_at": "2026-11-12T13:47:30+08:00",
+      "finished_at": "2026-11-12T14:24:53+08:00",
+      "collected_at": "2026-11-12T14:33:24+08:00",
+      "elapsed_s": 2230.9,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "aims.out",
+        "control.in",
+        "geometry.in",
+        "basis-indices.out",
+        "mos.aims"
+      ],
+      "resources": {
+        "walltime": "00:31:00",
+        "time_limit": "00:58:00",
+        "mem": "8G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 92,
+        "core_h": 2.03,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点 132 原子 4320 s / 13.3 GiB；墙钟 x N^3.0、内存 x N^2.0 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_scf": {
+          "atom_count": 92,
+          "normal_termination": true,
+          "has_basis_indices": true,
+          "has_mos": true
+        }
+      },
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_scf\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_scf\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aims_scf\\input_summary.json"
+      ],
+      "notes": [
+        "92 原子，ntasks=4，partition=main",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "control.in",
+        "aims.out",
+        "basis-indices.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [
+        "mos.aims",
+        "omat.aims"
+      ],
+      "download_missing": []
+    },
+    "aitranss_te": {
+      "status": "collected",
+      "job_id": "26035",
+      "remote_dir": "/home/haow/smj-demo-runs/azulene-26-dithiol/aims_scf",
+      "prepared_at": "2026-11-12T14:42:35+08:00",
+      "submitted_at": "2026-11-12T14:42:42+08:00",
+      "finished_at": "2026-11-12T14:45:54+08:00",
+      "collected_at": "2026-11-12T14:48:09+08:00",
+      "elapsed_s": 186.3,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "TE.dat"
+      ],
+      "resources": {
+        "walltime": "00:30:00",
+        "time_limit": "00:57:00",
+        "mem": "6G",
+        "ntasks": 1,
+        "cpus": 1,
+        "cores": 1,
+        "atoms": 92,
+        "core_h": 0.5,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点 132 原子 2552 s / 8.0 GiB；墙钟 x N^3.0、内存 x N^1.5 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aitranss_te": {
+          "points": 190,
+          "te_bytes": 10400,
+          "max_transmission": 1.307197457,
+          "has_te_out": true
+        }
+      },
+      "script": "sub_te.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\tcontrol",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\self.energy.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\sub_te.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\input_summary.json"
+      ],
+      "notes": [
+        "能量窗 ener=-0.2075000000 / estep=0.0002000000 / eend=-0.1695000000，nlayers=3",
+        "表面索引 l=[46, 47, 50] r=[82, 83, 86]（来自 electrode_metadata.json）",
+        "self.energy.in：每侧 37 个电极 Au（含 tip，tip 记 empty）",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_te.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "tcontrol",
+        "TE.dat",
+        "te.out",
+        "self.energy.in",
+        "sub_te.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": []
+    },
+    "junction_analyze": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-12T14:48:09+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-12T14:48:09+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "results.json"
+      ],
+      "resources": {
+        "local": true,
+        "points": 190,
+        "temperature_K": 300.0
+      },
+      "results": {
+        "junction": {
+          "source": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\TE.dat",
+          "temperature_K": 300.0,
+          "points": 190,
+          "L0": 0.7461471866885822,
+          "L1": -0.005805668801406427,
+          "L2": 0.0015474951380115456,
+          "log10_G_over_G0_like": -0.12717549416069496,
+          "S_uV_per_K": 25.936208945458937,
+          "k_e_pW_per_K": 388.0044674097863,
+          "ZT_electronic": 0.030068860697093802,
+          "fermi_nearest": {
+            "E_Hartree": -0.1885,
+            "E_minus_Ef_eV": -0.00129433,
+            "T": 0.7618455393
+          },
+          "max_transmission": {
+            "E_Hartree": -0.2019,
+            "E_minus_Ef_eV": -0.36592688,
+            "T": 1.307197457
+          }
+        }
+      },
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\TE.dat"
+      ],
+      "notes": [
+        "T = 300.0 K，190 个能量点；log10(G/G0)_like=-0.127175",
+        "本地阶段：只做 Landauer 积分，无集群提交"
+      ],
+      "commands": [],
+      "local_only": false
+    }
+  },
+  "results": {},
+  "warnings": []
+}
