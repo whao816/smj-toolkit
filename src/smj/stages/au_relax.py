@@ -106,10 +106,9 @@ class AuRelaxStage(Stage):
                     stage_dir / "input_summary.json"],
             resources=est_record(estimate),
             notes=[
-                "%d 原子，relax_freeze=%s，冻结 %d 个（left 背层=%s right 背层=%s；锚定 S=%s）"
+                "%d 原子，relax_freeze=%s，冻结 %d 个（left 背层=%s right 背层=%s）"
                 % (natoms, freeze_mode, len(constrained),
-                   metadata.get("left_backplane_indices"), metadata.get("right_backplane_indices"),
-                   self._anchor_indices(metadata)),
+                   metadata.get("left_backplane_indices"), metadata.get("right_backplane_indices")),
                 "force_threshold=%s，ntasks=%s，partition=%s"
                 % (ctx.config.electrode.relax_force_threshold,
                    env.get("ntasks"), env.get("partition")),
@@ -161,7 +160,7 @@ class AuRelaxStage(Stage):
                 % (len(moved), sorted(moved)[:5], max(moved.values())))
         shutil.copy2(next_step, stage_dir / "geometry.in")
 
-        indices_ok, mismatch = self._verify_surface(stage_dir / "geometry.in", metadata)
+        indices_ok, mismatch = self._verify_surface(before, after, metadata)
         if not indices_ok:
             raise StageError(
                 "au_relax 后 det-v1 表面三元组与 au60_build metadata 不一致: %s；"
@@ -217,24 +216,24 @@ class AuRelaxStage(Stage):
         - ``electrodes``：全部 Au 原子（含 tip），只让分子骨架弛豫 ——
           适合电极已按理想晶格搭好、不想让 60+ 个 Au 参与 BFGS 的情形。
 
-        两种模式都额外冻结两侧**锚定原子**（Au–S 接触的 S）。理由（薁 demo 实测）：
-        只冻 Au 时 S 可以在 Au 表面上方打滑/绕 C–S 键扭出平面（实测偏移 0.8 Å、
-        Au–S 从 2.40 拉到 2.56 Å），结的接触距离就不是 au_tip_distance 建出来的那个，
-        且 tip→linker 轴被带偏、det-v1 表面三角重算会退化失败。锚定原子冻结后
-        Au–S 距离与输运轴都保持不变，分子骨架照常弛豫。
+        锚定原子（Au–S 接触的 S）**不冻结**：薁 demo 实测，冻住 S 会让 C–S–Au
+        的应变全压到分子骨架上（0.4–0.5 eV/Å 一直不降），而放开 S、只冻 Au 时
+        S 会自然扭到 Au 表面上方（Au–S ≈ 2.56 Å），力很快降到 0.02 量级。
+        S 移动会让 tip→linker 轴偏转，所以 collect 的表面校验改成"三个表面原子
+        坐标没动即通过"（见 :meth:`_verify_surface`），不再用被带偏的轴去重算。
         """
         mode = str(getattr(ctx.config.electrode, "relax_freeze", "backplane") or "backplane")
         if mode == "electrodes":
             out = _gold_indices(geometry)
             if not out:
                 raise StageBlocked(self.name, "geometry.in 里没有 Au 原子，relax_freeze=electrodes 无意义")
-            return sorted(set(out) | set(self._anchor_indices(metadata)))
+            return sorted(set(out))
         out: list[int] = []
         for key in BACKPLANE_KEYS:
             values = metadata.get(key) or []
             out.extend(int(i) for i in values)
         if out:
-            return sorted(set(out) | set(self._anchor_indices(metadata)))
+            return sorted(set(out))
         atoms = read_aims_geometry(geometry)
         for side in ("left", "right"):
             indices = metadata.get("%s_electrode_indices" % side) or []
@@ -249,7 +248,7 @@ class AuRelaxStage(Stage):
                 self.name,
                 "au60_build metadata 既没有背层索引，也无法按电极索引现算；"
                 "请重跑 au60_build 生成 left/right_backplane_indices")
-        return sorted(set(out) | set(self._anchor_indices(metadata)))
+        return sorted(set(out))
 
     @staticmethod
     def _anchor_indices(metadata: dict) -> list[int]:
@@ -274,20 +273,47 @@ class AuRelaxStage(Stage):
                 moved[index] = dist
         return moved
 
-    def _verify_surface(self, geometry: Path, metadata: dict) -> tuple[bool, str]:
-        """用 det-v1 规则重算两侧表面三元组并与 metadata 比对。
+    def _verify_surface(self, before, after, metadata: dict) -> tuple[bool, str]:
+        """核对 det-v1 表面三元组在弛豫后仍然有效。
 
-        注意 metadata 里的索引是 1-based，``electrode.surface_indices`` 内部按
-        0-based 处理原子列表，直接传会整体错一位（实测会把 tip 自己选成"外层"）。
-        这里用 ``surface_index.verify_surface_indices``，它负责 1-based 换算与
-        atomes 分侧。
+        判据分两层：
+
+        1. metadata 给的三个索引必须是**同一元素（电极元素）、非共线**的真实三角；
+        2. 三个原子在弛豫前后坐标未动时直接通过（电极被冻结时本来就不该动）——
+           这直接说明三元组仍指向同一块几何，且不受 tip→linker 轴被分子扭转带偏的影响。
+           只有表面原子确实移动了（backplane 模式只冻背层时）才按 det-v1 重算，
+           并要求与 metadata 一致。
         """
-        atoms = read_aims_geometry(geometry)
         for side in ("left", "right"):
-            info = verify_surface_indices(atoms, metadata, side)
+            given = [int(i) for i in (metadata.get("%s_surface_indices" % side) or [])]
+            if len(given) != 3:
+                return False, "%s: metadata 表面索引不是 3 个: %r" % (side, given)
+            if not self._triple_ok(after, metadata, side, given):
+                return False, "%s: metadata 表面三元组 %s 不是有效的电极三角" % (side, given)
+            moved = self._moved_frozen(before, after, given)
+            if not moved:
+                continue
+            info = verify_surface_indices(after, metadata, side)
             if not info.get("ok"):
-                return False, "%s: %s" % (side, "; ".join(info.get("reasons") or []))
+                return False, "%s: 表面原子移动 %s 且重算失败: %s" % (
+                    side, sorted(moved), "; ".join(info.get("reasons") or []))
         return True, ""
+
+    @staticmethod
+    def _triple_ok(atoms, metadata: dict, side: str, given: list[int]) -> bool:
+        tip = int(metadata["%s_tip_index" % side]) - 1
+        if any(not (1 <= i <= len(atoms)) for i in given):
+            return False
+        if any(atoms[i - 1].element != atoms[tip].element for i in given):
+            return False
+        a, b, c = (atoms[i - 1].coord() for i in given)
+        u = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+        v = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
+        cross = (u[1] * v[2] - u[2] * v[1],
+                 u[2] * v[0] - u[0] * v[2],
+                 u[0] * v[1] - u[1] * v[0])
+        area2 = (cross[0] ** 2 + cross[1] ** 2 + cross[2] ** 2) ** 0.5
+        return area2 > 2.0e-6
 
     def _species_dir(self, ctx) -> Path:
         species = ctx.species_dir()

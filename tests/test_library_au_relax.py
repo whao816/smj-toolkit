@@ -231,19 +231,17 @@ def test_au_relax_prepare_freezes_whole_backplane(workdir, capsys):
 
     meta = json.loads((run_dir / "au60_build" / "electrode_metadata.json").read_text(
         encoding="utf-8"))
-    anchors = [meta["left_linker_index"], meta["right_linker_index"]]
-    frozen = sorted(set(meta["left_backplane_indices"] + meta["right_backplane_indices"]
-                        + anchors))
+    frozen = sorted(meta["left_backplane_indices"] + meta["right_backplane_indices"])
     geometry = (run_dir / "au_relax" / "geometry.in").read_text(encoding="utf-8")
     constrained_lines = [line.strip() for line in geometry.splitlines()
                          if "constrain_relaxation" in line]
-    assert len(constrained_lines) == len(frozen) == 16
+    assert len(constrained_lines) == len(frozen) == 14
     assert all(".true." in line for line in constrained_lines)
 
     summary = json.loads((run_dir / "au_relax" / "input_summary.json").read_text(
         encoding="utf-8"))
     assert summary["constrained"] == frozen
-    assert summary["constrained_count"] == 16
+    assert summary["constrained_count"] == 14
 
     control = (run_dir / "au_relax" / "control.in").read_text(encoding="utf-8")
     assert "relax_geometry" in control and "bfgs" in control
@@ -263,8 +261,7 @@ def test_au_relax_prepare_can_freeze_all_gold(workdir, capsys):
     lines = [line for line in geometry.splitlines() if line.strip()]
     atom_lines = [line for line in lines if line.split()[0] == "atom"]
     gold = [i + 1 for i, line in enumerate(atom_lines) if line.split()[4].lower() == "au"]
-    anchors = [i + 1 for i, line in enumerate(atom_lines) if line.split()[4].lower() == "s"]
-    expected = sorted(set(gold + anchors))
+    expected = sorted(gold)
     constrained = [line.strip() for line in lines if "constrain_relaxation" in line]
     assert len(constrained) == len(expected) > 0
     assert "relax_freeze=electrodes" in capsys.readouterr().out
@@ -346,7 +343,7 @@ def test_au_relax_collect_ok_writes_relaxed_metadata(workdir, capsys):
     meta = json.loads((run_dir / "au_relax" / "electrode_metadata.json").read_text(
         encoding="utf-8"))
     assert meta["relax"]["enabled"] is True
-    assert meta["relax"]["frozen_atoms"] == 16
+    assert meta["relax"]["frozen_atoms"] == 14
     assert len(meta["relax"]["input_fingerprint"]) == 64
     assert len(meta["relax"]["relaxed_fingerprint"]) == 64
 
