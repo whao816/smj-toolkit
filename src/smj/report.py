@@ -352,6 +352,8 @@ def build_manifest(target: Any, *, run_id: str | None = None,
                    system: str | None = None) -> dict:
     """汇总 run 目录 -> manifest dict（不写文件）。"""
     run_dir, config = _run_dir_of(target)
+    if system is None and config is not None:
+        system = getattr(getattr(config, "molecule", None), "family", None)
     layout = RunLayout(run_dir)
     rid = run_id or (getattr(config, "name", None) if config is not None else None) or run_dir.name
     state = state or RunState.load(layout.state_path, run=rid)

@@ -124,6 +124,7 @@ class MoleculeConfig:
     multiplicity: int = 1
     method: str = "b3lyp"
     basis: str = "6-31g(d)"
+    family: str | None = None  # 判据标定族（如 AZ/BDT），见 criteria.SYSTEM_FAMILIES
 
 
 @dataclass
@@ -152,7 +153,7 @@ class TransportConfig:
     """透射谱 / Landauer 分析参数。"""
 
     temperature: float = 300.0
-    energy_window: tuple[float, float, float] = (-2.5, 0.02, 2.5)  # (ener, estep, eend)
+    energy_window: tuple[float, float, float] = (-2.5, 0.02, 2.5)  # (ener, estep, eend) in Ha
     ener: float | None = None             # 显式覆盖 energy_window 的分量
     estep: float | None = None
     eend: float | None = None
@@ -280,7 +281,7 @@ class RunConfig:
 _KNOWN_SECTIONS = {"run", "molecule", "electrode", "transport", "cluster", "paths", "review"}
 
 _RUN_KEYS = {"name", "dir", "mode", "clean", "keep_going"}
-_MOLECULE_KEYS = {"xyz", "charge", "multiplicity", "method", "basis"}
+_MOLECULE_KEYS = {"xyz", "charge", "multiplicity", "method", "basis", "family"}
 _ELECTRODE_KEYS = {
     "au_per_electrode", "left_anchor", "right_anchor", "au_tip_distance",
     "anchor_au_s_target", "strip_thiol_h", "vdw", "nlayers",
@@ -327,6 +328,7 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         multiplicity=_as_int(data.get("multiplicity", 1), "molecule.multiplicity", minimum=1),
         method=_as_str(data.get("method") or "b3lyp", "molecule.method"),
         basis=_as_str(data.get("basis") or "6-31g(d)", "molecule.basis"),
+        family=_as_str(data.get("family"), "molecule.family", allow_empty=True) or None,
     )
     return cfg
 
@@ -529,6 +531,7 @@ molecule:
   multiplicity: 1
   method: b3lyp
   basis: 6-31g(d)
+  family: null              # 判据标定族（AZ/BDT/…）；未登记体系按"全部判据适用"处理
 
 electrode:
   source: library           # library = FHI-aims electrodes.library 预定义团簇；builtin = 自建三角岛
@@ -548,7 +551,7 @@ electrode:
 
 transport:
   temperature: 300.0
-  energy_window: [-2.5, 0.02, 2.5]   # [ener, estep, eend] (eV)
+  energy_window: [-0.21, 0.0002, -0.17]  # [ener, estep, eend] (Ha 绝对能量，围绕 Fermi)
 
 cluster:
   host: null                # ~/.ssh/config 别名，如 cluster

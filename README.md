@@ -136,6 +136,19 @@ wheel，只在 metadata 里记 `sha256` 与相对路径。`electrode.nlayers: nu
 （默认）让 `au_relax` 在贴装后冻住两侧背层整层、做一次小力阈值弛豫（手册 §5.3.1 的
 "固定两个背层做一次弛豫"）；置 `false` 时该阶段本地直通（写 `relax_skipped.json`）。
 
+`electrode.relax_freeze: electrodes` 则冻结全部 Au、只让分子弛豫——理想晶格电极本来
+就已弛豫好，把 60+ 个 Au 一起交给 BFGS 会让最大力在 0.4–0.9 eV/Å 之间来回；`backplane`
+（默认）只冻两侧背层，适用于电极本身还要微调的场合。
+
+`transport.energy_window: [ener, estep, eend]` 的单位是 **Hartree（绝对能量）**，与
+`tcontrol` 的 `$ener/$estep/$eend` 一致，要围绕 `aims_scf/aims.out` 的 Fermi 能级取值
+（Au 体系约 −0.19 Ha 附近取 ±0.02 Ha）。`TE.dat` 第一列是绝对 Hartree，第二列才是
+`E−E_F`（eV）。
+
+`molecule.family` 声明判据标定族（`AZ` = Au-(2,6-azulenedithiol)-Au、`BDT` 等）；
+未登记体系按"全部判据适用"处理（fail-safe）。BDT 的绿带（T(E_F)/G ∈ [0.03, 0.40]、
+Seebeck 为正）不该给薁作闸门，声明 `family: AZ` 后这三条记"不适用"，判定不再误判 failed。
+
 动作开关（每个阶段通用）：
 
 | 开关 | 含义 | 什么时候用 |
