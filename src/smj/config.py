@@ -143,6 +143,8 @@ class ElectrodeConfig:
     library_cluster: str = DEFAULT_CLUSTER
     relax: bool = True                    # au_relax：固定背层的几何弛豫（手册 §5.3.1 要求）
     relax_force_threshold: str = "1.e-2"  # BFGS 力收敛阈值（Hartree/Bohr）
+    #: au_relax 冻结谁：backplane = 只冻结两侧背层（手册口径）；electrodes = 冻结全部 Au，只让分子弛豫
+    relax_freeze: str = "backplane"
 
 
 @dataclass
@@ -283,6 +285,7 @@ _ELECTRODE_KEYS = {
     "au_per_electrode", "left_anchor", "right_anchor", "au_tip_distance",
     "anchor_au_s_target", "strip_thiol_h", "vdw", "nlayers",
     "source", "library_dir", "library_cluster", "relax", "relax_force_threshold",
+    "relax_freeze",
 }
 _TRANSPORT_KEYS = {"temperature", "energy_window", "ener", "estep", "eend"}
 _CLUSTER_KEYS = {
@@ -350,6 +353,10 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
     if not cluster_rel.strip():
         raise ConfigError("electrode.library_cluster 不能为空（应为 library_dir 下的相对路径）")
     threshold = _as_str(data.get("relax_force_threshold") or "1.e-2", "electrode.relax_force_threshold")
+    freeze = _as_str(data.get("relax_freeze") or "backplane", "electrode.relax_freeze")
+    if freeze not in ("backplane", "electrodes"):
+        raise ConfigError(
+            "electrode.relax_freeze 应为 backplane 或 electrodes，实际是 %r" % freeze)
     cfg = ElectrodeConfig(
         au_per_electrode=au_value,
         left_anchor=_as_str(data.get("left_anchor") or "S", "electrode.left_anchor"),
@@ -364,6 +371,7 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
         library_cluster=cluster_rel,
         relax=_as_bool(data.get("relax", True), "electrode.relax"),
         relax_force_threshold=threshold,
+        relax_freeze=freeze,
     )
     if not (1.0 <= cfg.au_tip_distance <= 5.0):
         raise ConfigError("electrode.au_tip_distance 应在 1.0–5.0 Å，实际是 %s" % cfg.au_tip_distance)
@@ -535,6 +543,7 @@ electrode:
   vdw: true
   relax: true                     # au_relax：固定两侧背层做几何弛豫（手册 §5.3.1）
   relax_force_threshold: 1.e-2
+  relax_freeze: backplane   # backplane = 只冻结两侧背层；electrodes = 冻结全部 Au，只让分子弛豫
   nlayers: null             # Aitranss 中心区层数；null = 按库文件头部 -nlayers 建议
 
 transport:

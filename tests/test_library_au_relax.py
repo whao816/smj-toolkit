@@ -92,7 +92,7 @@ def _tips_geometry() -> str:
     return "\n".join(lines) + "\n"
 
 
-def _write_project(workdir: Path, *, relax: bool = True,
+def _write_project(workdir: Path, *, relax: bool = True, relax_freeze: str = "backplane",
                    cluster_relpath: str = "fcc111.au.clusters.18_atoms/natoms18.x1.aims",
                    source: str = "library") -> tuple[Path, Path]:
     """写一个最小工程：smj.yaml + 库文件 + species + 上游 tips 几何。"""
@@ -124,11 +124,12 @@ def _write_project(workdir: Path, *, relax: bool = True,
         "  library_dir: %s\n"
         "  library_cluster: %s\n"
         "  relax: %s\n"
+        "  relax_freeze: %s\n"
         "cluster:\n"
         "  species_dir: %s\n"
         % (project.as_posix(), (project / "molecule.xyz").as_posix(), source,
            (project / "lib").as_posix(), cluster_relpath,
-           "true" if relax else "false", species.as_posix()),
+           "true" if relax else "false", relax_freeze, species.as_posix()),
         encoding="utf-8",
     )
     return cfg, run_dir
@@ -249,6 +250,26 @@ def test_au_relax_prepare_freezes_whole_backplane(workdir, capsys):
 # --------------------------------------------------------------------------- #
 # 3) au_relax collect 的 fail-closed
 # --------------------------------------------------------------------------- #
+def test_au_relax_prepare_can_freeze_all_gold(workdir, capsys):
+    """relax_freeze=electrodes：冻结全部 Au（含 tip），只让分子骨架动。"""
+    cfg, run_dir = _write_project(workdir, relax_freeze="electrodes")
+    assert _run("stage", "au60_build", "--prepare", "-c", str(cfg)) == 0
+    rc = _run("stage", "au_relax", "--prepare", "-c", str(cfg))
+    assert rc == 0, capsys.readouterr()
+
+    geometry = (run_dir / "au_relax" / "geometry.in").read_text(encoding="utf-8")
+    lines = [line for line in geometry.splitlines() if line.strip()]
+    atom_lines = [line for line in lines if line.split()[0] == "atom"]
+    gold = [i + 1 for i, line in enumerate(atom_lines) if line.split()[4].lower() == "au"]
+    constrained = [line.strip() for line in lines if "constrain_relaxation" in line]
+    assert len(constrained) == len(gold) > 0
+    assert "relax_freeze=electrodes" in capsys.readouterr().out
+
+    summary = json.loads((run_dir / "au_relax" / "input_summary.json").read_text(
+        encoding="utf-8"))
+    assert summary["constrained"] == gold
+
+
 def _prepare_relax(workdir) -> tuple[Path, Path]:
     cfg, run_dir = _write_project(workdir)
     assert _run("stage", "au60_build", "--prepare", "-c", str(cfg)) == 0
@@ -288,7 +309,7 @@ def test_au_relax_collect_rejects_moved_frozen_atoms(workdir, capsys):
         "\n".join(lines) + "\n", encoding="utf-8")
     rc = _run("stage", "au_relax", "--collect", "-c", str(cfg))
     assert rc == 1
-    assert "背层冻结的原子发生了位移" in capsys.readouterr().err
+    assert "被冻结的原子发生了位移" in capsys.readouterr().err
 
 
 def test_au_relax_collect_rejects_surface_mismatch(workdir, capsys):

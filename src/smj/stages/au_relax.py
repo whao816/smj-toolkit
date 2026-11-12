@@ -36,6 +36,20 @@ SKIP_MARKER = "relax_skipped.json"
 MOVED_TOL = 1e-4  # 被冻结的原子在弛豫前后应保持原位（Å）
 
 
+def _gold_indices(geometry: Path) -> list[int]:
+    """geometry.in 里所有 Au 原子的 1-based 下标。"""
+    out: list[int] = []
+    lines = Path(geometry).read_text(encoding="utf-8", errors="replace").splitlines()
+    order = 0
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 5 and parts[0] == "atom":
+            order += 1
+            if parts[4].strip().lower() == "au":
+                out.append(order)
+    return out
+
+
 @register
 class AuRelaxStage(Stage):
     name = "au_relax"
@@ -83,16 +97,17 @@ class AuRelaxStage(Stage):
             relax_force_threshold=ctx.config.electrode.relax_force_threshold,
             env=env, vdw=vdw_mode(ctx.config.electrode.vdw),
         )
-        ctx.log("au_relax: 已写 control.in（%d 原子，冻结 %d 个背层原子）"
-                % (natoms, len(constrained)))
+        freeze_mode = str(getattr(ctx.config.electrode, "relax_freeze", "backplane") or "backplane")
+        ctx.log("au_relax: 已写 control.in（%d 原子，relax_freeze=%s，冻结 %d 个原子）"
+                % (natoms, freeze_mode, len(constrained)))
         return self.prepared(
             ctx, stage_dir,
             inputs=[geometry, Path(written["control"]), Path(written["submit_script"]),
                     stage_dir / "input_summary.json"],
             resources=est_record(estimate),
             notes=[
-                "%d 原子，冻结背层 %d 个（left=%s right=%s）"
-                % (natoms, len(constrained),
+                "%d 原子，relax_freeze=%s，冻结 %d 个（left 背层=%s right 背层=%s）"
+                % (natoms, freeze_mode, len(constrained),
                    metadata.get("left_backplane_indices"), metadata.get("right_backplane_indices")),
                 "force_threshold=%s，ntasks=%s，partition=%s"
                 % (ctx.config.electrode.relax_force_threshold,
@@ -136,10 +151,11 @@ class AuRelaxStage(Stage):
         if len(before) != len(after):
             raise StageError("au_relax 原子数变化（%d → %d）；弛豫不应增删原子"
                              % (len(before), len(after)))
-        moved = self._moved_frozen(before, after, metadata)
+        frozen = self._constrained_atoms(ctx, stage_dir / "geometry.in", metadata)
+        moved = self._moved_frozen(before, after, frozen)
         if moved:
             raise StageError(
-                "au_relax 有 %d 个被背层冻结的原子发生了位移（如 1-based %s，最大 %.3g Å）；"
+                "au_relax 有 %d 个被冻结的原子发生了位移（如 1-based %s，最大 %.3g Å）；"
                 "AIMS 没按 constrain_relaxation 固定它们，不能继续"
                 % (len(moved), sorted(moved)[:5], max(moved.values())))
         shutil.copy2(next_step, stage_dir / "geometry.in")
@@ -158,7 +174,8 @@ class AuRelaxStage(Stage):
             "force_threshold": ctx.config.electrode.relax_force_threshold,
             "input_fingerprint": _sha256(input_geometry),
             "relaxed_fingerprint": _sha256(stage_dir / "geometry.in"),
-            "frozen_atoms": len(self._constrained_atoms(ctx, stage_dir / "geometry.in", metadata)),
+            "frozen_atoms": len(frozen),
+            "freeze_mode": str(getattr(ctx.config.electrode, "relax_freeze", "backplane") or "backplane"),
         }
         (stage_dir / "electrode_metadata.json").write_text(
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -191,7 +208,20 @@ class AuRelaxStage(Stage):
         return data
 
     def _constrained_atoms(self, ctx, geometry: Path, metadata: dict) -> list[int]:
-        """两侧背层整层（1-based）；metadata 缺字段时按几何现算（旧 run 兼容）。"""
+        """要冻结的原子（1-based）。
+
+        ``electrode.relax_freeze``：
+
+        - ``backplane``（默认，手册 §5.3.1 口径）：两侧背层整层；
+        - ``electrodes``：全部 Au 原子（含 tip），只让分子骨架弛豫 ——
+          适合电极已按理想晶格搭好、不想让 60+ 个 Au 参与 BFGS 的情形。
+        """
+        mode = str(getattr(ctx.config.electrode, "relax_freeze", "backplane") or "backplane")
+        if mode == "electrodes":
+            out = _gold_indices(geometry)
+            if not out:
+                raise StageBlocked(self.name, "geometry.in 里没有 Au 原子，relax_freeze=electrodes 无意义")
+            return out
         out: list[int] = []
         for key in BACKPLANE_KEYS:
             values = metadata.get(key) or []
@@ -214,12 +244,9 @@ class AuRelaxStage(Stage):
                 "请重跑 au60_build 生成 left/right_backplane_indices")
         return sorted(set(out))
 
-    def _moved_frozen(self, before, after, metadata: dict) -> dict[int, float]:
+    def _moved_frozen(self, before, after, frozen_indices) -> dict[int, float]:
         moved: dict[int, float] = {}
-        frozen: list[int] = []
-        for key in BACKPLANE_KEYS:
-            frozen.extend(int(i) for i in (metadata.get(key) or []))
-        for index in sorted(set(frozen)):
+        for index in sorted(set(int(i) for i in frozen_indices)):
             if not (1 <= index <= len(before)):
                 continue
             a = before[index - 1].coord()
