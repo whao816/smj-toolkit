@@ -13,7 +13,7 @@
 | 阶段数 / 文件总量 | 6 / 0.014 GiB |
 | 阶段状态 | gaussian_opt=collected, aims_tip_relax=collected, au60_build=collected, au_relax=collected, aims_scf=collected, aitranss_te=collected, junction_analyze=collected |
 | 首个未完成阶段 | `—` |
-| 生成时间 | 2026-11-12T14:49:05+08:00 |
+| 生成时间 | 2026-11-12T15:26:59+08:00 |
 
 ## 0.1 判定
 
@@ -34,7 +34,7 @@
 | `au60_build` | `collected` | 有 | — | — | — |  |
 | `au_relax` | `collected` | — | 26029 | 0 | 4210.4 |  |
 | `aims_scf` | `collected` | 有 | 26033 | 0 | 2230.9 |  |
-| `aitranss_te` | `collected` | 有 | 26035 | 0 | 186.3 |  |
+| `aitranss_te` | `collected` | 有 | 26037 | 0 | 186.7 |  |
 | `junction_analyze` | `collected` | 有 | — | — | — |  |
 
 ## 2. 输入摘要
@@ -72,7 +72,7 @@
 | k_e (pW/K) | 388.0045 |
 | ZT_electronic | 0.030069 |
 | 数据点 | 190 |
-| 来源 | `D:\dsh_projects\AutoSMJ\demo\azulene-26-dithiol\azulene-26-dithiol\aitranss_te\TE.dat` |
+| 来源 | `D:\dsh_projects\AutoSMJ\demo\azulene-26-dithiol\azulene-26-dithiol\junction_analyze\analysis.json` |
 
 ## 5. 失败原因
 
@@ -87,4 +87,4 @@
 | `au60_build` | 5 | 0.19 | geometry.in:9b8d6dd4f538 |
 | `aims_scf` | 9 | 1.60 | aims.out:275126b950dd, geometry.in:0a5af56c3eb7 |
 | `aitranss_te` | 7 | 0.04 | TE.dat:01d89887fe02 |
-| `junction_analyze` | 1 | 0.00 | — |
+| `junction_analyze` | 3 | 0.09 | analysis.json:7c7f1d9be365 |

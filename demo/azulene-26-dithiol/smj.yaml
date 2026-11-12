@@ -27,7 +27,7 @@ electrode:
   relax: true                     # au_relax：固定两侧背层做几何弛豫（手册 §5.3.1）
   relax_force_threshold: 5.e-2
   relax_freeze: electrodes          # 电极按理想晶格建好，只让分子弛豫（Au 全冻结；默认 backplane 只冻背层）
-  nlayers: null             # Aitranss 中心区层数；null = 按库文件头部 -nlayers 建议
+  nlayers: null            # Aitranss 中心区层数；null = 按库文件头部 -nlayers 建议
 
 transport:
   temperature: 300.0

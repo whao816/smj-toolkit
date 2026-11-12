@@ -2,11 +2,11 @@
   "schema": "smj.report.v1",
   "run_id": "azulene-26-dithiol",
   "root": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol",
-  "generated_at": "2026-11-12T14:49:05+08:00",
+  "generated_at": "2026-11-12T15:26:59+08:00",
   "spec": {},
   "state": {
     "created_at": "2026-11-12T07:34:10+08:00",
-    "updated_at": "2026-11-12T14:48:09+08:00",
+    "updated_at": "2026-11-12T15:26:59+08:00",
     "stages": {
       "gaussian_opt": "collected",
       "aims_tip_relax": "collected",
@@ -53,9 +53,9 @@
         "error": null
       },
       "aitranss_te": {
-        "job_id": "26035",
+        "job_id": "26037",
         "exit_code": 0,
-        "elapsed_s": 186.3,
+        "elapsed_s": 186.7,
         "note": null,
         "error": null
       },
@@ -311,7 +311,7 @@
           "name": ".dsh_done",
           "bytes": 28,
           "retrieval": "full",
-          "sha256": "7d9f9f192bd125c6bae296d370e09c3cf2d969cee3b4bf945361b3d8844066b6"
+          "sha256": "d55c883d48361535947bf8fd16fcd0bcb288e66639b29ac2fae5c956c665cfc5"
         },
         {
           "name": "input_summary.json",
@@ -347,20 +347,32 @@
           "name": "te.out",
           "bytes": 23371,
           "retrieval": "full",
-          "sha256": "9c00599d798883b05bab406808ab24997e433b81d8fb11380a05ba2f47a7f86d"
+          "sha256": "7854107f10f9ab1327fc75f0bb18138dccc1428d15b83e5b99e9588de14792f4"
         }
       ]
     },
     "junction_analyze": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\junction_analyze",
-      "n_files": 1,
-      "bytes": 644,
+      "n_files": 3,
+      "bytes": 93108,
       "files": [
+        {
+          "name": "analysis.json",
+          "bytes": 1825,
+          "retrieval": "unknown",
+          "sha256": "7c7f1d9be365376314cd0f6f4b48ee9e8d17534d6f9c698f1a212d6e8ea79393"
+        },
         {
           "name": "results.json",
           "bytes": 644,
           "retrieval": "unknown",
           "sha256": "6a716b99b495ad7dc7b7bf67b39db302c6f473f1baacc4efc4d19a53764b7da8"
+        },
+        {
+          "name": "TE_overview.png",
+          "bytes": 90639,
+          "retrieval": "unknown",
+          "sha256": "19a8270b28cfe65b21a95bb123d21960ca34b5dd6e91f519da079b12e689ecf0"
         }
       ]
     }
@@ -453,7 +465,7 @@
     }
   },
   "transport": {
-    "source": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\TE.dat",
+    "source": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\junction_analyze\\analysis.json",
     "points": 190,
     "temperature_K": 300.0,
     "L0": 0.7461471866885822,
@@ -472,14 +484,6 @@
       "E_Hartree": -0.2019,
       "E_minus_Ef_eV": -0.36592688,
       "T": 1.307197457
-    },
-    "state_results": {
-      "aitranss_te": {
-        "points": 190,
-        "te_bytes": 10400,
-        "max_transmission": 1.307197457,
-        "has_te_out": true
-      }
     }
   },
   "failures": [],
@@ -591,7 +595,7 @@
     }
   ],
   "totals": {
-    "bytes": 14950274,
+    "bytes": 15042738,
     "gib": 0.014,
     "stages": 6
   }
