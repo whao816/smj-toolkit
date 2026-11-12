@@ -284,6 +284,13 @@ class StageRunner:
         for stale in ("download_fetched", "download_head_fetched", "download_missing"):
             self.state.stage(key).extra.pop(stale, None)
 
+        # 0.1.2：slurm-ssh 下 prepare 也可能要访问集群（au60_build 从远端
+        # electrodes.library 取回库团簇）。__init__ 里传输层是惰性创建的，
+        # 这里先建好，否则 ctx.transport 为 None，resolve_cluster 的远端分支
+        # 永远走不到，默认 source: library 的本地阶段直接失败。
+        if self.config.mode == "slurm-ssh" and not self.dry_run:
+            self._ensure_transport()
+
         self._log("[%s] prepare ..." % key)
         prepared = stage.prepare(self.context, stage_dir)
         payload = _prepared_payload(prepared)
@@ -468,7 +475,12 @@ class StageRunner:
 
         download: dict[str, Any] | None = None
         local_only = bool(self.state.stage(key).extra.get("local_only"))
-        if self.config.mode == "slurm-ssh" and not self.dry_run and not local_only:
+        # 0.1.2：本地阶段（au60_build / junction_analyze）没有远端产物，
+        # slurm-ssh 模式下也不能走 download —— 它们不在 artifacts 台账里，
+        # 旧实现会抛「未知 smj 阶段」。
+        remote_stage = bool(getattr(stage, "needs_submit", True))
+        if (self.config.mode == "slurm-ssh" and not self.dry_run
+                and not local_only and remote_stage):
             self._log("[%s] 回取产物 ..." % key)
             download = self._session().download(key, stage_dir)
             self.state.set(
