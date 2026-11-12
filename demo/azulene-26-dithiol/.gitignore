@@ -14,3 +14,5 @@ azulene-26-dithiol/**/mol.log
 azulene-26-dithiol/**/mol.gjf
 azulene-26-dithiol/**/TE.pdf
 azulene-26-dithiol/**/*.next_step
+
+.tmp_preflight.json
