@@ -106,9 +106,10 @@ class AuRelaxStage(Stage):
                     stage_dir / "input_summary.json"],
             resources=est_record(estimate),
             notes=[
-                "%d 原子，relax_freeze=%s，冻结 %d 个（left 背层=%s right 背层=%s）"
+                "%d 原子，relax_freeze=%s，冻结 %d 个（left 背层=%s right 背层=%s；锚定 S=%s）"
                 % (natoms, freeze_mode, len(constrained),
-                   metadata.get("left_backplane_indices"), metadata.get("right_backplane_indices")),
+                   metadata.get("left_backplane_indices"), metadata.get("right_backplane_indices"),
+                   self._anchor_indices(metadata)),
                 "force_threshold=%s，ntasks=%s，partition=%s"
                 % (ctx.config.electrode.relax_force_threshold,
                    env.get("ntasks"), env.get("partition")),
@@ -215,19 +216,25 @@ class AuRelaxStage(Stage):
         - ``backplane``（默认，手册 §5.3.1 口径）：两侧背层整层；
         - ``electrodes``：全部 Au 原子（含 tip），只让分子骨架弛豫 ——
           适合电极已按理想晶格搭好、不想让 60+ 个 Au 参与 BFGS 的情形。
+
+        两种模式都额外冻结两侧**锚定原子**（Au–S 接触的 S）。理由（薁 demo 实测）：
+        只冻 Au 时 S 可以在 Au 表面上方打滑/绕 C–S 键扭出平面（实测偏移 0.8 Å、
+        Au–S 从 2.40 拉到 2.56 Å），结的接触距离就不是 au_tip_distance 建出来的那个，
+        且 tip→linker 轴被带偏、det-v1 表面三角重算会退化失败。锚定原子冻结后
+        Au–S 距离与输运轴都保持不变，分子骨架照常弛豫。
         """
         mode = str(getattr(ctx.config.electrode, "relax_freeze", "backplane") or "backplane")
         if mode == "electrodes":
             out = _gold_indices(geometry)
             if not out:
                 raise StageBlocked(self.name, "geometry.in 里没有 Au 原子，relax_freeze=electrodes 无意义")
-            return out
+            return sorted(set(out) | set(self._anchor_indices(metadata)))
         out: list[int] = []
         for key in BACKPLANE_KEYS:
             values = metadata.get(key) or []
             out.extend(int(i) for i in values)
         if out:
-            return sorted(set(out))
+            return sorted(set(out) | set(self._anchor_indices(metadata)))
         atoms = read_aims_geometry(geometry)
         for side in ("left", "right"):
             indices = metadata.get("%s_electrode_indices" % side) or []
@@ -242,7 +249,18 @@ class AuRelaxStage(Stage):
                 self.name,
                 "au60_build metadata 既没有背层索引，也无法按电极索引现算；"
                 "请重跑 au60_build 生成 left/right_backplane_indices")
+        return sorted(set(out) | set(self._anchor_indices(metadata)))
+
+    @staticmethod
+    def _anchor_indices(metadata: dict) -> list[int]:
+        """两侧锚定原子（linker，1-based）: 冻结它们以保持 Au–S 接触距离。"""
+        out: list[int] = []
+        for key in ("left_linker_index", "right_linker_index"):
+            value = metadata.get(key)
+            if value is not None:
+                out.append(int(value))
         return sorted(set(out))
+
 
     def _moved_frozen(self, before, after, frozen_indices) -> dict[int, float]:
         moved: dict[int, float] = {}
