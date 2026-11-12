@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .._vendor.junction.inputs import make_aims_scf_input
 from ..errors import StageBlocked
+from ..provenance import sha256_file, verify_parent_geometry
 from ._helpers import est_record, submit_command, vdw_mode
 from .base import Collected, Prepared, Stage, register
 
@@ -34,6 +35,18 @@ class AimsScfStage(Stage):
         species = self._species_dir(ctx)
         geometry = stage_dir / "geometry.in"
         shutil.copy2(upstream, geometry)
+        notes: list[str] = []
+        # P0-3：SCF 必须用 A2 确认/上游产出的那份几何。metadata 优先取 au_relax
+        # （0.1.2 起 A2 的对象是弛豫后几何），旧 run 回退 au60_build。
+        metadata_path = ctx.artifact("au_relax", "electrode_metadata.json")
+        parent_stage = "au_relax"
+        if not metadata_path.is_file():
+            metadata_path = ctx.artifact("au60_build", "electrode_metadata.json")
+            parent_stage = "au60_build"
+        if metadata_path.is_file():
+            verify_parent_geometry(self.name, upstream, metadata_path)
+        else:
+            notes.append("未找到 electrode_metadata.json：跳过父几何指纹校验（独立运行模式）")
         natoms = self.count_aims_atoms(geometry)
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)
@@ -50,9 +63,12 @@ class AimsScfStage(Stage):
             notes=[
                 "%d 原子，ntasks=%s，partition=%s"
                 % (natoms, env.get("ntasks"), env.get("partition")),
+                *notes,
                 "prepare 只写输入与作业脚本，未提交任何远端命令",
             ],
             commands=submit_command(self.script),
+            parent_stage=parent_stage,
+            parent_fingerprint=sha256_file(upstream),
         )
 
     # -- collect ----------------------------------------------------------- #

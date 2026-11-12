@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import ReviewConfig
+from .provenance import load_run_spec, protocol_sha256
 from .state import now_iso
 
 REVIEW_SCHEMA = "smj.review.v1"
@@ -97,6 +98,7 @@ class ReviewResult(Mapping):
         gate_warning = any(
             i["severity"] == "warning" and (
                 str(i.get("code", "")).startswith("a2_")
+                or str(i.get("code", "")).startswith("provenance_")
                 or i.get("code") in ("geometry_missing", "geometry_metadata_missing",
                                      "geometry_metadata_unreadable", "geometry_check_failed"))
             for i in self.issues)
@@ -392,6 +394,38 @@ def _a2_review(result: ReviewResult, build_dir: Path | None,
 
 
 # --------------------------------------------------------------------------- #
+# 运行参数溯源（P0-1）
+# --------------------------------------------------------------------------- #
+def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
+    """检查 ``run_spec.json``：缺失/重建只告警，协议漂移是阻断项。"""
+    spec = load_run_spec(run_dir)
+    if spec is None:
+        result.add(
+            "warning", "provenance_missing",
+            "run_spec.json 缺失：无法证明本次复核对应 run 开始时的参数快照")
+        return
+    if spec.get("reconstructed"):
+        result.add(
+            "warning", "provenance_reconstructed",
+            "run_spec.json 是事后重建（reconstructed=true），不是原始参数快照")
+    stored = spec.get("protocol_sha256")
+    if config is not None:
+        try:
+            current = protocol_sha256(config)
+        except Exception as exc:  # noqa: BLE001 - 复核不应因配置对象异常崩掉
+            result.add("warning", "provenance_check_failed",
+                       "无法计算当前配置的协议指纹: %s" % exc)
+            return
+        if stored and current != stored:
+            result.add(
+                "error", "provenance_drift",
+                "run_spec.protocol_sha256=%s，当前配置=%s；配置在 run 开始后发生"
+                "物理相关变化，本次结果不能按原参数解读（需重建 run 或显式豁免）"
+                % (str(stored)[:12], current[:12]),
+                run_spec_protocol=stored, current_protocol=current)
+
+
+# --------------------------------------------------------------------------- #
 # 主入口
 # --------------------------------------------------------------------------- #
 def review_run(target: Any, *, force: bool = True,
@@ -451,6 +485,7 @@ def review_run(target: Any, *, force: bool = True,
         build_dir = find_build_dir(run_dir)
     _structure_review(result, build_dir, geometry=geometry, metadata=metadata)
     _a2_review(result, build_dir, review_cfg)
+    _provenance_review(result, run_dir, cfg)
     result.finalize()
 
     target_path = Path(output) if output else (run_dir / "review.json")

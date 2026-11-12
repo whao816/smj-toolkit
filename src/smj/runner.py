@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping
 from .config import RunConfig
 from .context import StageContext
 from .errors import SmjError, StageError
+from .provenance import ensure_run_spec, hash_stage_inputs, hash_stage_outputs
 from .remote import (
     SMJ_SCRIPT_ARGS,
     RemoteSession,
@@ -82,6 +83,8 @@ def _prepared_payload(prepared: Any) -> dict[str, Any]:
         "notes": list(getattr(prepared, "notes", ()) or ()),
         "commands": list(getattr(prepared, "commands", ()) or ()),
         "local_only": bool(getattr(prepared, "local_only", False)),
+        "parent_stage": getattr(prepared, "parent_stage", None),
+        "parent_fingerprint": getattr(prepared, "parent_fingerprint", None),
     }
 
 
@@ -273,6 +276,10 @@ class StageRunner:
                 raise StageError(
                     "阶段 %s 已完成（status=%s）；重跑请加 --force" % (key, status))
 
+        # 2026-11 P0-1：run 级配置快照先落盘，再开始产生任何阶段输入。
+        # 配置漂移默认在这里拒绝；--force 才重绑（旧快照留 run_spec.previous.json）。
+        spec = ensure_run_spec(self.config, self.run_dir, force=force)
+
         if getattr(self.config.run, "clean", False):
             self._clean_stage_dir(key)
         stage_dir = self.layout.ensure_stage(key)
@@ -296,6 +303,7 @@ class StageRunner:
         payload = _prepared_payload(prepared)
         artifacts = payload.get("artifacts") or list(getattr(stage, "outputs", ()) or ())
         local_only = bool(payload.get("local_only"))
+        inputs_sha256 = hash_stage_inputs(payload.get("inputs") or ())
         self.state.set(
             key, status="prepared", prepared_at=now_iso(),
             job_id=None, remote_dir=None, submitted_at=None, finished_at=None,
@@ -307,6 +315,11 @@ class StageRunner:
             notes=list(payload.get("notes") or ()),
             commands=list(payload.get("commands") or ()),
             local_only=local_only,
+            inputs_sha256=inputs_sha256,
+            outputs_sha256={},
+            parent_stage=payload.get("parent_stage"),
+            parent_fingerprint=payload.get("parent_fingerprint"),
+            protocol_sha256=spec.get("protocol_sha256"),
         )
         self._save()
         for note in payload.get("notes") or ():
@@ -500,9 +513,11 @@ class StageRunner:
         collected = stage.collect(self.context, stage_dir)
         payload = _collected_payload(collected)
         artifacts = payload.get("artifacts") or list(getattr(stage, "outputs", ()) or ())
+        outputs_sha256 = hash_stage_outputs(stage_dir, artifacts)
         self.state.set(
             key, status="collected", collected_at=now_iso(),
             artifacts=list(artifacts), results=dict(payload.get("results") or {}),
+            outputs_sha256=outputs_sha256,
             note=None if not download or not download["missing"] else (
                 "未取到: " + ", ".join(download["missing"])),
             error=None)

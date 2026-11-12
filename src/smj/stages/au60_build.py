@@ -14,6 +14,7 @@ from .._vendor.junction.electrode import append_au60
 from .._vendor.junction.fingerprint import attach_fingerprint
 from ..electrode_library import resolve_cluster
 from ..errors import StageError
+from ..provenance import sha256_file
 from ._helpers import est_record
 from .base import Collected, Prepared, Stage, register
 
@@ -89,6 +90,8 @@ class Au60BuildStage(Stage):
             resources=est_record(estimate),
             notes=notes,
             commands=[],
+            parent_stage="aims_tip_relax",
+            parent_fingerprint=sha256_file(source),
         )
 
     # -- collect（解析/汇总） ---------------------------------------------- #

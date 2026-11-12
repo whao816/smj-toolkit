@@ -153,6 +153,15 @@ class StageState:
     artifacts: list[str] = field(default_factory=list)
     resources: dict[str, Any] = field(default_factory=dict)
     results: dict[str, Any] = field(default_factory=dict)
+    #: 2026-11 P0-3：prepare 时记录的输入文件哈希（名字 -> sha256）。
+    inputs_sha256: dict[str, str] = field(default_factory=dict)
+    #: collect 时记录的产物哈希（相对 stage dir 的名字 -> sha256）。
+    outputs_sha256: dict[str, str] = field(default_factory=dict)
+    #: 父阶段名与父几何指纹（"这一阶段的输入来自哪份上游文件"）。
+    parent_stage: str | None = None
+    parent_fingerprint: str | None = None
+    #: prepare 时绑定的 run_spec 协议指纹（配置漂移后与 run_spec 对比）。
+    protocol_sha256: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -171,6 +180,11 @@ class StageState:
             "artifacts": list(self.artifacts),
             "resources": dict(self.resources),
             "results": dict(self.results),
+            "inputs_sha256": dict(self.inputs_sha256),
+            "outputs_sha256": dict(self.outputs_sha256),
+            "parent_stage": self.parent_stage,
+            "parent_fingerprint": self.parent_fingerprint,
+            "protocol_sha256": self.protocol_sha256,
         }
         for key, value in self.extra.items():
             data.setdefault(key, value)
@@ -184,6 +198,8 @@ class StageState:
         kwargs["artifacts"] = list(kwargs.get("artifacts") or [])
         kwargs["resources"] = dict(kwargs.get("resources") or {})
         kwargs["results"] = dict(kwargs.get("results") or {})
+        kwargs["inputs_sha256"] = dict(kwargs.get("inputs_sha256") or {})
+        kwargs["outputs_sha256"] = dict(kwargs.get("outputs_sha256") or {})
         state = cls(**kwargs)
         state.extra = {k: v for k, v in data.items() if k not in known}
         return state
@@ -350,6 +366,14 @@ class RunLayout:
     @property
     def report_path(self) -> Path:
         return self.run_dir / "report.md"
+
+    @property
+    def run_spec_path(self) -> Path:
+        return self.run_dir / "run_spec.json"
+
+    @property
+    def run_spec_previous_path(self) -> Path:
+        return self.run_dir / "run_spec.previous.json"
 
     @property
     def logs_dir(self) -> Path:

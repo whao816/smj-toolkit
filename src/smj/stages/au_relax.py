@@ -27,6 +27,7 @@ from .._vendor.junction.geometry import read_aims_geometry
 from .._vendor.junction.inputs import make_au_relax_input
 from .._vendor.junction.surface_index import verify_surface_indices
 from ..errors import StageBlocked, StageError
+from ..provenance import sha256_file, verify_parent_geometry
 from ._helpers import est_record, submit_command, vdw_mode
 from .base import Collected, Prepared, Stage, register
 
@@ -66,6 +67,8 @@ class AuRelaxStage(Stage):
         geometry = stage_dir / "geometry.in"
         shutil.copy2(upstream, geometry)
         metadata = self._read_metadata(ctx, stage_dir)
+        # P0-3：先证明"要弛豫的几何"就是 au60_build 指纹记录的那一份。
+        verify_parent_geometry(self.name, upstream, metadata)
         natoms = self.count_aims_atoms(geometry)
 
         if not bool(getattr(ctx.config.electrode, "relax", True)):
@@ -85,6 +88,8 @@ class AuRelaxStage(Stage):
                        "如需按手册 §5.3.1 固定背层弛豫，把 electrode.relax 改回 true"],
                 commands=[],
                 local_only=True,
+                parent_stage="au60_build",
+                parent_fingerprint=sha256_file(upstream),
             )
 
         constrained = self._constrained_atoms(ctx, geometry, metadata)
@@ -115,6 +120,8 @@ class AuRelaxStage(Stage):
                 "prepare 只写输入与作业脚本，未提交任何远端命令",
             ],
             commands=submit_command(self.script),
+            parent_stage="au60_build",
+            parent_fingerprint=sha256_file(upstream),
         )
 
     # -- collect ----------------------------------------------------------- #

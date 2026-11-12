@@ -719,6 +719,33 @@ def cmd_audit(args: argparse.Namespace) -> int:
         add("warning", "run-name-mismatch",
             "state.json 记录的 run=%r 与配置 %r 不一致" % (state.run, config.name))
 
+    # 2026-11 P0-1：运行参数快照必须能对账；漂移是 error，缺失在已开始的 run 里是 warning。
+    if layout.state_path.is_file():
+        if not layout.run_spec_path.is_file():
+            add("warning", "run-spec-missing",
+                "缺 run_spec.json：本次 run 的参数/软件版本没有随 run 落盘")
+        else:
+            from .provenance import load_run_spec, protocol_sha256
+            spec = load_run_spec(layout.run_dir)
+            if spec is None:
+                add("error", "run-spec-unreadable",
+                    "run_spec.json 存在但不可解析: %s" % layout.run_spec_path)
+            else:
+                if spec.get("reconstructed"):
+                    add("warning", "run-spec-reconstructed",
+                        "run_spec.json 是事后重建（reconstructed=true），不是原始参数快照")
+                try:
+                    current = protocol_sha256(config)
+                except Exception as exc:  # noqa: BLE001 - 审计不应因配置异常崩掉
+                    add("warning", "run-spec-check-failed",
+                        "无法计算当前配置的协议指纹: %s" % exc)
+                else:
+                    stored = spec.get("protocol_sha256")
+                    if stored and stored != current:
+                        add("error", "run-spec-drift",
+                            "run_spec.protocol_sha256=%s 与当前配置=%s 不一致"
+                            % (str(stored)[:12], current[:12]))
+
     for name in STAGE_ORDER:
         stage = state.stage(name)
         meta = _stage_meta(name, getattr(args, "stage_getter", None))

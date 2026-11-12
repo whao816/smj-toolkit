@@ -29,6 +29,11 @@ import re
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from .provenance import (
+    load_run_spec,
+    run_spec_payload,
+    run_spec_sha256,
+)
 from .resources import check_smj_budget, estimate_smj_resources
 from .state import STAGE_ORDER, RunLayout, RunState, now_iso
 
@@ -144,20 +149,40 @@ def _read_config_summary(run_dir: Path, warnings: list[str]) -> dict:
 # --------------------------------------------------------------------------- #
 # 阶段发现 / 产物清单
 # --------------------------------------------------------------------------- #
+def _build_number(name: str) -> int:
+    match = re.match(r"^au(\d+)_build$", name)
+    return int(match.group(1)) if match else 10 ** 9
+
+
 def discover_stages(run_dir: str | Path) -> list[str]:
-    """按 run 目录**实际存在**的阶段子目录，按执行顺序返回阶段名。"""
+    """按 run 目录**实际存在**的阶段子目录，按执行顺序返回阶段名。
+
+    2026-11 P0-2：阶段清单的唯一事实源是 :data:`smj.state.STAGE_ORDER`。
+    旧实现调用 vendored ``discover_smj_stages``，而那份清单缺 ``au_relax``，
+    导致 demo 的 manifest/report 里阶段数少一个、A2 对象阶段显示为"—"。
+    ``auN_build`` 变体目录仍作为扩展追加在 ``au60_build`` 之后。
+    """
     root = Path(run_dir)
     if not root.is_dir():
         return []
-    try:
-        from smj._vendor.junction.manifest import discover_smj_stages  # lazy: vendored
-        found = list(discover_smj_stages(root))
-    except Exception:  # noqa: BLE001 —— vendored 缺失时用本地等价实现
-        found = [s for s in STAGE_ORDER if (root / s).is_dir()]
-        found += sorted(p.name for p in root.iterdir()
-                        if p.is_dir() and _BUILD_STAGE_RE.match(p.name)
-                        and p.name not in found)
-    return [s for s in dict.fromkeys(found) if (root / s).is_dir()]
+    ordered = [stage for stage in STAGE_ORDER if (root / stage).is_dir()]
+    extras = sorted(
+        (child.name for child in root.iterdir()
+         if child.is_dir() and _BUILD_STAGE_RE.match(child.name)
+         and child.name not in STAGE_ORDER),
+        key=lambda name: (_build_number(name), name))
+    if not extras:
+        return ordered
+    if "au60_build" in ordered:
+        index = ordered.index("au60_build") + 1
+    elif "au_relax" in ordered:
+        index = ordered.index("au_relax")
+    elif "aims_tip_relax" in ordered:
+        index = ordered.index("aims_tip_relax") + 1
+    else:
+        index = 0
+    ordered[index:index] = extras
+    return ordered
 
 
 def _inventory(run_dir: Path, stages: Iterable[str]) -> dict[str, dict]:
@@ -200,13 +225,26 @@ def _find_build_dir(run_dir: Path) -> Path | None:
 
 
 def _input_summary(run_dir: Path, spec: Mapping[str, Any],
-                   warnings: list[str]) -> dict:
-    cfg = _read_config_summary(run_dir, warnings)
+                   warnings: list[str], *,
+                   run_spec: Mapping[str, Any] | None = None) -> dict:
+    spec_config = dict((run_spec or {}).get("config") or {})
+    run_cfg = dict(spec_config.get("run") or {})
+    transport_cfg = dict(spec_config.get("transport") or {})
+    if run_spec is not None:
+        # 2026-11 P0-1：mode/温度以 run_spec 为准；旧实现读 run_dir/smj.yaml，
+        # 而 demo 的 yaml 在 run 的父目录，于是 mode/temperature 都是 null。
+        mode = run_cfg.get("mode")
+        temperature = transport_cfg.get("temperature")
+    else:
+        cfg = _read_config_summary(run_dir, warnings)
+        mode = cfg.get("mode")
+        temperature = cfg.get("temperature_K", spec.get("temperature_K"))
+    effective_spec = dict(spec or {}) or spec_config
     inputs: dict[str, Any] = {
         "run_id": run_dir.name,
-        "mode": cfg.get("mode"),
-        "temperature_K": cfg.get("temperature_K", spec.get("temperature_K")),
-        "spec": dict(spec or {}),
+        "mode": mode,
+        "temperature_K": temperature,
+        "spec": effective_spec,
         "molecule": None,
         "electrode": None,
         "te": None,
@@ -221,6 +259,10 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
             "path": str(molecule_xyz),
             "atom_count": _atom_count(molecule_xyz, xyz=True),
         }
+        # run_spec 记的是**输入**分子（优化前）的哈希，保留为独立字段，避免混淆。
+        molecule_meta = (run_spec or {}).get("molecule") or {}
+        if molecule_meta.get("sha256"):
+            inputs["molecule"]["run_input_sha256"] = molecule_meta["sha256"]
 
     # 电极：auN_build/electrode_metadata.json 的既有键（不补造）。
     build = _find_build_dir(run_dir)
@@ -358,8 +400,38 @@ def build_manifest(target: Any, *, run_id: str | None = None,
     rid = run_id or (getattr(config, "name", None) if config is not None else None) or run_dir.name
     state = state or RunState.load(layout.state_path, run=rid)
     warnings: list[str] = list(state.warnings)
-    spec_data = dict(spec or {})
-    input_summary = _input_summary(run_dir, spec_data, warnings)
+
+    # 2026-11 P0-1：manifest 绑定 run_spec（配置快照 + 文件哈希）。没有 run_spec
+    # 的旧 run 允许用当前配置重建，但必须显式标 reconstructed 并告警，不能假装
+    # 这份 manifest 能证明原始参数。
+    run_spec = load_run_spec(run_dir)
+    provenance: dict[str, Any] = {
+        "path": None,
+        "run_spec_sha256": None,
+        "reconstructed": False,
+        "protocol_sha256": None,
+    }
+    if run_spec is None:
+        if config is not None:
+            run_spec = run_spec_payload(config, run_dir, reconstructed=True)
+            provenance["reconstructed"] = True
+            warnings.append(
+                "run_spec.json 缺失：manifest 用当前配置重建（reconstructed=true），"
+                "不能证明与原始 run 的参数完全一致")
+        else:
+            warnings.append(
+                "run_spec.json 缺失：run 目录里没有可加载的配置，manifest 无法绑定运行参数")
+    else:
+        provenance["path"] = str(run_dir / "run_spec.json")
+        provenance["run_spec_sha256"] = run_spec_sha256(run_dir)
+        provenance["reconstructed"] = bool(run_spec.get("reconstructed"))
+        if provenance["reconstructed"]:
+            warnings.append("run_spec.json 标记为 reconstructed：参数来自事后重建，不是原始快照")
+    if run_spec is not None:
+        provenance["protocol_sha256"] = run_spec.get("protocol_sha256")
+
+    spec_data = dict(spec or {}) or dict((run_spec or {}).get("config") or {})
+    input_summary = _input_summary(run_dir, spec_data, warnings, run_spec=run_spec)
     inventory = _inventory(run_dir, stages if stages is not None
                            else discover_stages(run_dir))
     resources = _resource_summary(run_dir, state, warnings)
@@ -378,6 +450,8 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         "root": str(run_dir),
         "generated_at": now_iso(),
         "spec": spec_data,
+        "run_spec": run_spec,
+        "provenance": provenance,
         "state": {
             "created_at": state.created_at,
             "updated_at": state.updated_at,
@@ -466,6 +540,16 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     lines.append("| run_id | `%s` |" % _cell(rid))
     lines.append("| 根目录 | `%s` |" % _cell(man.get("root")))
     lines.append("| 模式 | %s |" % _cell((man.get("inputs") or {}).get("mode")))
+    prov = man.get("provenance") or {}
+    if prov:
+        protocol = str(prov.get("protocol_sha256") or "")[:12]
+        if prov.get("reconstructed"):
+            snap = "重建（reconstructed，非原始快照）"
+        elif prov.get("path"):
+            snap = "run_spec.json（sha256 %s…）" % str(prov.get("run_spec_sha256") or "")[:12]
+        else:
+            snap = "缺失"
+        lines.append("| 参数快照 | %s；protocol %s… |" % (_cell(snap), _cell(protocol)))
     lines.append("| 阶段数 / 文件总量 | %s / %.3f GiB |"
                  % (totals.get("stages"), float(totals.get("gib") or 0.0)))
     statuses = state.get("stages") or {}

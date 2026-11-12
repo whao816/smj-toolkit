@@ -278,7 +278,9 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 
 ```text
 <run.dir>/<run.name>/            # smj.yaml 的 run.dir 是 run 根，默认 "." → ./<name>/
-├── state.json                   # 阶段状态机（status/job_id/时间戳/资源/results）
+├── state.json                   # 阶段状态机（status/job_id/时间戳/资源/哈希/results）
+├── run_spec.json                # 运行参数快照（完整解析配置、协议指纹、软件版本）
+├── run_spec.previous.json       # 仅 --force 重绑时保留的上一份快照
 ├── manifest.json                # 产物清单（sha256、大小、阶段、回取模式）
 ├── report.md                    # 人读报告：概览/阶段状态/输入摘要/资源/输运/失败/产物
 ├── gaussian_opt/                # 每阶段一个目录，输入+产物都在里面
@@ -289,6 +291,9 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 │   └── geometry.in.next_step  aims.out
 ├── au60_build/
 │   └── geometry.in  electrode_metadata.json
+├── au_relax/
+│   ├── geometry.in  control.in  sub_aims.sh
+│   └── aims.out  geometry.in.next_step  electrode_metadata.json
 ├── aims_scf/
 │   ├── control.in  sub_aims.sh  geometry.in
 │   └── aims.out  mos.aims  basis-indices.out
@@ -328,6 +333,24 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `geometry.in` 不一致时，`smj review` 直接 `blocked`。签署用
   `smj review --approve --who <名字>`（A2 核对图落在 `auN_build/a2_surface_viz.png`，
   审计结果落在 `auN_build/a2_surface_audit.json`）。
+
+### 7.2 运行溯源（run_spec / 哈希闭环）
+
+- **第一次 `prepare`** 会在 run 根写 `run_spec.json`：完整解析后的配置（含模板默认值）、
+  分子与电极库的 sha256、`protocol_sha256`（只覆盖会改变物理结果的分子/电极/输运子集）、
+  SMJ/Python 版本、git commit/dirty、软件路径与本地可读二进制的 sha256。
+- **配置漂移默认拒绝**：下一阶段 `prepare` 时若当前配置的 `protocol_sha256` 与
+  `run_spec.json` 不同，直接报错；确认要重绑才加 `--force`，旧快照保留为
+  `run_spec.previous.json`。
+- **阶段哈希**：`state.json` 每阶段记录 `inputs_sha256` / `outputs_sha256` /
+  `parent_stage` / `parent_fingerprint`；`au_relax`、`aims_scf`、`aitranss_te`
+  在 `prepare` 时校验上游 `geometry.in` 与电极 metadata 的 `surface_fingerprint`，
+  不一致直接 `StageBlocked`（不会拿被换过的几何继续算）。
+- **报告绑定**：`manifest.json` 带 `run_spec` 与 `provenance`（run_spec 文件 sha256、
+  protocol、是否 reconstructed）；`report.md` 概览显示参数快照状态。旧 run 没有
+  `run_spec.json` 时允许用当前配置重建，但标记 `reconstructed: true` 并告警。
+- **复核门**：`smj review` 对缺 run_spec/重建只告警，对协议漂移记
+  `provenance_drift` 并 `blocked`——结果不能按原参数解读时不会静默放行。
 
 ## 8. 与主仓的关系
 

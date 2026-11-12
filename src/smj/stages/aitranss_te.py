@@ -17,6 +17,7 @@ from .._vendor.junction.inputs import make_aitranss_input
 from .._vendor.junction.landauer import read_te
 from .._vendor.junction.self_energy import make_self_energy
 from ..errors import StageBlocked, StageError
+from ..provenance import sha256_file, verify_parent_geometry
 from ._helpers import est_record, submit_command
 from .base import Collected, Prepared, Stage, register
 
@@ -39,11 +40,16 @@ class AitranssTeStage(Stage):
                 self.name, "缺 aims_scf/geometry.in（tcontrol 需要结几何）", [str(scf_geometry)])
         metadata = self._metadata(ctx)
         geometry = ctx.artifact("au_relax", "geometry.in")
+        parent_stage = "au_relax"
         if not geometry.is_file():
             geometry = ctx.artifact("au60_build", "geometry.in")
+            parent_stage = "au60_build"
         if not geometry.is_file():
             # 独立运行（--scf-dir）时上游目录可能不在：SCF 目录里的几何是同一份。
             geometry = scf_geometry
+            parent_stage = "aims_scf"
+        # P0-3：透射计算消费的几何必须与 metadata 记录的指纹一致。
+        verify_parent_geometry(self.name, geometry, metadata)
         natoms = self.count_aims_atoms(scf_geometry)
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)
@@ -76,7 +82,8 @@ class AitranssTeStage(Stage):
         return self.prepared(
             ctx, stage_dir,
             inputs=[Path(written["tcontrol"]), stage_dir / "self.energy.in",
-                    Path(written["submit_script"]), stage_dir / "input_summary.json"],
+                    Path(written["submit_script"]), stage_dir / "input_summary.json",
+                    scf_geometry, Path(metadata)],
             resources=est_record(estimate),
             notes=[
                 "能量窗 ener=%s / estep=%s / eend=%s，nlayers=%d"
@@ -91,6 +98,8 @@ class AitranssTeStage(Stage):
                 "prepare 只写输入与作业脚本，未提交任何远端命令",
             ],
             commands=submit_command(self.script),
+            parent_stage=parent_stage,
+            parent_fingerprint=sha256_file(geometry),
         )
 
     # -- collect ----------------------------------------------------------- #

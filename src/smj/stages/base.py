@@ -36,6 +36,9 @@ class Prepared:
     #: 2026-11-11 本地补丁 F-LIB：true = 该阶段被配置关闭（如 electrode.relax=false），
     #: prepare 只做本地直通，collect 直接解析本地文件，不提交、不回取。
     local_only: bool = False
+    #: 2026-11 P0-3：本阶段输入来自哪个上游阶段、那份上游文件的 sha256。
+    parent_stage: str | None = None
+    parent_fingerprint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -47,6 +50,8 @@ class Prepared:
             "notes": list(self.notes),
             "commands": list(self.commands),
             "local_only": self.local_only,
+            "parent_stage": self.parent_stage,
+            "parent_fingerprint": self.parent_fingerprint,
         }
 
     @classmethod
@@ -60,6 +65,8 @@ class Prepared:
             notes=list(data.get("notes") or []),
             commands=list(data.get("commands") or []),
             local_only=bool(data.get("local_only")),
+            parent_stage=data.get("parent_stage"),
+            parent_fingerprint=data.get("parent_fingerprint"),
         )
 
 

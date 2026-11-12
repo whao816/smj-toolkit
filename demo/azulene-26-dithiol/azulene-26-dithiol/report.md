@@ -9,11 +9,12 @@
 |---|---|
 | run_id | `azulene-26-dithiol` |
 | 根目录 | `D:\dsh_projects\AutoSMJ\demo\azulene-26-dithiol\azulene-26-dithiol` |
-| 模式 | — |
-| 阶段数 / 文件总量 | 6 / 0.014 GiB |
+| 模式 | slurm-ssh |
+| 参数快照 | 重建（reconstructed，非原始快照）；protocol 4d85ec8a943b… |
+| 阶段数 / 文件总量 | 7 / 0.027 GiB |
 | 阶段状态 | gaussian_opt=collected, aims_tip_relax=collected, au60_build=collected, au_relax=collected, aims_scf=collected, aitranss_te=collected, junction_analyze=collected |
 | 首个未完成阶段 | `—` |
-| 生成时间 | 2026-11-12T15:26:59+08:00 |
+| 生成时间 | 2026-11-12T18:55:12+08:00 |
 
 ## 0.1 判定
 
@@ -32,7 +33,7 @@
 | `gaussian_opt` | `collected` | 有 | — | — | — | 复用主仓 B3LYP/def2-TZVP opt+freq（0 虚频）日志 |
 | `aims_tip_relax` | `collected` | 有 | 26020 | 0 | 187.5 |  |
 | `au60_build` | `collected` | 有 | — | — | — |  |
-| `au_relax` | `collected` | — | 26029 | 0 | 4210.4 |  |
+| `au_relax` | `collected` | 有 | 26029 | 0 | 4210.4 |  |
 | `aims_scf` | `collected` | 有 | 26033 | 0 | 2230.9 |  |
 | `aitranss_te` | `collected` | 有 | 26037 | 0 | 186.7 |  |
 | `junction_analyze` | `collected` | 有 | — | — | — |  |
@@ -46,7 +47,7 @@
 | 建结阶段 | au_relax |
 | 结原子数 | 92 |
 | 每侧电极 Au | 37 |
-| 输运温度 (K) | — |
+| 输运温度 (K) | 300.0 |
 | TE.dat | D:\dsh_projects\AutoSMJ\demo\azulene-26-dithiol\azulene-26-dithiol\aitranss_te\TE.dat |
 | TE 数据点 | 190 |
 | efermi (Ha) | -0.188452434085 |
@@ -85,6 +86,7 @@
 | `gaussian_opt` | 6 | 0.40 | mol.log:2a5b13347cb5 |
 | `aims_tip_relax` | 8 | 12.02 | aims.out:f625af15ad5a, geometry.in:55615e5c2f2a |
 | `au60_build` | 5 | 0.19 | geometry.in:9b8d6dd4f538 |
+| `au_relax` | 8 | 13.04 | aims.out:a2dca3a89ea0, geometry.in:0a5af56c3eb7 |
 | `aims_scf` | 9 | 1.60 | aims.out:275126b950dd, geometry.in:0a5af56c3eb7 |
 | `aitranss_te` | 7 | 0.04 | TE.dat:01d89887fe02 |
 | `junction_analyze` | 3 | 0.09 | analysis.json:7c7f1d9be365 |
