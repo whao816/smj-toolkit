@@ -1,0 +1,9 @@
+{
+  "log": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\gaussian_opt\\mol.log",
+  "normal_termination": true,
+  "final_scf_energy_hartree": -2061.10992343,
+  "imaginary_frequency_count": 0,
+  "imaginary_frequencies_cm-1": [],
+  "atom_count": 54,
+  "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\gaussian_opt\\opt.xyz"
+}

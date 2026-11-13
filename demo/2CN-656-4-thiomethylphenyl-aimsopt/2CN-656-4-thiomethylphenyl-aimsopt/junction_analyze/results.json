@@ -1,0 +1,22 @@
+{
+  "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\aitranss_te\\TE.dat",
+  "temperature_K": 300.0,
+  "points": 301,
+  "L0": 0.0013202092539969727,
+  "L1": 1.3915083674170963e-05,
+  "L2": 5.050129915132467e-06,
+  "log10_G_over_G0_like": -2.879357227389815,
+  "S_uV_per_K": -35.13353061782349,
+  "k_e_pW_per_K": 1.2664168846892345,
+  "ZT_electronic": 0.029910651371252015,
+  "fermi_nearest": {
+    "E_Hartree": -0.1794,
+    "E_minus_Ef_eV": 0.00079113,
+    "T": 0.00124463254
+  },
+  "max_transmission": {
+    "E_Hartree": -0.1706,
+    "E_minus_Ef_eV": 0.24025131,
+    "T": 0.9992137532
+  }
+}

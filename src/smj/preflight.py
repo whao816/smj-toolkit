@@ -50,7 +50,7 @@ _ENV_ALIASES = {
 }
 
 #: 资源检查的阶段（本地阶段 au60_build 不计集群预算）。
-_RESOURCE_STAGES = ("gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te")
+_RESOURCE_STAGES = ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te")
 
 #: 分子重叠检查的规模上限（超过只提示，不做 O(N^2)）。
 _OVERLAP_MAX_ATOMS = 2000
@@ -386,7 +386,13 @@ def _resource_check(result: PreflightResult, config: Any, run_dir: Path,
             result.add("warning", "resource_skipped",
                        "%s: 无原子数（结构产物未就绪），资源估算跳过" % name)
             continue
-        estimate = estimate_smj_resources(name, int(n))
+        estimator = name
+        if name == "gaussian_opt":
+            engine = str(getattr(getattr(config, "molecule", None), "opt_engine", "gaussian"))
+            if engine.lower() == "aims":
+                # 分子预优化已改为 FHI-aims PBE/NAO，预算按 AIMS 标定而不是 Gaussian。
+                estimator = "aims_tip_relax"
+        estimate = estimate_smj_resources(estimator, int(n))
         budget = check_smj_budget(estimate)
         result.estimates[name] = {**estimate, "budget": budget}
         if estimate.get("capped"):

@@ -1,10 +1,9 @@
 """aims_scf：Au60 结的 FHI-aims 自洽场计算（远端阶段）。
 
-prepare 把 ``au_relax/geometry.in``（固定背层弛豫后的几何）拷进本阶段目录
-（作业脚本里用相对路径），写 ``control.in`` + ``sub_aims.sh``；AIMS 跑完产出
+prepare 把 ``au60_build/geometry.in``（贴装后的结几何；``au_relax`` 已从主链路
+移除）拷进本阶段目录，写 ``control.in`` + ``sub_aims.sh``；AIMS 跑完产出
 ``aims.out``、``basis-indices.out`` 与 ``mos.aims`` —— 后两者是 aitranss_te 的
-必要输入。``electrode.relax=false`` 时 au_relax 为本地直通，其 geometry.in
-就是 au60_build 的原几何，这里无需分支。
+必要输入。结几何在 SCF/输运阶段保持冻结，不再弛豫。
 """
 
 from __future__ import annotations
@@ -13,8 +12,13 @@ import shutil
 from pathlib import Path
 
 from .._vendor.junction.inputs import make_aims_scf_input
-from ..errors import StageBlocked
-from ..provenance import sha256_file, verify_parent_geometry
+from ..errors import StageBlocked, StageError
+from ..provenance import (
+    parse_aims_versions,
+    record_observed_software,
+    sha256_file,
+    verify_parent_geometry,
+)
 from ._helpers import est_record, submit_command, vdw_mode
 from .base import Collected, Prepared, Stage, register
 
@@ -22,10 +26,11 @@ from .base import Collected, Prepared, Stage, register
 @register
 class AimsScfStage(Stage):
     name = "aims_scf"
-    depends = ("au_relax",)
+    depends = ("au60_build",)
     script = "sub_aims.sh"
-    input_hint = "消费 au_relax/geometry.in（弛豫后的结几何）"
-    outputs = ("aims.out",)
+    input_hint = "消费 au60_build/geometry.in（冻结的结几何）"
+    # aitranss 的 tcontrol 直接消费后三个文件；缺任何一个都跑不了透射。
+    outputs = ("aims.out", "basis-indices.out", "omat.aims", "mos.aims")
 
     # -- prepare ----------------------------------------------------------- #
     def prepare(self, ctx, stage_dir: Path) -> Prepared:
@@ -36,13 +41,9 @@ class AimsScfStage(Stage):
         geometry = stage_dir / "geometry.in"
         shutil.copy2(upstream, geometry)
         notes: list[str] = []
-        # P0-3：SCF 必须用 A2 确认/上游产出的那份几何。metadata 优先取 au_relax
-        # （0.1.2 起 A2 的对象是弛豫后几何），旧 run 回退 au60_build。
-        metadata_path = ctx.artifact("au_relax", "electrode_metadata.json")
-        parent_stage = "au_relax"
-        if not metadata_path.is_file():
-            metadata_path = ctx.artifact("au60_build", "electrode_metadata.json")
-            parent_stage = "au60_build"
+        # P0-3：SCF 必须用 au60_build 产出并已由 A2 确认/锚定的那份几何。
+        metadata_path = ctx.artifact("au60_build", "electrode_metadata.json")
+        parent_stage = "au60_build"
         if metadata_path.is_file():
             verify_parent_geometry(self.name, upstream, metadata_path)
         else:
@@ -77,27 +78,44 @@ class AimsScfStage(Stage):
         output = ctx.require_stage_file(self.name, "aims.out")
         try:
             text = output.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
+        except OSError as exc:
+            raise StageError("aims_scf 无法读取 aims.out: %s" % exc) from exc
+        if not text.strip():
+            raise StageError("aims_scf/aims.out 为空：FHI-aims 没有产生可用输出")
+        if "Have a nice day" not in text:
+            raise StageError(
+                "FHI-aims 未正常结束（aims.out 无 'Have a nice day'）；"
+                "拒绝 collect 残缺的 SCF 结果")
+
+        # tcontrol 的 $basis/$read_omat/$scfmo 直接读这三个文件；缺任何一个，
+        # 下游 aitranss_te 都会在 prepare 才炸——这里必须提前 fail-closed。
+        required = ("basis-indices.out", "omat.aims", "mos.aims")
+        missing = [name for name in required if not (stage_dir / name).is_file()]
+        if missing:
+            raise StageError(
+                "FHI-aims SCF 产物不完整（缺 %s）；aitranss_te 的 tcontrol 需要 "
+                "basis-indices.out + omat.aims + mos.aims" % "、".join(missing))
+
         notes: list[str] = []
-        has_basis = (stage_dir / "basis-indices.out").is_file()
-        has_mos = (stage_dir / "mos.aims").is_file()
-        if not has_basis:
-            notes.append("缺 basis-indices.out：aitranss_te 的 $basis 输入不完整")
-        if not has_mos:
-            notes.append("缺 mos.aims：aitranss_te 无法自动确定 $nsaos")
+        software = parse_aims_versions(text)
+        if software:
+            record_observed_software(ctx.layout.run_dir, self.name, software)
+        else:
+            notes.append("未从 aims.out 解析到 FHI-aims 版本/uuid：远端软件版本未入档")
         results = {
             "aims_scf": {
                 "atom_count": self.count_aims_atoms(stage_dir / "geometry.in"),
-                "normal_termination": "Have a nice day" in text,
-                "has_basis_indices": has_basis,
-                "has_mos": has_mos,
+                "normal_termination": True,
+                "has_basis_indices": True,
+                "has_omat": True,
+                "has_mos": True,
+                "software": software or None,
             }
         }
         return self.collected(
             ctx, stage_dir,
             artifacts=[name for name in ("aims.out", "control.in", "geometry.in",
-                                         "basis-indices.out", "mos.aims")
+                                         "basis-indices.out", "omat.aims", "mos.aims")
                        if (stage_dir / name).is_file()],
             results=results, notes=notes,
         )

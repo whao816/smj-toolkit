@@ -174,6 +174,9 @@ COVALENT_RADII = {'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66,
                   'S': 1.05, 'Au': 1.36, 'Ag': 1.45, 'Cu': 1.32, 'Ni': 1.24}
 MIN_BOND_FACTOR = 0.7        # d < 0.7*(r_i+r_j) 判为重叠
 AU_S_BAND = (2.40, 2.49)     # 有源带: Thygesen 2005 p.12 dAu-S=2.40; Jackson 2009 2.42+-0.02
+#: 硫醚/硫醇等非硫醇盐锚定的 Au–S 接触上限。取 Au(1.66)+S(1.80) 的 vdW 和
+#: (~3.46 Å) 作“是否成接触”的几何门槛；这不是键长目标，不能与上面的有源带混用。
+AU_S_CONTACT_MAX = 3.50
 PAIR_CUTOFF = 3.0            # 只对 3 A 内的原子对做重叠判定
 
 
@@ -201,6 +204,33 @@ def read_geometry_in(path):
 
 def _dist(a, b):
     return math.sqrt(sum((a[i] - b[i]) ** 2 for i in range(3)))
+
+
+def _anchor_chemistry(atoms, elems, s_idx):
+    """按 S 的成键环境判定锚定化学（不看名字/配置，只看几何）。
+
+    - thioether: S 与两个 C 成键（-SCH3、-S- 等硫醚）；
+    - thiol:     S 与一个 C 和一个 H 成键（-SH 完整）；
+    - thiolate:  S 与一个 C 成键、无 S-H（去质子硫醇盐）；
+    - unknown:   其它（不猜，按非硫醇盐处理）。
+    """
+    c_n = 0
+    h_n = 0
+    for j, e in enumerate(elems):
+        if j == s_idx:
+            continue
+        d = _dist(atoms[s_idx][:3], atoms[j][:3])
+        if e == 'C' and d <= 1.95:
+            c_n += 1
+        elif e == 'H' and d <= 1.60:
+            h_n += 1
+    if c_n >= 2:
+        return 'thioether'
+    if h_n >= 1:
+        return 'thiol'
+    if c_n == 1:
+        return 'thiolate'
+    return 'unknown'
 
 
 def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
@@ -301,22 +331,43 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
         checks.append(_ok('junction_geom_contacts', None,
                           '%d 原子无重叠(元素对下限 + 3 A 预筛; C-H 1.09 合法、Au-H 1.16 属重叠)' % n))
 
-    # ④ 锚定几何: 锚定 S 与最近的 Au 距离 vs 有源带(仅方向性 -> warn)
+    # ④ 锚定几何: 先判锚定化学，再决定能否套 2.40–2.49 Å 的硫醇盐有源带。
+    #    硫醚(-SCH3 等)的 S–Au 是配位接触，不是硫醇盐的 Au–S 共价键；
+    #    把硫醇盐带套到硫醚上会把正常的 2.6–2.7 Å 误判成偏离（2026-11-13 验收）。
     sulf = [i for i, e in enumerate(elems) if e == 'S']
     aus = [i for i, e in enumerate(elems) if e == 'Au']
     if sulf and aus:
         best = min(((_dist(atoms[s][:3], atoms[a][:3]), s + 1, a + 1)
                     for s in sulf for a in aus), key=lambda t: t[0])
         dmin, si, ai = best
+        chemistry = _anchor_chemistry(atoms, elems, si - 1)
+        value = {'distance_A': round(dmin, 4), 'chemistry': chemistry}
         lo, hi = AU_S_BAND
-        if lo <= dmin <= hi:
-            checks.append(_ok('junction_geom_anchor_aus', round(dmin, 4),
-                              'S%d-Au%d = %.4f A 落在有源带 %.2f-%.2f A (Thygesen 2005 p.12; '
-                              'Jackson 2009)' % (si, ai, dmin, lo, hi)))
+        if chemistry == 'thiolate':
+            if lo <= dmin <= hi:
+                checks.append(_ok('junction_geom_anchor_aus', value,
+                                  'S%d-Au%d = %.4f A 落在有源带 %.2f-%.2f A (Thygesen 2005 p.12; '
+                                  'Jackson 2009)' % (si, ai, dmin, lo, hi)))
+            else:
+                checks.append(_warn('junction_geom_anchor_aus', value,
+                                    'S%d-Au%d = %.4f A 偏离有源带 %.2f-%.2f A(仅方向性: 两锚点均为'
+                                    '表面/金字塔配位, 不覆盖单 Au 低配位)' % (si, ai, dmin, lo, hi)))
+        elif chemistry in ('thioether', 'thiol'):
+            kind = '硫醚(-S-)' if chemistry == 'thioether' else '完整硫醇(-SH)'
+            if dmin <= AU_S_CONTACT_MAX:
+                checks.append(_ok('junction_geom_anchor_aus', value,
+                                  'S%d-Au%d = %.4f A；锚定 S 为%s，Au–S 是配位接触，'
+                                  '2.40–2.49 A 的硫醇盐有源带不适用（不作偏离判定；'
+                                  '接触上限 %.2f A 取自 vdW 和）'
+                                  % (si, ai, dmin, kind, AU_S_CONTACT_MAX)))
+            else:
+                checks.append(_warn('junction_geom_anchor_aus', value,
+                                    'S%d-Au%d = %.4f A；锚定 S 为%s，超过 %.2f A 接触上限，'
+                                    '未形成 Au–S 接触' % (si, ai, dmin, kind, AU_S_CONTACT_MAX)))
         else:
-            checks.append(_warn('junction_geom_anchor_aus', round(dmin, 4),
-                                'S%d-Au%d = %.4f A 偏离有源带 %.2f-%.2f A(仅方向性: 两锚点均为'
-                                '表面/金字塔配位, 不覆盖单 Au 低配位)' % (si, ai, dmin, lo, hi)))
+            checks.append(_ok('junction_geom_anchor_aus', value,
+                              'S%d-Au%d = %.4f A；锚定化学未识别，未套用 2.40–2.49 A 硫醇盐带'
+                              % (si, ai, dmin)))
     else:
         checks.append(_warn('junction_geom_anchor_aus', None, '缺 S 或 Au, 无法判锚定几何'))
 

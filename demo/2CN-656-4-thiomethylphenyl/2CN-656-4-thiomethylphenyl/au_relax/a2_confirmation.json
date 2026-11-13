@@ -1,0 +1,17 @@
+{
+  "fingerprint": "951152c12dd18320d2d07575050cd0ebd9307175da9ef33ac5a9bb660ef1c25f",
+  "indices": {
+    "left_surface_indices": [
+      82,
+      83,
+      86
+    ],
+    "right_surface_indices": [
+      118,
+      119,
+      122
+    ]
+  },
+  "who": "automated-acceptance",
+  "when": "2026-11-12T17:05:37+00:00"
+}

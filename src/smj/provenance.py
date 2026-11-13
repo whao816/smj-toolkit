@@ -31,6 +31,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 from dataclasses import asdict, is_dataclass
@@ -46,6 +47,15 @@ RUN_SPEC_PREVIOUS = "run_spec.previous.json"
 
 #: 单文件哈希上限。超过这个大小只记 path/size，不把 GB 级 ``mos.aims`` 读进内存。
 MAX_HASH_BYTES = 128 * 1024 * 1024
+
+#: legacy run 没有 run_spec.json 时，collect 观测到的远端软件版本落到这里。
+SOFTWARE_OBSERVED_FILE = "software_observed.json"
+
+_AIMS_VERSION_RE = re.compile(r"FHI-aims version\s*:\s*(\S+)")
+_AIMS_UUID_RE = re.compile(r"aims_uuid\s*:\s*(\S+)")
+_AIMS_COMMIT_RE = re.compile(r"Commit number\s*:\s*(\S+)")
+_AITRANSS_VERSION_RE = re.compile(r"invoking aitranss \(version:\s*([^)]+)\)")
+_AITRANSS_COMPILED_RE = re.compile(r"compiled on ([^\n]+)")
 
 
 # --------------------------------------------------------------------------- #
@@ -204,6 +214,8 @@ def _protocol_config(config: Any) -> dict[str, Any]:
     transport.pop("ener", None)
     transport.pop("estep", None)
     transport.pop("eend", None)
+    # 这是"缺 te.out 是否拒绝"的验证策略，不改变物理结果，不进 protocol。
+    transport.pop("require_te_out", None)
     return {"molecule": molecule, "electrode": electrode, "transport": transport}
 
 
@@ -261,14 +273,26 @@ def _software_info(config: Any) -> dict[str, Any]:
         raw = env.get(key) or os.environ.get(key)
         if not raw:
             continue
-        path = Path(os.path.expandvars(os.path.expanduser(raw)))
-        entry: dict[str, Any] = {"path": str(path), "exists": path.exists()}
-        if path.is_file():
-            digest = sha256_file(path)
-            if digest is None:
-                entry["note"] = "文件超过 %d MiB，未哈希" % (MAX_HASH_BYTES // (1024 * 1024))
-            else:
-                entry["sha256"] = digest
+        raw = os.path.expandvars(os.path.expanduser(raw))
+        remote_posix = (raw.startswith("/")
+                        and getattr(getattr(config, "run", None), "mode", None) == "slurm-ssh")
+        if remote_posix:
+            # 集群上的 POSIX 路径在 Windows 上会被 Path() 改写成 \data\...；
+            # 原样记录，exists 用 None 表示“本机不知道”，不谎报 False。
+            entry: dict[str, Any] = {
+                "path": raw,
+                "exists": None,
+                "note": "slurm-ssh 远端 POSIX 路径；本机未检查",
+            }
+        else:
+            path = Path(raw)
+            entry = {"path": str(path), "exists": path.exists()}
+            if path.is_file():
+                digest = sha256_file(path)
+                if digest is None:
+                    entry["note"] = "文件超过 %d MiB，未哈希" % (MAX_HASH_BYTES // (1024 * 1024))
+                else:
+                    entry["sha256"] = digest
         executables[key] = entry
     return {
         "smj": _package_version(),
@@ -278,6 +302,83 @@ def _software_info(config: Any) -> dict[str, Any]:
         "executables": executables,
         "cluster_env_keys": sorted(env),
     }
+
+
+# --------------------------------------------------------------------------- #
+# 远端软件版本（collect 时从输出文件解析；run_spec 的 append-only 观测）
+# --------------------------------------------------------------------------- #
+def parse_aims_versions(text: str) -> dict[str, Any]:
+    """从 ``aims.out`` 头部解析 FHI-aims 版本/uuid/commit。
+
+    只读头几十行也够用；解析不到时返回空 dict（调用方记 note，不伪造版本）。
+    """
+    head = "\n".join(text.splitlines()[:120])
+    version = _AIMS_VERSION_RE.search(head)
+    uuid = _AIMS_UUID_RE.search(head)
+    commit = _AIMS_COMMIT_RE.search(head)
+    if not (version or uuid):
+        return {}
+    result: dict[str, Any] = {
+        "program": "FHI-aims",
+        "source": "aims.out",
+        "version": version.group(1) if version else None,
+    }
+    if uuid:
+        result["aims_uuid"] = uuid.group(1)
+    if commit:
+        result["commit"] = commit.group(1)
+    return result
+
+
+def parse_aitranss_versions(text: str) -> dict[str, Any]:
+    """从 ``te.out`` 头部解析 aitranss 版本与编译信息。"""
+    head = "\n".join(text.splitlines()[:80])
+    version = _AITRANSS_VERSION_RE.search(head)
+    compiled = _AITRANSS_COMPILED_RE.search(head)
+    if not (version or compiled):
+        return {}
+    return {
+        "program": "aitranss",
+        "source": "te.out",
+        "version": version.group(1).strip() if version else None,
+        "compiled": compiled.group(1).strip() if compiled else None,
+    }
+
+
+def record_observed_software(run_dir: str | Path, stage: str,
+                             software: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """把 collect 时观测到的远端软件版本追加进 run_spec。
+
+    设计边界：``config`` / ``protocol_sha256`` 仍是 run 级不可变快照；这里只追加
+    ``software.observed[stage]``，不改变物理协议，也不触发 config 漂移门。legacy
+    run 没有 ``run_spec.json`` 时写 ``<run>/software_observed.json``，不假装重建 spec。
+    """
+    if not software:
+        return None
+    payload = {key: value for key, value in software.items() if value is not None}
+    if not payload:
+        return None
+    record = {"observed_at": now_iso(), **payload}
+    root = Path(run_dir)
+    spec = load_run_spec(root)
+    if spec is not None:
+        observed = spec.setdefault("software", {}).setdefault("observed", {})
+        observed[stage] = record
+        _write_json(spec, root / RUN_SPEC_FILE)
+        return record
+
+    path = root / SOFTWARE_OBSERVED_FILE
+    data: dict[str, Any] = {}
+    if path.is_file():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        except (OSError, ValueError):
+            data = {}
+    data[stage] = record
+    _write_json(data, path)
+    return record
 
 
 # --------------------------------------------------------------------------- #
@@ -355,7 +456,8 @@ def ensure_run_spec(config: Any, run_dir: str | Path, *,
     """确保 run_spec 存在且与当前配置的**物理协议**一致。
 
     - 首次 prepare：写 ``run_spec.json``；
-    - 已有且协议一致：原样返回（run_spec 是 run 级不可变快照）；
+    - 已有且协议一致：原样返回（config/protocol 是 run 级不可变快照；
+      ``software.observed`` 由 :func:`record_observed_software` 在 collect 后追加）；
     - 已有但协议漂移：默认 :class:`ConfigError`，``force=True`` 时把旧文件
       复制成 ``run_spec.previous.json`` 后重绑（新 spec 带 ``rebound: true``）。
     """
@@ -457,4 +559,8 @@ __all__ = [
     "run_spec_sha256",
     "ensure_run_spec",
     "verify_parent_geometry",
+    "SOFTWARE_OBSERVED_FILE",
+    "parse_aims_versions",
+    "parse_aitranss_versions",
+    "record_observed_software",
 ]

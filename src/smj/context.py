@@ -152,10 +152,14 @@ class StageContext:
         if stage == "aitranss_te":
             env.setdefault("ntasks", 1)
             env.setdefault("te_cpus", res.get("cpus") or 16)
-            env.setdefault("te_mem", cluster.mem or res.get("mem") or "8G")
+            # 不要把 cluster.mem（通常是 AIMS/G16 的申请值）直接套给 aitranss：
+            # 它只需 ~8G，24G 的申请会在节点内存被占满时无谓排队。用户显式
+            # 写 te_mem 时仍以用户值为准（cluster.env 已在上面先行合入）。
+            env.setdefault("te_mem", res.get("mem") or "8G")
             env.setdefault("te_walltime", cluster.time_limit or res.get("time_limit") or "02:00:00")
-            if cluster.gres and str(cluster.gres).startswith("gpu"):
-                env.setdefault("te_gres", cluster.gres)
+            # aitranss 是 OpenMP/CPU 程序。不要从 cluster.gres 继承 GPU 请求：
+            # 集群 GPU 被占满时，无谓的 gpu:1 会让它一直 PENDING(Resources)。
+            # 若用户确实想为 te 申请 GPU，在 cluster.env 里显式写 te_gres。
             return env
 
         return env

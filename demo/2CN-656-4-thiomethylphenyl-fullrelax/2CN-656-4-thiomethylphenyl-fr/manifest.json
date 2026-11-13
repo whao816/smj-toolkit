@@ -1,0 +1,918 @@
+{
+  "schema": "smj.report.v1",
+  "run_id": "2CN-656-4-thiomethylphenyl-fr",
+  "root": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr",
+  "generated_at": "2026-11-13T11:42:24+08:00",
+  "spec": {
+    "run": {
+      "name": "2CN-656-4-thiomethylphenyl-fr",
+      "dir": ".",
+      "mode": "slurm-ssh",
+      "clean": false,
+      "keep_going": false
+    },
+    "molecule": {
+      "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\molecule.xyz",
+      "charge": 0,
+      "multiplicity": 1,
+      "method": "b3lyp",
+      "basis": "6-31g(d)",
+      "family": null
+    },
+    "electrode": {
+      "au_per_electrode": 30,
+      "left_anchor": "S",
+      "right_anchor": "S",
+      "au_tip_distance": 2.35,
+      "anchor_au_s_target": null,
+      "pin_contact": false,
+      "strip_thiol_h": false,
+      "vdw": true,
+      "nlayers": null,
+      "source": "library",
+      "library_dir": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library",
+      "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+      "relax": false,
+      "relax_force_threshold": "0.01",
+      "relax_freeze": "backplane"
+    },
+    "transport": {
+      "temperature": 300.0,
+      "energy_window": [
+        -0.22,
+        0.0002,
+        -0.16
+      ],
+      "ener": null,
+      "estep": null,
+      "eend": null,
+      "require_te_out": true,
+      "resolved_window": [
+        -0.22,
+        0.0002,
+        -0.16
+      ]
+    },
+    "cluster": {
+      "host": "gpu-outside",
+      "user": "haow",
+      "port": 22,
+      "key": null,
+      "remote_root": "/home/haow/smj-runs",
+      "partition": "main",
+      "ntasks": 8,
+      "gres": "gpu:1",
+      "account": null,
+      "qos": null,
+      "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species",
+      "time_limit": "06:00:00",
+      "mem": "24G",
+      "poll_seconds": 30.0,
+      "timeout_hours": 8.0,
+      "env": {
+        "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+        "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
+        "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+        "mkl_lib": "/opt/intel/oneapi/2025.3/lib",
+        "g16_module": "Gaussian/g16.c02",
+        "g16_scratch": "/data/tmp/g16-scratch/smj-2cn656-fr",
+        "nproc": "8",
+        "g16_mem": "24G",
+        "g16_walltime": "04:00:00",
+        "te_gres": "gpu:0",
+        "te_mem": "8G",
+        "te_walltime": "02:00:00"
+      }
+    },
+    "paths": {
+      "templates": null,
+      "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species"
+    },
+    "review": {
+      "require_a2": true,
+      "a2_deviation": 0.15,
+      "accept_deviation": null
+    }
+  },
+  "run_spec": {
+    "schema": "smj.run_spec.v1",
+    "created_at": "2026-11-13T10:25:21+08:00",
+    "reconstructed": false,
+    "rebound": false,
+    "run_id": "2CN-656-4-thiomethylphenyl-fr",
+    "run_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr",
+    "config_sha256": "838b8e37eb72662c3a404357c745e7ead63256be7737e929437e823838a8bea8",
+    "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+    "config": {
+      "run": {
+        "name": "2CN-656-4-thiomethylphenyl-fr",
+        "dir": ".",
+        "mode": "slurm-ssh",
+        "clean": false,
+        "keep_going": false
+      },
+      "molecule": {
+        "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\molecule.xyz",
+        "charge": 0,
+        "multiplicity": 1,
+        "method": "b3lyp",
+        "basis": "6-31g(d)",
+        "family": null
+      },
+      "electrode": {
+        "au_per_electrode": 30,
+        "left_anchor": "S",
+        "right_anchor": "S",
+        "au_tip_distance": 2.35,
+        "anchor_au_s_target": null,
+        "pin_contact": false,
+        "strip_thiol_h": false,
+        "vdw": true,
+        "nlayers": null,
+        "source": "library",
+        "library_dir": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library",
+        "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+        "relax": false,
+        "relax_force_threshold": "0.01",
+        "relax_freeze": "backplane"
+      },
+      "transport": {
+        "temperature": 300.0,
+        "energy_window": [
+          -0.22,
+          0.0002,
+          -0.16
+        ],
+        "ener": null,
+        "estep": null,
+        "eend": null,
+        "require_te_out": true,
+        "resolved_window": [
+          -0.22,
+          0.0002,
+          -0.16
+        ]
+      },
+      "cluster": {
+        "host": "gpu-outside",
+        "user": "haow",
+        "port": 22,
+        "key": null,
+        "remote_root": "/home/haow/smj-runs",
+        "partition": "main",
+        "ntasks": 8,
+        "gres": "gpu:1",
+        "account": null,
+        "qos": null,
+        "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species",
+        "time_limit": "06:00:00",
+        "mem": "24G",
+        "poll_seconds": 30.0,
+        "timeout_hours": 8.0,
+        "env": {
+          "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+          "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
+          "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+          "mkl_lib": "/opt/intel/oneapi/2025.3/lib",
+          "g16_module": "Gaussian/g16.c02",
+          "g16_scratch": "/data/tmp/g16-scratch/smj-2cn656-fr",
+          "nproc": "8",
+          "g16_mem": "24G",
+          "g16_walltime": "04:00:00",
+          "te_gres": "gpu:0",
+          "te_mem": "8G",
+          "te_walltime": "02:00:00"
+        }
+      },
+      "paths": {
+        "templates": null,
+        "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species"
+      },
+      "review": {
+        "require_a2": true,
+        "a2_deviation": 0.15,
+        "accept_deviation": null
+      }
+    },
+    "electrode_library": {
+      "path": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library\\fcc111.au.clusters.37_atoms\\fcc111.cluster.natoms37.x1.aims",
+      "exists": false,
+      "sha256": null
+    },
+    "software": {
+      "smj": "0.1.2",
+      "python": "3.12.10",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "git": {
+        "root": "D:\\dsh_projects\\AutoSMJ",
+        "commit": "9ded36b87845afbdd899ba475ee9df3a6ea2f778",
+        "dirty": true
+      },
+      "executables": {
+        "AIMS_BIN": {
+          "path": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+          "exists": null,
+          "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+        },
+        "AITRANSS_BIN": {
+          "path": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+          "exists": null,
+          "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+        },
+        "MKL_LIB": {
+          "path": "/opt/intel/oneapi/2025.3/lib",
+          "exists": null,
+          "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+        }
+      },
+      "cluster_env_keys": [
+        "AIMS_BIN",
+        "AIMS_LD_MODULE",
+        "AITRANSS_BIN",
+        "G16_MEM",
+        "G16_MODULE",
+        "G16_SCRATCH",
+        "G16_WALLTIME",
+        "MKL_LIB",
+        "NPROC",
+        "TE_GRES",
+        "TE_MEM",
+        "TE_WALLTIME"
+      ],
+      "observed": {
+        "aims_scf": {
+          "observed_at": "2026-11-13T11:37:16+08:00",
+          "program": "FHI-aims",
+          "source": "aims.out",
+          "version": "221103",
+          "aims_uuid": "E664726E-443A-4B59-A473-D94CFAD479F4",
+          "commit": "GITDIR-NOTFOUND"
+        },
+        "aitranss_te": {
+          "observed_at": "2026-11-13T11:42:09+08:00",
+          "program": "aitranss",
+          "source": "te.out",
+          "version": "071813",
+          "compiled": "2026/09/23 at 15:38:33 on host gpu1"
+        }
+      }
+    },
+    "molecule": {
+      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\molecule.xyz",
+      "exists": true,
+      "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f"
+    }
+  },
+  "provenance": {
+    "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\run_spec.json",
+    "run_spec_sha256": "c1313aa82c4945c9e72c700357ac858b3a0c76c59b30827d0acf65c43ba2c0a3",
+    "reconstructed": false,
+    "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76"
+  },
+  "state": {
+    "created_at": "2026-11-13T09:56:51+08:00",
+    "updated_at": "2026-11-13T11:42:09+08:00",
+    "stages": {
+      "gaussian_opt": "collected",
+      "aims_tip_relax": "collected",
+      "au60_build": "collected",
+      "aims_scf": "collected",
+      "aitranss_te": "collected",
+      "junction_analyze": "collected"
+    },
+    "details": {
+      "gaussian_opt": {
+        "job_id": "26065",
+        "exit_code": 0,
+        "elapsed_s": 1549.0,
+        "note": null,
+        "error": null
+      },
+      "aims_tip_relax": {
+        "job_id": "26067",
+        "exit_code": 0,
+        "elapsed_s": 1088.2,
+        "note": null,
+        "error": null
+      },
+      "au60_build": {
+        "job_id": null,
+        "exit_code": null,
+        "elapsed_s": null,
+        "note": null,
+        "error": null
+      },
+      "aims_scf": {
+        "job_id": "26068",
+        "exit_code": 0,
+        "elapsed_s": 3186.1,
+        "note": null,
+        "error": null
+      },
+      "aitranss_te": {
+        "job_id": "26070",
+        "exit_code": 0,
+        "elapsed_s": 279.7,
+        "note": null,
+        "error": null
+      },
+      "junction_analyze": {
+        "job_id": null,
+        "exit_code": null,
+        "elapsed_s": null,
+        "note": null,
+        "error": null
+      }
+    },
+    "first_incomplete": null,
+    "is_done": true,
+    "warnings": []
+  },
+  "inputs": {
+    "run_id": "2CN-656-4-thiomethylphenyl-fr",
+    "mode": "slurm-ssh",
+    "temperature_K": 300.0,
+    "spec": {
+      "run": {
+        "name": "2CN-656-4-thiomethylphenyl-fr",
+        "dir": ".",
+        "mode": "slurm-ssh",
+        "clean": false,
+        "keep_going": false
+      },
+      "molecule": {
+        "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\molecule.xyz",
+        "charge": 0,
+        "multiplicity": 1,
+        "method": "b3lyp",
+        "basis": "6-31g(d)",
+        "family": null
+      },
+      "electrode": {
+        "au_per_electrode": 30,
+        "left_anchor": "S",
+        "right_anchor": "S",
+        "au_tip_distance": 2.35,
+        "anchor_au_s_target": null,
+        "pin_contact": false,
+        "strip_thiol_h": false,
+        "vdw": true,
+        "nlayers": null,
+        "source": "library",
+        "library_dir": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library",
+        "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+        "relax": false,
+        "relax_force_threshold": "0.01",
+        "relax_freeze": "backplane"
+      },
+      "transport": {
+        "temperature": 300.0,
+        "energy_window": [
+          -0.22,
+          0.0002,
+          -0.16
+        ],
+        "ener": null,
+        "estep": null,
+        "eend": null,
+        "require_te_out": true,
+        "resolved_window": [
+          -0.22,
+          0.0002,
+          -0.16
+        ]
+      },
+      "cluster": {
+        "host": "gpu-outside",
+        "user": "haow",
+        "port": 22,
+        "key": null,
+        "remote_root": "/home/haow/smj-runs",
+        "partition": "main",
+        "ntasks": 8,
+        "gres": "gpu:1",
+        "account": null,
+        "qos": null,
+        "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species",
+        "time_limit": "06:00:00",
+        "mem": "24G",
+        "poll_seconds": 30.0,
+        "timeout_hours": 8.0,
+        "env": {
+          "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+          "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
+          "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+          "mkl_lib": "/opt/intel/oneapi/2025.3/lib",
+          "g16_module": "Gaussian/g16.c02",
+          "g16_scratch": "/data/tmp/g16-scratch/smj-2cn656-fr",
+          "nproc": "8",
+          "g16_mem": "24G",
+          "g16_walltime": "04:00:00",
+          "te_gres": "gpu:0",
+          "te_mem": "8G",
+          "te_walltime": "02:00:00"
+        }
+      },
+      "paths": {
+        "templates": null,
+        "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species"
+      },
+      "review": {
+        "require_a2": true,
+        "a2_deviation": 0.15,
+        "accept_deviation": null
+      }
+    },
+    "molecule": {
+      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\gaussian_opt\\opt.xyz",
+      "atom_count": 54,
+      "run_input_sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f"
+    },
+    "electrode": {
+      "stage": "au60_build",
+      "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\au60_build\\geometry.in",
+      "atom_count": 128,
+      "au_per_electrode": 37,
+      "left_surface_indices": [
+        82,
+        83,
+        86
+      ],
+      "right_surface_indices": [
+        118,
+        119,
+        122
+      ],
+      "anchor_s_au_distance_A": null,
+      "surface_fingerprint": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85"
+    },
+    "te": {
+      "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat",
+      "efermi_Ha": -0.17951925121,
+      "bias_V": 0.0,
+      "points": 301
+    }
+  },
+  "stages": {
+    "gaussian_opt": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\gaussian_opt",
+      "n_files": 7,
+      "bytes": 1247181,
+      "files": [
+        {
+          "name": ".dsh_done",
+          "bytes": 28,
+          "retrieval": "full",
+          "sha256": "e81ed7676b3bf8090cd49f54fb88f0071556d8143af354c153d3c1a80ee29ec5"
+        },
+        {
+          "name": "gaussian_summary.json",
+          "bytes": 448,
+          "retrieval": "skip",
+          "sha256": "b319c0f01975673cdc38f58ae302b2b541c19854053e870ffff29c5e5cb965e5"
+        },
+        {
+          "name": "input_summary.json",
+          "bytes": 204,
+          "retrieval": "skip",
+          "sha256": "780c9a52d224e7a8b9311a38fc7d54339280277f4446af35e072510fa4421e7d"
+        },
+        {
+          "name": "mol.gjf",
+          "bytes": 3040,
+          "retrieval": "full",
+          "sha256": "1b6f818b7f6e30fa8665827281a56c2f245182b7bb86272c1a005d41418a0fba"
+        },
+        {
+          "name": "mol.log",
+          "bytes": 1239600,
+          "retrieval": "full",
+          "sha256": "8308ebb9e1018c4df2e7694f2e5c18bfbd91ee33f545fd887a9cad801ee44135"
+        },
+        {
+          "name": "opt.xyz",
+          "bytes": 3051,
+          "retrieval": "skip",
+          "sha256": "f4d05c6a34da22c1d177390f0c4178bc57f39f4dcde0ff7fe83f392fe947de83"
+        },
+        {
+          "name": "sub_g16.sh",
+          "bytes": 810,
+          "retrieval": "full",
+          "sha256": "983d144b3ff40863939be433526f74dbd0280d931b0b0eb7bf7e7713e310cb94"
+        }
+      ]
+    },
+    "aims_tip_relax": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_tip_relax",
+      "n_files": 7,
+      "bytes": 19822107,
+      "files": [
+        {
+          "name": ".dsh_done",
+          "bytes": 28,
+          "retrieval": "full",
+          "sha256": "5cb5b0baf866fa2b10d6e50acba96b513821e99140dffbf601d48c568783d5a5"
+        },
+        {
+          "name": "aims.out",
+          "bytes": 19800118,
+          "retrieval": "full",
+          "sha256": "300718c28c2248ad02ad18998b495ade34cac9e2892564f70024854dbe116faa"
+        },
+        {
+          "name": "control.in",
+          "bytes": 13176,
+          "retrieval": "full",
+          "sha256": "7315bf70998958a1269c635d7365e8c0f91c110985bb85791e336d60a614f890"
+        },
+        {
+          "name": "geometry.in",
+          "bytes": 3474,
+          "retrieval": "full",
+          "sha256": "eefa2b185db5d7cc80585f2661fd56b7b09c802038f41211c9e4198b603c827c"
+        },
+        {
+          "name": "geometry.in.next_step",
+          "bytes": 3707,
+          "retrieval": "full",
+          "sha256": "4bbfc558c4e748ec452df8ce809724d6c3e88d32104a56b5ea88a7a8b02cd6b9"
+        },
+        {
+          "name": "input_summary.json",
+          "bytes": 542,
+          "retrieval": "skip",
+          "sha256": "fae59a9bd41b9ab5bbabecccaca319d04343dbe669047b0ed6c2e0a99d0f02b8"
+        },
+        {
+          "name": "sub_aims.sh",
+          "bytes": 1062,
+          "retrieval": "full",
+          "sha256": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368"
+        }
+      ]
+    },
+    "au60_build": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\au60_build",
+      "n_files": 2,
+      "bytes": 10701,
+      "files": [
+        {
+          "name": "electrode_metadata.json",
+          "bytes": 2691,
+          "retrieval": "unknown",
+          "sha256": "d19b655afe18fc8dce431b5e35baa7ee2d0dfbac4a102e033070f9a1509db1a1"
+        },
+        {
+          "name": "geometry.in",
+          "bytes": 8010,
+          "retrieval": "unknown",
+          "sha256": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85"
+        }
+      ]
+    },
+    "aims_scf": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_scf",
+      "n_files": 9,
+      "bytes": 1839105,
+      "files": [
+        {
+          "name": ".dsh_done",
+          "bytes": 28,
+          "retrieval": "full",
+          "sha256": "87bf4cd051cbf24e49046c1ae24a27ddfd0404c2383bcd8be2053f2cfd7eec9f"
+        },
+        {
+          "name": "aims.out",
+          "bytes": 1668814,
+          "retrieval": "full",
+          "sha256": "b74d53c9e964b92240a5c79af53f765aa8b05f6ebdaa47d948a0a3b5d294aee5"
+        },
+        {
+          "name": "basis-indices.out",
+          "bytes": 147099,
+          "retrieval": "full",
+          "sha256": "129dc5dc1e6dbd580a3130a933cc6eef315ff7814b56175653b3fb9d72beea89"
+        },
+        {
+          "name": "control.in",
+          "bytes": 13586,
+          "retrieval": "full",
+          "sha256": "3d84900e945870dbfa74ca2cb4fb10f4d4bf08cd5ed4cb5149a8ae97b49e0cbb"
+        },
+        {
+          "name": "geometry.in",
+          "bytes": 8010,
+          "retrieval": "full",
+          "sha256": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85"
+        },
+        {
+          "name": "input_summary.json",
+          "bytes": 334,
+          "retrieval": "skip",
+          "sha256": "00a04398d24c7e4aee11fcbc9c4b0a8901a9a70e19a2e1f4cee1de256dd49b35"
+        },
+        {
+          "name": "mos.aims",
+          "bytes": 112,
+          "retrieval": "head",
+          "sha256": "3c645de3ce4fe8eedbad8fdac2e25519c99b1f275fc715be0fba8c74299d95e7"
+        },
+        {
+          "name": "omat.aims",
+          "bytes": 60,
+          "retrieval": "head",
+          "sha256": "5d6885c70f4fb219f83199bf9333b6209f6f1ed24f2a12939ad79cad13bfd3fa"
+        },
+        {
+          "name": "sub_aims.sh",
+          "bytes": 1062,
+          "retrieval": "full",
+          "sha256": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368"
+        }
+      ]
+    },
+    "aitranss_te": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te",
+      "n_files": 7,
+      "bytes": 63046,
+      "files": [
+        {
+          "name": ".dsh_done",
+          "bytes": 28,
+          "retrieval": "full",
+          "sha256": "dc1af363c178e80d3add90c6885edee8e6a928e62da9f7e1bedc3c2adb045283"
+        },
+        {
+          "name": "input_summary.json",
+          "bytes": 504,
+          "retrieval": "skip",
+          "sha256": "7571fc8f2d2a09328b8027217073cae5889d2132b65e5049d383d77648eecd11"
+        },
+        {
+          "name": "self.energy.in",
+          "bytes": 11950,
+          "retrieval": "full",
+          "sha256": "3f05dfb497446e62b246ad1d4d1d3dcc2c74d324499fc97960fb39f67ee6e5cb"
+        },
+        {
+          "name": "sub_te.sh",
+          "bytes": 1030,
+          "retrieval": "full",
+          "sha256": "947f2ded861fde3f4e4188f8a1f50b901fa8dd46abd65ff876d8be55cd9f6786"
+        },
+        {
+          "name": "tcontrol",
+          "bytes": 534,
+          "retrieval": "full",
+          "sha256": "cbaf296901b49ad88696dd0f14e408a7724fed77eb3c189375c3d8d43d8e10b7"
+        },
+        {
+          "name": "TE.dat",
+          "bytes": 16394,
+          "retrieval": "full",
+          "sha256": "327136be2b06ac78a43d5a801a0384abe1bdd2493dea4bdc9aabf34f57cf9489"
+        },
+        {
+          "name": "te.out",
+          "bytes": 32606,
+          "retrieval": "full",
+          "sha256": "8f7989593eb73cb5aa62d9c9b641cb47e77cd0941e38c9e8afab2420bf09dc76"
+        }
+      ]
+    },
+    "junction_analyze": {
+      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\junction_analyze",
+      "n_files": 1,
+      "bytes": 677,
+      "files": [
+        {
+          "name": "results.json",
+          "bytes": 677,
+          "retrieval": "unknown",
+          "sha256": "16b8d98e433bd8c4321cccfafd11bfc1ba567c4027584906db9a1dd3bcbf639c"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "gaussian_opt": {
+      "source": "state",
+      "walltime": "00:15:00",
+      "time_limit": "00:29:00",
+      "mem": "9G",
+      "ntasks": 1,
+      "cpus": null,
+      "cores": 1,
+      "atoms": 54,
+      "core_h": 0.25,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点线性外推：墙钟 60+10·N s，内存 4.0+0.05·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    },
+    "aims_tip_relax": {
+      "source": "state",
+      "walltime": "00:39:00",
+      "time_limit": "01:14:00",
+      "mem": "17G",
+      "ntasks": 4,
+      "cpus": null,
+      "cores": 4,
+      "atoms": 56,
+      "core_h": 2.58,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    },
+    "aims_scf": {
+      "source": "state",
+      "walltime": "01:23:00",
+      "time_limit": "02:36:00",
+      "mem": "16G",
+      "ntasks": 4,
+      "cpus": null,
+      "cores": 4,
+      "atoms": 128,
+      "core_h": 5.47,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点 132 原子 4320 s / 13.3 GiB；墙钟 x N^3.0、内存 x N^2.0 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    },
+    "aitranss_te": {
+      "source": "state",
+      "walltime": "00:49:00",
+      "time_limit": "01:33:00",
+      "mem": "10G",
+      "ntasks": 1,
+      "cpus": 1,
+      "cores": 1,
+      "atoms": 128,
+      "core_h": 0.81,
+      "capped": [],
+      "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点 132 原子 2552 s / 8.0 GiB；墙钟 x N^3.0、内存 x N^1.5 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
+      "budget": {
+        "ok": true,
+        "reason": "在预算内"
+      }
+    }
+  },
+  "transport": {
+    "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat",
+    "points": 301,
+    "temperature_K": 300.0,
+    "L0": 0.001284826359091114,
+    "L1": 1.121338940111968e-05,
+    "L2": 4.464405163904677e-06,
+    "log10_G_over_G0_like": -2.8911555621258005,
+    "S_uV_per_K": -29.091841404032294,
+    "k_e_pW_per_K": 1.1277455092034885,
+    "ZT_electronic": 0.02241258527146982,
+    "fermi_nearest": {
+      "E_Hartree": -0.1796,
+      "E_minus_Ef_eV": -0.00219729,
+      "T": 0.001216503179
+    },
+    "max_transmission": {
+      "E_Hartree": -0.1706,
+      "E_minus_Ef_eV": 0.24270517,
+      "T": 0.5911882613
+    },
+    "state_results": {
+      "aitranss_te": {
+        "points": 301,
+        "te_bytes": 16394,
+        "max_transmission": 0.5911882613,
+        "has_te_out": true,
+        "require_te_out": true,
+        "software": {
+          "program": "aitranss",
+          "source": "te.out",
+          "version": "071813",
+          "compiled": "2026/09/23 at 15:38:33 on host gpu1"
+        }
+      }
+    }
+  },
+  "failures": [],
+  "warnings": [],
+  "verdict": {
+    "passed": false,
+    "engineering_passed": true,
+    "errors": 3,
+    "warnings": 1,
+    "physics_verdict": "failed",
+    "wording": "否证 H0",
+    "allowed_action": "停; 不得进入预测模式(任务卡 §7.3②)",
+    "failed_criteria": [
+      "t_ef_magnitude",
+      "g_in_theory_band",
+      "seebeck_sign"
+    ],
+    "inconclusive_criteria": [
+      "t_ef_no_peak_near_ef"
+    ],
+    "missing_evidence_criteria": [],
+    "not_applicable_criteria": []
+  },
+  "checks": [
+    {
+      "name": "gaussian_termination",
+      "value": true,
+      "passed": true,
+      "severity": "info",
+      "detail": "Gaussian Normal termination"
+    },
+    {
+      "name": "gaussian_no_imaginary",
+      "value": 0,
+      "passed": true,
+      "severity": "info",
+      "detail": "无虚频(结构稳定)"
+    },
+    {
+      "name": "aims_tip_relax",
+      "value": true,
+      "passed": true,
+      "severity": "info",
+      "detail": "geometry.in.next_step 存在(tip relax 完成)"
+    },
+    {
+      "name": "aims_scf",
+      "value": true,
+      "passed": true,
+      "severity": "info",
+      "detail": "aims.out 存在且无失败标记(SCF 完成)"
+    },
+    {
+      "name": "aitranss_te",
+      "value": 301,
+      "passed": true,
+      "severity": "info",
+      "detail": "TE.dat 含 301 数据行"
+    },
+    {
+      "name": "efermi_source",
+      "value": -0.17951925121,
+      "passed": true,
+      "severity": "info",
+      "detail": "efermi 取自 TE.dat 表头(aitranss 实际使用值)"
+    },
+    {
+      "name": "t_ef_magnitude",
+      "value": 0.001216503179,
+      "passed": false,
+      "severity": "error",
+      "detail": "T(E_F)=0.0012 带 0.03-0.40 G0 (Thygesen 2005 p.13)[适用域: 适用; 体系族 未知(按适用处理)]",
+      "applicable": true
+    },
+    {
+      "name": "t_ef_no_peak_near_ef",
+      "value": 0.2427,
+      "passed": false,
+      "severity": "warn",
+      "detail": "E_F 近旁 0.2427 eV 处有显著峰(T=0.5912); 基准要求 1.0 eV 内无峰 (Thygesen 2005 p.12; 突出度门限 0.10 为工程约定)",
+      "applicable": true
+    },
+    {
+      "name": "g_in_theory_band",
+      "value": 0.001284826359091114,
+      "passed": false,
+      "severity": "error",
+      "detail": "G=0.0013 G0 带 0.03-0.40 (任务卡 §4.2)[适用域: 适用; 体系族 未知(按适用处理)]",
+      "applicable": true
+    },
+    {
+      "name": "seebeck_sign",
+      "value": -29.091841404032294,
+      "passed": false,
+      "severity": "error",
+      "detail": "S=-29.0918 uV/K 应为正(Reddy 2007 +8.7+-2.1)[适用域: 适用; 体系族 未知(按适用处理)]",
+      "applicable": true
+    },
+    {
+      "name": "k_e_zt_order",
+      "value": {
+        "k_e": 1.1277455092034885,
+        "ZT_e": 0.02241258527146982
+      },
+      "passed": true,
+      "severity": "warn",
+      "detail": "k_e=1.1277 pW/K, ZT_e=0.022413 应非负(来源待补)",
+      "applicable": true
+    }
+  ],
+  "totals": {
+    "bytes": 22982817,
+    "gib": 0.021,
+    "stages": 6
+  }
+}

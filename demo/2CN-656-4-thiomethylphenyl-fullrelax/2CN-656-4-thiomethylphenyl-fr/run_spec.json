@@ -1,0 +1,169 @@
+{
+  "schema": "smj.run_spec.v1",
+  "created_at": "2026-11-13T10:25:21+08:00",
+  "reconstructed": false,
+  "rebound": false,
+  "run_id": "2CN-656-4-thiomethylphenyl-fr",
+  "run_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr",
+  "config_sha256": "838b8e37eb72662c3a404357c745e7ead63256be7737e929437e823838a8bea8",
+  "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+  "config": {
+    "run": {
+      "name": "2CN-656-4-thiomethylphenyl-fr",
+      "dir": ".",
+      "mode": "slurm-ssh",
+      "clean": false,
+      "keep_going": false
+    },
+    "molecule": {
+      "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\molecule.xyz",
+      "charge": 0,
+      "multiplicity": 1,
+      "method": "b3lyp",
+      "basis": "6-31g(d)",
+      "family": null
+    },
+    "electrode": {
+      "au_per_electrode": 30,
+      "left_anchor": "S",
+      "right_anchor": "S",
+      "au_tip_distance": 2.35,
+      "anchor_au_s_target": null,
+      "pin_contact": false,
+      "strip_thiol_h": false,
+      "vdw": true,
+      "nlayers": null,
+      "source": "library",
+      "library_dir": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library",
+      "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+      "relax": false,
+      "relax_force_threshold": "0.01",
+      "relax_freeze": "backplane"
+    },
+    "transport": {
+      "temperature": 300.0,
+      "energy_window": [
+        -0.22,
+        0.0002,
+        -0.16
+      ],
+      "ener": null,
+      "estep": null,
+      "eend": null,
+      "require_te_out": true,
+      "resolved_window": [
+        -0.22,
+        0.0002,
+        -0.16
+      ]
+    },
+    "cluster": {
+      "host": "gpu-outside",
+      "user": "haow",
+      "port": 22,
+      "key": null,
+      "remote_root": "/home/haow/smj-runs",
+      "partition": "main",
+      "ntasks": 8,
+      "gres": "gpu:1",
+      "account": null,
+      "qos": null,
+      "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species",
+      "time_limit": "06:00:00",
+      "mem": "24G",
+      "poll_seconds": 30.0,
+      "timeout_hours": 8.0,
+      "env": {
+        "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+        "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
+        "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+        "mkl_lib": "/opt/intel/oneapi/2025.3/lib",
+        "g16_module": "Gaussian/g16.c02",
+        "g16_scratch": "/data/tmp/g16-scratch/smj-2cn656-fr",
+        "nproc": "8",
+        "g16_mem": "24G",
+        "g16_walltime": "04:00:00",
+        "te_gres": "gpu:0",
+        "te_mem": "8G",
+        "te_walltime": "02:00:00"
+      }
+    },
+    "paths": {
+      "templates": null,
+      "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species"
+    },
+    "review": {
+      "require_a2": true,
+      "a2_deviation": 0.15,
+      "accept_deviation": null
+    }
+  },
+  "electrode_library": {
+    "path": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library\\fcc111.au.clusters.37_atoms\\fcc111.cluster.natoms37.x1.aims",
+    "exists": false,
+    "sha256": null
+  },
+  "software": {
+    "smj": "0.1.2",
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "git": {
+      "root": "D:\\dsh_projects\\AutoSMJ",
+      "commit": "9ded36b87845afbdd899ba475ee9df3a6ea2f778",
+      "dirty": true
+    },
+    "executables": {
+      "AIMS_BIN": {
+        "path": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+        "exists": null,
+        "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+      },
+      "AITRANSS_BIN": {
+        "path": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+        "exists": null,
+        "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+      },
+      "MKL_LIB": {
+        "path": "/opt/intel/oneapi/2025.3/lib",
+        "exists": null,
+        "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+      }
+    },
+    "cluster_env_keys": [
+      "AIMS_BIN",
+      "AIMS_LD_MODULE",
+      "AITRANSS_BIN",
+      "G16_MEM",
+      "G16_MODULE",
+      "G16_SCRATCH",
+      "G16_WALLTIME",
+      "MKL_LIB",
+      "NPROC",
+      "TE_GRES",
+      "TE_MEM",
+      "TE_WALLTIME"
+    ],
+    "observed": {
+      "aims_scf": {
+        "observed_at": "2026-11-13T11:37:16+08:00",
+        "program": "FHI-aims",
+        "source": "aims.out",
+        "version": "221103",
+        "aims_uuid": "E664726E-443A-4B59-A473-D94CFAD479F4",
+        "commit": "GITDIR-NOTFOUND"
+      },
+      "aitranss_te": {
+        "observed_at": "2026-11-13T11:42:09+08:00",
+        "program": "aitranss",
+        "source": "te.out",
+        "version": "071813",
+        "compiled": "2026/09/23 at 15:38:33 on host gpu1"
+      }
+    }
+  },
+  "molecule": {
+    "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\molecule.xyz",
+    "exists": true,
+    "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f"
+  }
+}

@@ -1,0 +1,74 @@
+# Full-relax acceptance protocol (2026-11-13):
+#   aims_tip_relax: all-atom optimization, NO Au-S constraint
+#   au60_build: expand each single tip Au into the full pyramid cluster
+#   au_relax: disabled (relax: false) -> geometry frozen for SCF/transport
+run:
+  name: 2CN-656-4-thiomethylphenyl-fr
+  dir: .
+  mode: slurm-ssh
+  clean: false
+  keep_going: false
+
+molecule:
+  xyz: molecule.xyz
+  charge: 0
+  multiplicity: 1
+  method: b3lyp
+  basis: 6-31g(d)
+  family: null
+
+electrode:
+  source: library
+  library_dir: /data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library
+  library_cluster: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims
+  left_anchor: S
+  right_anchor: S
+  au_tip_distance: 2.35
+  anchor_au_s_target: null
+  pin_contact: false
+  strip_thiol_h: false
+  vdw: true
+  nlayers: null
+  relax: false
+  relax_force_threshold: 1.e-2
+  relax_freeze: backplane
+
+transport:
+  temperature: 300.0
+  energy_window: [-0.22, 0.0002, -0.16]
+  require_te_out: true
+
+cluster:
+  host: gpu-outside
+  user: haow
+  port: 22
+  remote_root: /home/haow/smj-runs
+  partition: main
+  ntasks: 8
+  gres: gpu:1
+  mem: 24G
+  time_limit: 06:00:00
+  poll_seconds: 30
+  timeout_hours: 8
+  species_dir: D:/dsh_projects/AutoSMJ/demo/2CN-656-4-thiomethylphenyl-fullrelax/species
+  env:
+    aims_bin: /data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x
+    aims_ld_module: fhi-aims/221103-cuda12.8-oneapi2025.3
+    aitranss_bin: /data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x
+    mkl_lib: /opt/intel/oneapi/2025.3/lib
+    g16_module: Gaussian/g16.c02
+    g16_scratch: /data/tmp/g16-scratch/smj-2cn656-fr
+    nproc: 8
+    g16_mem: 24G
+    g16_walltime: 04:00:00
+    te_gres: gpu:0
+    te_mem: 8G
+    te_walltime: 02:00:00
+
+paths:
+  species_defaults: D:/dsh_projects/AutoSMJ/demo/2CN-656-4-thiomethylphenyl-fullrelax/species
+
+review:
+  require_a2: true
+  a2_deviation: 0.15
+

@@ -196,6 +196,25 @@ def test_run_spec_hashes_electrode_library(workdir):
     assert protocol_sha256(config) != spec["protocol_sha256"]
 
 
+def test_run_spec_keeps_remote_posix_paths_verbatim(workdir):
+    """slurm-ssh 的 POSIX 路径不能被 Windows Path() 改写成反斜杠。
+
+    2026-11-13 的验收 run 里 run_spec 把 /data/apps/... 记成 \\data\\apps\\... 且
+    exists=false，读起来像"二进制缺失"。远端路径应原样记录，exists 记 None
+    （本机不知道），而不是谎报 False。
+    """
+    from smj.provenance import run_spec_payload
+
+    config = _config(workdir)
+    config.run.mode = "slurm-ssh"
+    config.cluster.env = {"AIMS_BIN": "/data/apps/aims/bin/aims.x"}
+    payload = run_spec_payload(config, workdir / "run")
+
+    entry = payload["software"]["executables"]["AIMS_BIN"]
+    assert entry["path"] == "/data/apps/aims/bin/aims.x"
+    assert entry["exists"] is None
+
+
 def test_guard_geometry_fingerprint_rejects_mismatch(workdir):
     from smj.provenance import verify_parent_geometry
 

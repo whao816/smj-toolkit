@@ -1,0 +1,358 @@
+{
+  "schema": "smj.review.v1",
+  "generated_at": "2026-11-13T19:53:39+08:00",
+  "run_id": "2CN-656-4-thiomethylphenyl-aimsopt",
+  "status": "passed",
+  "ok": true,
+  "accepted": false,
+  "config": {
+    "require_a2": true,
+    "a2_deviation": 0.15,
+    "accept_deviation": null
+  },
+  "issues": [
+    {
+      "severity": "info",
+      "code": "structure_ok",
+      "message": "结构几何闸门通过"
+    },
+    {
+      "severity": "info",
+      "code": "a2_confirmed",
+      "message": "A2 确认有效（指纹 0638355fa2c6）"
+    }
+  ],
+  "errors": 0,
+  "warnings": 0,
+  "a2": {
+    "present": true,
+    "valid": true,
+    "confirmation": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\au60_build\\a2_confirmation.json",
+    "audit": {
+      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\au60_build\\a2_surface_audit.json",
+      "ok": true,
+      "checks": [
+        {
+          "name": "indices_shape",
+          "ok": true,
+          "detail": "left 表面索引 [82, 83, 86]: 须恰好 3 个且在 1..128",
+          "value": [
+            82,
+            83,
+            86
+          ]
+        },
+        {
+          "name": "indices_are_au",
+          "ok": true,
+          "detail": "left 表面索引元素: ['Au', 'Au', 'Au']",
+          "value": [
+            "Au",
+            "Au",
+            "Au"
+          ]
+        },
+        {
+          "name": "sides_disjoint",
+          "ok": true,
+          "detail": "left 与对侧表面索引不相交",
+          "value": []
+        },
+        {
+          "name": "same_surface_layer",
+          "ok": true,
+          "detail": "left 三个原子与最远投影层的最大偏差 0.000000 A(容差 0.001); 该层共 15 个 Au",
+          "value": {
+            "layer_size": 15,
+            "layer_indices": [
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90
+            ],
+            "max_gap_A": 2.000385279643524e-08
+          }
+        },
+        {
+          "name": "non_collinear",
+          "ok": true,
+          "detail": "left 三角形面积 3.6009 A^2(下限 0.5)",
+          "value": {
+            "area_A2": 3.6008720811383546,
+            "edges_A": [
+              2.8837229241211224,
+              2.8837229116020695,
+              2.883722914974885
+            ]
+          }
+        },
+        {
+          "name": "plane_normal_along_axis",
+          "ok": true,
+          "detail": "left 三角形法向与输运轴夹角 0.000 度(上限 1)",
+          "value": {
+            "angle_deg": 0.0,
+            "normal": [
+              -0.6310514273984777,
+              0.334773811666501,
+              0.6997861037492998
+            ]
+          }
+        },
+        {
+          "name": "plane_is_boundary",
+          "ok": true,
+          "detail": "left 平面外侧电极原子 [] / 平面外分子原子 []; tip 在内侧=True",
+          "value": {
+            "beyond": [],
+            "molecule_outside": [],
+            "tip_inside": true
+          }
+        },
+        {
+          "name": "deterministic_indices",
+          "ok": true,
+          "detail": "left det-v1 重算 [82, 83, 86] vs metadata [82, 83, 86](不一致=索引不是几何的确定性函数)",
+          "value": [
+            82,
+            83,
+            86
+          ]
+        },
+        {
+          "name": "indices_shape",
+          "ok": true,
+          "detail": "right 表面索引 [118, 119, 122]: 须恰好 3 个且在 1..128",
+          "value": [
+            118,
+            119,
+            122
+          ]
+        },
+        {
+          "name": "indices_are_au",
+          "ok": true,
+          "detail": "right 表面索引元素: ['Au', 'Au', 'Au']",
+          "value": [
+            "Au",
+            "Au",
+            "Au"
+          ]
+        },
+        {
+          "name": "sides_disjoint",
+          "ok": true,
+          "detail": "right 与对侧表面索引不相交",
+          "value": []
+        },
+        {
+          "name": "same_surface_layer",
+          "ok": true,
+          "detail": "right 三个原子与最远投影层的最大偏差 0.000000 A(容差 0.001); 该层共 15 个 Au",
+          "value": {
+            "layer_size": 15,
+            "layer_indices": [
+              112,
+              113,
+              114,
+              115,
+              116,
+              117,
+              118,
+              119,
+              120,
+              121,
+              122,
+              123,
+              124,
+              125,
+              126
+            ],
+            "max_gap_A": 8.782082616676234e-09
+          }
+        },
+        {
+          "name": "non_collinear",
+          "ok": true,
+          "detail": "right 三角形面积 3.6009 A^2(下限 0.5)",
+          "value": {
+            "area_A2": 3.6008720801761713,
+            "edges_A": [
+              2.8837229146486343,
+              2.883722919086288,
+              2.8837229158073225
+            ]
+          }
+        },
+        {
+          "name": "plane_normal_along_axis",
+          "ok": true,
+          "detail": "right 三角形法向与输运轴夹角 0.000 度(上限 1)",
+          "value": {
+            "angle_deg": 8.537736462515939e-07,
+            "normal": [
+              -0.1067781992535405,
+              -0.1356463955280997,
+              0.9849865336868344
+            ]
+          }
+        },
+        {
+          "name": "plane_is_boundary",
+          "ok": true,
+          "detail": "right 平面外侧电极原子 [] / 平面外分子原子 []; tip 在内侧=True",
+          "value": {
+            "beyond": [],
+            "molecule_outside": [],
+            "tip_inside": true
+          }
+        },
+        {
+          "name": "deterministic_indices",
+          "ok": true,
+          "detail": "right det-v1 重算 [118, 119, 122] vs metadata [118, 119, 122](不一致=索引不是几何的确定性函数)",
+          "value": [
+            118,
+            119,
+            122
+          ]
+        },
+        {
+          "name": "tcontrol_match",
+          "ok": true,
+          "detail": "tcontrol(D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\aitranss_te\\tcontrol) 与 metadata 表面索引一致: left tcontrol=[82, 83, 86] metadata=[82, 83, 86]; right tcontrol=[118, 119, 122] metadata=[118, 119, 122]",
+          "value": {
+            "lsurc": 82,
+            "lsurx": 83,
+            "lsury": 86,
+            "rsurc": 118,
+            "rsurx": 119,
+            "rsury": 122
+          }
+        }
+      ]
+    },
+    "recorded": {
+      "fingerprint": "0638355fa2c6ae631d76271da57d97134e1e868ccf4a93f611a64cd6fd373c91",
+      "who": "automated-acceptance",
+      "when": "2026-11-13T11:53:39+00:00",
+      "indices": {
+        "left_surface_indices": [
+          82,
+          83,
+          86
+        ],
+        "right_surface_indices": [
+          118,
+          119,
+          122
+        ]
+      }
+    },
+    "current": null,
+    "deviation": 0.0,
+    "reason": "A2 确认有效(指纹 0638355fa2c6, automated-acceptance @ 2026-11-13T11:53:39+00:00)",
+    "current_indices": {
+      "left": [
+        82,
+        83,
+        86
+      ],
+      "right": [
+        118,
+        119,
+        122
+      ]
+    },
+    "recorded_indices": {
+      "left": [
+        82,
+        83,
+        86
+      ],
+      "right": [
+        118,
+        119,
+        122
+      ]
+    },
+    "fingerprint_current": "0638355fa2c6ae631d76271da57d97134e1e868ccf4a93f611a64cd6fd373c91",
+    "fingerprint_recorded": "0638355fa2c6ae631d76271da57d97134e1e868ccf4a93f611a64cd6fd373c91"
+  },
+  "structure": {
+    "passed": true,
+    "errors": 0,
+    "warnings": 0,
+    "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\au60_build\\geometry.in",
+    "metadata": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\au60_build\\electrode_metadata.json",
+    "checks": [
+      {
+        "name": "junction_geom_surface_valid",
+        "value": {
+          "left": [
+            82,
+            83,
+            86
+          ],
+          "right": [
+            118,
+            119,
+            122
+          ]
+        },
+        "passed": true,
+        "severity": "info",
+        "detail": "左右表面索引合法且不相交(左 3 / 右 3 个, 共 128 原子)"
+      },
+      {
+        "name": "junction_geom_surface_side",
+        "value": {
+          "axis": "y"
+        },
+        "passed": true,
+        "severity": "info",
+        "detail": "左右表面索引均位于输运轴(y)正确一侧"
+      },
+      {
+        "name": "junction_geom_contacts",
+        "value": null,
+        "passed": true,
+        "severity": "info",
+        "detail": "128 原子无重叠(元素对下限 + 3 A 预筛; C-H 1.09 合法、Au-H 1.16 属重叠)"
+      },
+      {
+        "name": "junction_geom_anchor_aus",
+        "value": {
+          "distance_A": 2.4247,
+          "chemistry": "thioether"
+        },
+        "passed": true,
+        "severity": "info",
+        "detail": "S45-Au55 = 2.4247 A；锚定 S 为硫醚(-S-)，Au–S 是配位接触，2.40–2.49 A 的硫醇盐有源带不适用（不作偏离判定；接触上限 3.50 A 取自 vdW 和）"
+      },
+      {
+        "name": "junction_geom_electrode_extent",
+        "value": {
+          "left": 16.614,
+          "right": 11.377
+        },
+        "passed": true,
+        "severity": "info",
+        "detail": "电极沿输运轴(y)延伸: 左 16.61 A / 右 11.38 A(仅报告; 下限 N 无源待定)"
+      }
+    ]
+  },
+  "review_path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\review.json",
+  "written": true
+}

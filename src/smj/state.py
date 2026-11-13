@@ -40,15 +40,18 @@ STAGE_ORDER: tuple[str, ...] = (
     "gaussian_opt",
     "aims_tip_relax",
     "au60_build",
-    "au_relax",
     "aims_scf",
     "aitranss_te",
     "junction_analyze",
 )
 
+#: 2026-11-13：``au_relax`` 已从主链路移除。保留该名字仅用于读取/操作旧 run
+#: （``smj stage au_relax`` 仍可用），不再参与 ``run``、``plan``、report 的阶段序列。
+LEGACY_STAGES: tuple[str, ...] = ("au_relax",)
+
 #: 远程阶段（需要 Slurm 作业）；au60_build / junction_analyze 是纯本地阶段。
 REMOTE_STAGES: tuple[str, ...] = (
-    "gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te",
+    "gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te",
 )
 LOCAL_STAGES: tuple[str, ...] = ("au60_build", "junction_analyze")
 
@@ -104,24 +107,35 @@ def normalize_stage(name: str) -> str:
         raise SmjError("阶段名不能为空")
     key = str(name).strip().lower().replace(" ", "_")
     key = re.sub(r"_+", "_", key)
-    if key in STAGE_ORDER:
+    if key in STAGE_ORDER or key in LEGACY_STAGES:
         return key
     if key in _ALIASES:
         return _ALIASES[key]
-    raise SmjError("未知阶段 %r；可选: %s" % (name, ", ".join(STAGE_ORDER)))
+    raise SmjError("未知阶段 %r；可选: %s（legacy: %s）"
+                   % (name, ", ".join(STAGE_ORDER), ", ".join(LEGACY_STAGES)))
 
 
 def stage_index(name: str) -> int:
-    return STAGE_ORDER.index(normalize_stage(name))
+    normalized = normalize_stage(name)
+    if normalized not in STAGE_ORDER:
+        raise SmjError("阶段 %s 已从主链路移除（仅兼容旧 run）" % normalized)
+    return STAGE_ORDER.index(normalized)
 
 
 def next_stage(name: str) -> str | None:
-    idx = stage_index(name)
+    normalized = normalize_stage(name)
+    if normalized == "au_relax":
+        return "aims_scf"
+    idx = stage_index(normalized)
     return STAGE_ORDER[idx + 1] if idx + 1 < len(STAGE_ORDER) else None
 
 
 def previous_stage(name: str) -> str | None:
-    idx = stage_index(name)
+    normalized = normalize_stage(name)
+    # au_relax 已不在链路上；旧 run 单独操作它时，其上游仍是 au60_build。
+    if normalized == "au_relax":
+        return "au60_build"
+    idx = stage_index(normalized)
     return STAGE_ORDER[idx - 1] if idx > 0 else None
 
 
@@ -225,7 +239,15 @@ class RunState:
 
     # -- 查询 -------------------------------------------------------------- #
     def stage(self, name: str) -> StageState:
-        return self.stages[normalize_stage(name)]
+        key = normalize_stage(name)
+        if key not in self.stages:
+            # 2026-11-13：au_relax 已从主链路移除，但旧 run 的 state 和显式的
+            # `smj stage au_relax ...` 仍需可读；按需创建 legacy 段，不污染新 run。
+            if key in LEGACY_STAGES:
+                self.stages[key] = StageState()
+            else:
+                raise KeyError(key)
+        return self.stages[key]
 
     def status(self, name: str) -> str:
         return self.stage(name).status
@@ -282,12 +304,14 @@ class RunState:
 
     # -- 持久化 ------------------------------------------------------------ #
     def to_dict(self) -> dict[str, Any]:
+        ordered = list(STAGE_ORDER)
+        ordered += [name for name in LEGACY_STAGES if name in self.stages]
         return {
             "schema": "smj.state.v1",
             "run": self.run,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "stages": {name: self.stages[name].to_dict() for name in STAGE_ORDER},
+            "stages": {name: self.stages[name].to_dict() for name in ordered},
             "results": dict(self.results),
             "warnings": list(self.warnings),
         }

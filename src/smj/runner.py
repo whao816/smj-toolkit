@@ -495,7 +495,17 @@ class StageRunner:
         if (self.config.mode == "slurm-ssh" and not self.dry_run
                 and not local_only and remote_stage):
             self._log("[%s] 回取产物 ..." % key)
-            download = self._session().download(key, stage_dir)
+            names = None
+            if key == "gaussian_opt":
+                engine = str(getattr(getattr(self.config, "molecule", None),
+                                     "opt_engine", "gaussian") or "gaussian")
+                if engine.lower() == "aims":
+                    # vendored retrieval_plan 的 gaussian_opt 条目是 Gaussian 口径
+                    # （mol.gjf/mol.log/sub_g16.sh）；aims 引擎的产物名不同，显式给出。
+                    names = ["geometry.in", "control.in", "sub_aims.sh",
+                             "input_summary.json", "aims.out",
+                             "geometry.in.next_step", ".dsh_done"]
+            download = self._session().download(key, stage_dir, names=names)
             self.state.set(
                 key, download_fetched=download["fetched"],
                 download_head_fetched=download.get("head_fetched") or [],

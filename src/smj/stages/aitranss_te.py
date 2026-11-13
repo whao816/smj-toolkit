@@ -17,7 +17,12 @@ from .._vendor.junction.inputs import make_aitranss_input
 from .._vendor.junction.landauer import read_te
 from .._vendor.junction.self_energy import make_self_energy
 from ..errors import StageBlocked, StageError
-from ..provenance import sha256_file, verify_parent_geometry
+from ..provenance import (
+    parse_aitranss_versions,
+    record_observed_software,
+    sha256_file,
+    verify_parent_geometry,
+)
 from ._helpers import est_record, submit_command
 from .base import Collected, Prepared, Stage, register
 
@@ -39,17 +44,15 @@ class AitranssTeStage(Stage):
             raise StageBlocked(
                 self.name, "缺 aims_scf/geometry.in（tcontrol 需要结几何）", [str(scf_geometry)])
         metadata = self._metadata(ctx)
-        geometry = ctx.artifact("au_relax", "geometry.in")
-        parent_stage = "au_relax"
-        if not geometry.is_file():
-            geometry = ctx.artifact("au60_build", "geometry.in")
-            parent_stage = "au60_build"
+        geometry = ctx.artifact("au60_build", "geometry.in")
+        parent_stage = "au60_build"
         if not geometry.is_file():
             # 独立运行（--scf-dir）时上游目录可能不在：SCF 目录里的几何是同一份。
             geometry = scf_geometry
             parent_stage = "aims_scf"
-        # P0-3：透射计算消费的几何必须与 metadata 记录的指纹一致。
-        verify_parent_geometry(self.name, geometry, metadata)
+        # P0-3：透射计算消费的几何必须与 metadata 记录的指纹一致；并且
+        # tcontrol 的 $coord 与 self.energy.in 的电极划分必须来自同一份几何。
+        self._verify_geometry_chain(geometry, scf_geometry, metadata)
         natoms = self.count_aims_atoms(scf_geometry)
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)
@@ -110,21 +113,63 @@ class AitranssTeStage(Stage):
             rows = read_te(te)
         except ValueError as exc:
             raise StageError("aitranss_te 无法解析 TE.dat: %s" % exc) from exc
+
         notes: list[str] = []
-        if not (stage_dir / "te.out").is_file():
-            notes.append("缺 te.out（aitranss 主输出）：请确认作业日志已回传")
+        te_out = stage_dir / "te.out"
+        require_te_out = bool(getattr(ctx.config.transport, "require_te_out", True))
+        software: dict[str, object] = {}
+        if not te_out.is_file():
+            if require_te_out:
+                raise StageError(
+                    "aitranss_te 缺 te.out（aitranss 主输出）：TE.dat 无法复核。"
+                    "若这是外部/历史 run，显式设 transport.require_te_out: false 豁免")
+            notes.append("缺 te.out：已按 transport.require_te_out=false 显式豁免")
+        else:
+            try:
+                te_text = te_out.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                raise StageError("aitranss_te 无法读取 te.out: %s" % exc) from exc
+            software = parse_aitranss_versions(te_text)
+            if software:
+                record_observed_software(ctx.layout.run_dir, self.name, software)
+            else:
+                notes.append("未从 te.out 解析到 aitranss 版本：远端软件版本未入档")
         if not (stage_dir / "self.energy.in").is_file():
             notes.append("缺 self.energy.in：结果不可复现")
+
         results = {
             "aitranss_te": {
                 "points": len(rows),
                 "te_bytes": te.stat().st_size,
                 "max_transmission": max(row[2] for row in rows),
-                "has_te_out": (stage_dir / "te.out").is_file(),
+                "has_te_out": te_out.is_file(),
+                "require_te_out": require_te_out,
+                "software": software or None,
             }
         }
+        artifacts = ["TE.dat"] + (["te.out"] if te_out.is_file() else [])
         return self.collected(
-            ctx, stage_dir, artifacts=["TE.dat"], results=results, notes=notes)
+            ctx, stage_dir, artifacts=artifacts, results=results, notes=notes)
+
+    def _verify_geometry_chain(self, geometry: Path, scf_geometry: Path,
+                               metadata: Path) -> None:
+        """SCF 几何 == metadata/A2 几何 == self.energy.in 所依据的几何。"""
+        verify_parent_geometry(self.name, scf_geometry, metadata)
+        if Path(geometry).resolve() == Path(scf_geometry).resolve():
+            return
+        geo_hash = sha256_file(geometry)
+        scf_hash = sha256_file(scf_geometry)
+        if geo_hash is None or scf_hash is None:
+            raise StageBlocked(
+                self.name, "无法读取上游/SCF 几何，拒绝继续",
+                [str(geometry), str(scf_geometry)])
+        if geo_hash != scf_hash:
+            raise StageBlocked(
+                self.name,
+                "SCF 几何与上游几何不一致（aims_scf/geometry.in=%s，%s=%s）；"
+                "tcontrol 的 $coord 与 self.energy.in 的电极划分必须来自同一份几何"
+                % (str(scf_hash)[:12], Path(geometry).name, str(geo_hash)[:12]),
+                [str(scf_geometry), str(geometry)])
 
     # -- 内部 -------------------------------------------------------------- #
     def _scf_dir(self, ctx) -> Path:
@@ -143,17 +188,16 @@ class AitranssTeStage(Stage):
                 raise StageBlocked(
                     self.name, "显式 metadata 不存在: %s" % override, [str(override)])
             return override
-        # 0.1.2：au_relax 会重写 metadata（指纹 + relax 记录）；存在时以它为准，
-        # 否则回退 au60_build（electrode.relax=false 时两者等价）。
-        for stage in ("au_relax", "au60_build"):
-            candidate = ctx.artifact(stage, "electrode_metadata.json")
-            if candidate.is_file():
-                return candidate
+        # au_relax 已从主链路移除：metadata 以 au60_build 为准。旧 run 可通过
+        # --metadata 显式指定其 au_relax 快照。
+        candidate = ctx.artifact("au60_build", "electrode_metadata.json")
+        if candidate.is_file():
+            return candidate
         raise StageBlocked(
             self.name,
-            "缺 au_relax（或 au60_build）/electrode_metadata.json（tcontrol 需要六个表面索引，"
+            "缺 au60_build/electrode_metadata.json（tcontrol 需要六个表面索引，"
             "self.energy.in 需要左右 tip 索引）",
-            [str(ctx.artifact("au60_build", "electrode_metadata.json"))],
+            [str(candidate)],
         )
 
     @staticmethod

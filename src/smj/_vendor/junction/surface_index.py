@@ -191,11 +191,17 @@ def _score_key(longest: float, gap: float, area: float, tie: tuple) -> tuple:
 
 
 def pick_surface_triple(atoms, members: list[int], tip_index: int,
-                        side: str = '', linker_index: int | None = None) -> SurfaceTriple:
-    """在 members 的最外层里选 3 个非共线原子(确定性, 见模块 docstring)。"""
-    if linker_index is None:
-        raise ValueError('pick_surface_triple 需要 linker_index 定向输运轴')
-    away = unit(sub(_coords(atoms, tip_index), _coords(atoms, linker_index)))
+                        side: str = '', linker_index: int | None = None,
+                        away: tuple[float, float, float] | None = None) -> SurfaceTriple:
+    """在 members 的最外层里选 3 个非共线原子(确定性, 见模块 docstring)。
+
+    away: 可显式给出“离开结区”的轴(通常两侧 tip 连线); 缺省仍由 tip->linker 定向。
+    分子弛豫后 S-C 键可能倾斜, 此时 tip->linker 不再等于输运轴, 审计/复算应传 away。
+    """
+    if away is None:
+        if linker_index is None:
+            raise ValueError('pick_surface_triple 需要 linker_index 定向输运轴')
+        away = unit(sub(_coords(atoms, tip_index), _coords(atoms, linker_index)))
     lay = surface_layer(atoms, members, away)
     layer = lay['layer']
     q = _axis_point(_coords(atoms, tip_index), lay['top'], away)

@@ -1,0 +1,214 @@
+# 
+# This is the geometry file that corresponds to the current relaxation step.
+# If you do not want this file to be written, set the "write_restart_geometry" flag to .false.
+#  aims_uuid : 78F12AF7-C459-4CFB-ACAF-833804BDCA8B                                
+# 
+atom       3.08081670     -2.07302904     -1.20456184 C
+atom       3.49830506     -0.77097974     -0.85247711 C
+atom       2.50272936      0.21567554     -0.67126111 C
+atom       1.14963693     -0.11096188     -0.80596836 C
+atom       0.74910176     -1.44083400     -1.11560067 C
+atom       1.72617304     -2.41201418     -1.33643086 C
+atom       3.83380434     -2.84037043     -1.39125182 H
+atom       2.80156306      1.21992118     -0.37934756 H
+atom       1.45288155     -3.43280903     -1.60896279 H
+atom      -1.21659153     -0.21037027     -0.76103231 C
+atom      -2.58494551      0.00508683     -0.57825875 C
+atom      -3.50314940     -1.05834337     -0.72239117 C
+atom      -2.99486819     -2.33093493     -1.05978009 C
+atom      -1.62190683     -2.55865214     -1.23991133 C
+atom      -0.72143133     -1.50423260     -1.08139571 C
+atom      -2.95900391      0.98129174     -0.28030742 H
+atom      -3.68794005     -3.16208036     -1.19902460 H
+atom      -1.27517463     -3.55999798     -1.49958565 H
+atom      -0.06762052      0.70581152     -0.63061798 C
+atom      -0.12597855      2.07413301     -0.43953025 C
+atom      -1.35368851      2.79195293     -0.33067119 C
+atom       1.03421054      2.89943444     -0.36171691 C
+atom      -2.35092740      3.39796912     -0.24527064 N
+atom       1.97696558      3.58994094     -0.30103651 N
+atom      -4.95119512     -0.79753164     -0.49010792 C
+atom      -5.78421116     -1.70253825      0.20407199 C
+atom      -5.53562923      0.41423817     -0.90936852 C
+atom      -7.10211593     -1.38253619      0.52759638 C
+atom      -5.37429116     -2.64972522      0.55768532 H
+atom      -6.86056332      0.73588287     -0.60922937 C
+atom      -4.94541020      1.12324678     -1.49105430 H
+atom      -7.65371530     -0.13999215      0.15258271 C
+atom      -7.69363024     -2.08239030      1.12076330 H
+atom      -7.26038690      1.68654487     -0.96120751 H
+atom       4.93248955     -0.42386514     -0.63157929 C
+atom       5.43526776      0.84969473     -0.97484973 C
+atom       5.83064672     -1.32291005     -0.01637488 C
+atom       6.74219045      1.22447892     -0.66353636 C
+atom       4.78957166      1.56987291     -1.47914234 H
+atom       7.14651269     -0.96116706      0.28568018 C
+atom       5.48001916     -2.31498484      0.27365496 H
+atom       7.61107149      0.33458451     -0.00291775 C
+atom       7.09251784      2.23079486     -0.89853700 H
+atom       7.79465526     -1.68665969      0.77892599 H
+atom      -9.27105251      0.27582023      0.80659882 S
+atom       9.20693002      0.99798423      0.51105948 S
+atom       9.32789920      0.41391882      2.23412584 C
+atom      10.15939790      0.98464253      2.67011994 H
+atom       8.39985174      0.64350144      2.76649876 H
+atom       9.55874365     -0.65431610      2.29096357 H
+atom      -9.36487415      2.07471565      0.57092307 C
+atom      -9.44652568      2.34480334     -0.48784923 H
+atom     -10.28781080      2.37424578      1.08616741 H
+atom      -8.50724789      2.56792913      1.03881708 H
+atom     -11.89423841     -0.22157440      0.37695911 Au
+  constrain_relaxation .true.
+atom      11.80875541      0.79549940     -0.06354911 Au
+  constrain_relaxation .true.
+atom     -14.24059350     -1.09284449     -1.05529927 Au
+  constrain_relaxation .true.
+atom     -14.18185812     -1.21406212      1.82527608 Au
+  constrain_relaxation .true.
+atom     -14.31620336      1.33941950      0.49203161 Au
+  constrain_relaxation .true.
+atom     -16.58694860     -1.96411459     -2.48755765 Au
+  constrain_relaxation .true.
+atom     -16.52821322     -2.08533222      0.39301770 Au
+  constrain_relaxation .true.
+atom     -16.46947784     -2.20654985      3.27359304 Au
+  constrain_relaxation .true.
+atom     -16.66255846      0.46814941     -0.94022676 Au
+  constrain_relaxation .true.
+atom     -16.60382308      0.34693177      1.94034858 Au
+  constrain_relaxation .true.
+atom     -16.73816832      2.90041341      0.60710412 Au
+  constrain_relaxation .true.
+atom     -18.93330369     -2.83538468     -3.91981602 Au
+  constrain_relaxation .true.
+atom     -18.87456831     -2.95660231     -1.03924068 Au
+  constrain_relaxation .true.
+atom     -18.81583293     -3.07781994      1.84133467 Au
+  constrain_relaxation .true.
+atom     -18.75709755     -3.19903757      4.72191001 Au
+  constrain_relaxation .true.
+atom     -19.00891355     -0.40312069     -2.37248514 Au
+  constrain_relaxation .true.
+atom     -18.95017817     -0.52433832      0.50809020 Au
+  constrain_relaxation .true.
+atom     -18.89144279     -0.64555595      3.38866555 Au
+  constrain_relaxation .true.
+atom     -19.08452341      2.02914331     -0.82515426 Au
+  constrain_relaxation .true.
+atom     -19.02578802      1.90792567      2.05542109 Au
+  constrain_relaxation .true.
+atom     -19.16013326      4.46140731      0.72217662 Au
+  constrain_relaxation .true.
+atom     -21.27965879     -3.70665479     -5.35207440 Au
+  constrain_relaxation .true.
+atom     -21.22092340     -3.82787242     -2.47149906 Au
+  constrain_relaxation .true.
+atom     -21.16218802     -3.94909005      0.40907629 Au
+  constrain_relaxation .true.
+atom     -21.10345264     -4.07030768      3.28965163 Au
+  constrain_relaxation .true.
+atom     -21.04471726     -4.19152531      6.17022698 Au
+  constrain_relaxation .true.
+atom     -21.35526864     -1.27439078     -3.80474352 Au
+  constrain_relaxation .true.
+atom     -21.29653326     -1.39560841     -0.92416817 Au
+  constrain_relaxation .true.
+atom     -21.23779788     -1.51682604      1.95640717 Au
+  constrain_relaxation .true.
+atom     -21.17906249     -1.63804367      4.83698252 Au
+  constrain_relaxation .true.
+atom     -21.43087850      1.15787321     -2.25741264 Au
+  constrain_relaxation .true.
+atom     -21.37214312      1.03665558      0.62316271 Au
+  constrain_relaxation .true.
+atom     -21.31340773      0.91543795      3.50373805 Au
+  constrain_relaxation .true.
+atom     -21.50648835      3.59013722     -0.71008175 Au
+  constrain_relaxation .true.
+atom     -21.44775297      3.46891958      2.17049359 Au
+  constrain_relaxation .true.
+atom     -21.58209821      6.02240121      0.83724913 Au
+  constrain_relaxation .true.
+atom     -16.67943293      2.77919578      3.48767947 Au
+  constrain_relaxation .true.
+atom     -19.14325879      2.15036094     -3.70572960 Au
+  constrain_relaxation .true.
+atom      14.22111960      0.12842160      1.36870927 Au
+  constrain_relaxation .true.
+atom      14.17298367      0.00261822     -1.51186608 Au
+  constrain_relaxation .true.
+atom      14.08810271      2.55822231     -0.17862161 Au
+  constrain_relaxation .true.
+atom      16.63348380     -0.53865621      2.80096765 Au
+  constrain_relaxation .true.
+atom      16.58534787     -0.66445959     -0.07960770 Au
+  constrain_relaxation .true.
+atom      16.53721193     -0.79026297     -2.96018304 Au
+  constrain_relaxation .true.
+atom      16.50046691      1.89114450      1.25363676 Au
+  constrain_relaxation .true.
+atom      16.45233098      1.76534112     -1.62693858 Au
+  constrain_relaxation .true.
+atom      16.36745002      4.32094522     -0.29369412 Au
+  constrain_relaxation .true.
+atom      19.04584800     -1.20573401      4.23322602 Au
+  constrain_relaxation .true.
+atom      18.99771206     -1.33153739      1.35265068 Au
+  constrain_relaxation .true.
+atom      18.94957612     -1.45734077     -1.52792467 Au
+  constrain_relaxation .true.
+atom      18.90144019     -1.58314415     -4.40850001 Au
+  constrain_relaxation .true.
+atom      18.91283111      1.22406670      2.68589514 Au
+  constrain_relaxation .true.
+atom      18.86469517      1.09826332     -0.19468020 Au
+  constrain_relaxation .true.
+atom      18.81655923      0.97245994     -3.07525555 Au
+  constrain_relaxation .true.
+atom      18.77981421      3.65386741      1.13856426 Au
+  constrain_relaxation .true.
+atom      18.73167828      3.52806403     -1.74201109 Au
+  constrain_relaxation .true.
+atom      18.64679732      6.08366813     -0.40876662 Au
+  constrain_relaxation .true.
+atom      21.45821219     -1.87281182      5.66548440 Au
+  constrain_relaxation .true.
+atom      21.41007625     -1.99861520      2.78490906 Au
+  constrain_relaxation .true.
+atom      21.36194032     -2.12441859     -0.09566629 Au
+  constrain_relaxation .true.
+atom      21.31380438     -2.25022197     -2.97624163 Au
+  constrain_relaxation .true.
+atom      21.26566844     -2.37602535     -5.85681698 Au
+  constrain_relaxation .true.
+atom      21.32519530      0.55698890      4.11815352 Au
+  constrain_relaxation .true.
+atom      21.27705936      0.43118552      1.23757817 Au
+  constrain_relaxation .true.
+atom      21.22892342      0.30538213     -1.64299717 Au
+  constrain_relaxation .true.
+atom      21.18078749      0.17957875     -4.52357252 Au
+  constrain_relaxation .true.
+atom      21.19217841      2.98678961      2.57082264 Au
+  constrain_relaxation .true.
+atom      21.14404247      2.86098623     -0.30975271 Au
+  constrain_relaxation .true.
+atom      21.09590653      2.73518285     -3.19032805 Au
+  constrain_relaxation .true.
+atom      21.05916151      5.41659033      1.02349175 Au
+  constrain_relaxation .true.
+atom      21.01102558      5.29078695     -1.85708359 Au
+  constrain_relaxation .true.
+atom      20.92614462      7.84639104     -0.52383913 Au
+  constrain_relaxation .true.
+atom      16.31931408      4.19514184     -3.17426947 Au
+  constrain_relaxation .true.
+atom      18.82795015      3.77967079      4.01913960 Au
+  constrain_relaxation .true.
+# 
+# What follows is the current estimated Hessian matrix constructed by the BFGS algorithm.
+# This is NOT the true Hessian matrix of the system.
+# If you do not want this information here, switch it off using the "hessian_to_restart_geometry" keyword.
+# 
+trust_radius             0.8000000119
+hessian_file

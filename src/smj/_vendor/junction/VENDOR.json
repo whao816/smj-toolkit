@@ -10,8 +10,8 @@
       "bytes": 380
     },
     "a2_viz.py": {
-      "sha256": "d4501a1136b1d47df1fc3a06c336eaf45fea548a51c4800687d4739fd1f486cb",
-      "bytes": 24894
+      "sha256": "285feb9747df1b880033e738700280310fa23c9c7f241a81f2f5f7aa3b00d172",
+      "bytes": 26481
     },
     "artifacts.py": {
       "sha256": "c778d75a706c46bcf4ad031b4fc9cc307621364d5cda3af497221bad4cd255bc",
@@ -30,16 +30,16 @@
       "bytes": 2262
     },
     "criteria.py": {
-      "sha256": "4aba167f550b4cf762ceba134a20e2b3ac629cb1d6f5be4a20d552dab6a3b886",
-      "bytes": 20047
+      "sha256": "bc0c514cc3b46951a8faadef3bb213db28cb1a6667f17eced25a5fa82ed6dea6",
+      "bytes": 20166
     },
     "demo.py": {
       "sha256": "501fb09f251c197206664e996a10f018f9cc8a61edeb597ce2e464169043e97e",
       "bytes": 3452
     },
     "electrode.py": {
-      "sha256": "9287476ff7a89155042390491c8206f9c0497d6f0a7ab9ef91db3ff2ad6afa11",
-      "bytes": 16578
+      "sha256": "c5614f18894b658a54d6b1acea9602f77b31efe44e326187cb9e4782ddddd492",
+      "bytes": 16657
     },
     "fingerprint.py": {
       "sha256": "7b16cb19a13d89f0a4dbb65b58c3c9846560c1c6da2de78170283c455492b5fd",
@@ -58,8 +58,8 @@
       "bytes": 7952
     },
     "inputs.py": {
-      "sha256": "9e31a7fb5e71ea62f7d45072d97992b6e305355db4ff6ad5702a0f3e30d2e8ee",
-      "bytes": 23164
+      "sha256": "341546ee184a52c990ab629fff7d234662ea6a4a8291a38e05656ce4f0bcc9dd",
+      "bytes": 25235
     },
     "jobwait.py": {
       "sha256": "ae8b6b4a48cbd6e6b169768f00b51ded4e82f8e16178706cc386c3ada5f96997",
@@ -106,8 +106,8 @@
       "bytes": 11140
     },
     "surface_index.py": {
-      "sha256": "5dc0163d6cb12c72f98b5493459ab2de150dcd7fc297fbf36b2fbfe0c447b621",
-      "bytes": 14620
+      "sha256": "a341bc818d6b06370791e1591786fdf10395fcf45db20eaa43a9c1d98e8ac51f",
+      "bytes": 14953
     },
     "tcontrol.py": {
       "sha256": "95ad598efbd50a8ee008c7d6dfe61dec3295cafa9e24f140fad9d0eaad3b6768",
@@ -126,16 +126,16 @@
       "bytes": 1209
     },
     "templates/gaussian_opt_freq.gjf": {
-      "sha256": "77a9e1d15d2df7d5d147e6d41d3d9cdb26bad1531227578989c451071f555a21",
-      "bytes": 118
+      "sha256": "679a9fc60926c5f3b06086b9ee3ed7866993b9af15b8a2903734faeb2390b456",
+      "bytes": 155
     },
     "templates/sub_aims.sh": {
       "sha256": "a693e6ceaa4e6fc3a3755ece3a9b5ee0e8b0fe4724d517ac71b540e3a4410e49",
       "bytes": 953
     },
     "templates/sub_g16.sh": {
-      "sha256": "18c8bac9871bf88a8f3b5219c44fba11373a75b24fe7840304ed2fb1f9744a68",
-      "bytes": 775
+      "sha256": "05434f1dd879f35adc3ad6ac8c5e4c4ec978dbeac9d5ea01ea8a61497c2a7348",
+      "bytes": 1050
     },
     "templates/sub_te.sh": {
       "sha256": "a908a3af5e06f7c6d7179323c27298e04db1661bb39eafa64e6b0b67ba6ab107",
@@ -146,8 +146,8 @@
       "bytes": 566
     },
     "validate.py": {
-      "sha256": "f37859d8e68e71528b0abc60d0444e53855f869f418263e5642bb54d24f427fc",
-      "bytes": 19323
+      "sha256": "daad379a237f9d94a1aa04a9332d52e4afd330045ba7506bb608acf65e1c6d96",
+      "bytes": 21933
     }
   },
   "local_patches": [
@@ -214,6 +214,57 @@
         "tests/test_library_au_relax.py",
         "tests/test_a2_approve.py"
       ]
+    },
+    {
+      "id": "A2-transport-axis",
+      "commit": "local",
+      "files": [
+        "a2_viz.py",
+        "surface_index.py",
+        "electrode.py"
+      ],
+      "what": "A2 表面层方向改用 metadata 三元组自身的平面法向（法向朝向电极外侧），三元组不足时才回退到两侧 tip 连线 / 输运轴；surface_index.pick_surface_triple 与 electrode.surface_indices 接受 away 参数；重算失败记录为 audit 不通过而不是执行失败。",
+      "why": "2026-11-13 的 2CN-656 验收 run 先后暴露两类失败：S-C 倾斜使 tip->linker 方向不再等于表面法向；两侧 tip 连线也不一定平行于电极层。由待审计的三个表面原子定义法向可同时避免这两种情况，且坏 metadata 仍会被 same_surface_layer/deterministic_indices 判失败。"
+    },
+    {
+      "id": "anchor-chemistry",
+      "commit": "local",
+      "files": [
+        "validate.py",
+        "criteria.py"
+      ],
+      "what": "④ 锚定几何先按 S 的成键环境判化学（thioether/thiol/thiolate）；只有 thiolate 套 2.40–2.49 Å 硫醇盐有源带，thioether/thiol 只判 3.5 Å vdW 接触上限；check value 增 chemistry；criteria.au_s_bond 注明仅硫醇盐适用。",
+      "why": "2026-11-13 验收的 -SCH3 硫醚结 Au–S=2.676 Å 被硫醇盐带误判为偏离；2.40–2.49 Å 是去质子硫醇盐/表面配位带，不适用于硫醚。",
+      "tests": [
+        "tests/test_anchor_chemistry.py"
+      ]
+    },
+    {
+      "id": "g16-scratch-mkdir",
+      "commit": "local",
+      "files": [
+        "templates/sub_g16.sh"
+      ],
+      "what": "sub_g16.sh 在 export GAUSS_SCRDIR 前 mkdir -p 远端 scratch 目录。",
+      "why": "2026-11-13 的新验收 run 首次提交时 scratch 不存在，g16 立即 FIO/stdio error 2 退出（exit 134），作业只跑了数秒；流水线应自建 scratch，而不是依赖人工预建。"
+    },
+    {
+      "id": "g16-scf-xqc",
+      "commit": "local",
+      "files": [
+        "templates/gaussian_opt_freq.gjf"
+      ],
+      "what": "Gaussian 输入路由加 scf=(xqc,maxcycle=512) int=ultrafine，坐标块后保留空行；金属团簇 SCF 在 128 周期不收敛时用二次收敛兜底。",
+      "why": "2026-11-13 的 56 原子 AIMS-vs-Gaussian tip 对比作业在第 2 步 SCF 129 周期后 Convergence failure（Conv=0.21D-04），需要更稳的 SCF；重写模板时又漏掉坐标后空行，导致 Gaussian 在 ZSymb 读 EOF（0.1 s、segmentation violation），一并修复。"
+    },
+    {
+      "id": "aims-molecule-opt",
+      "commit": "local",
+      "files": [
+        "inputs.py"
+      ],
+      "what": "新增 make_aims_molecule_opt_input：分子 XYZ -> FHI-aims relax 输入（geometry.in/control.in/sub_aims.sh），与 tip/SCF 同一软件栈。",
+      "why": "2026-11-13 用户要求 gaussian_opt 可换成 FHI-aims，避免 B3LYP/6-31G(d) 分子优化与 PBE/light tip/SCF 的混合口径；Gaussian 分支保留兼容。"
     }
   ],
   "note": "0.1.1 本地补丁的权威记录；回迁主仓后应删除对应条目并重新 sync。本文件由 scripts/gen_vendor_json.py 生成，勿手改。"

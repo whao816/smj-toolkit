@@ -158,9 +158,8 @@ def discover_stages(run_dir: str | Path) -> list[str]:
     """按 run 目录**实际存在**的阶段子目录，按执行顺序返回阶段名。
 
     2026-11 P0-2：阶段清单的唯一事实源是 :data:`smj.state.STAGE_ORDER`。
-    旧实现调用 vendored ``discover_smj_stages``，而那份清单缺 ``au_relax``，
-    导致 demo 的 manifest/report 里阶段数少一个、A2 对象阶段显示为"—"。
-    ``auN_build`` 变体目录仍作为扩展追加在 ``au60_build`` 之后。
+    2026-11-13：``au_relax`` 已从主链路移除，不再出现在阶段序列；``auN_build``
+    变体目录仍作为扩展追加在 ``au60_build`` 之后。
     """
     root = Path(run_dir)
     if not root.is_dir():
@@ -175,8 +174,6 @@ def discover_stages(run_dir: str | Path) -> list[str]:
         return ordered
     if "au60_build" in ordered:
         index = ordered.index("au60_build") + 1
-    elif "au_relax" in ordered:
-        index = ordered.index("au_relax")
     elif "aims_tip_relax" in ordered:
         index = ordered.index("aims_tip_relax") + 1
     else:
@@ -214,13 +211,18 @@ def _inventory(run_dir: Path, stages: Iterable[str]) -> dict[str, dict]:
 # 输入 / 资源 / 输运 / 失败
 # --------------------------------------------------------------------------- #
 def _find_build_dir(run_dir: Path) -> Path | None:
-    # 0.1.2：报告里的"电极"几何优先用 au_relax（背层固定弛豫后、真正送 SCF 的那份）。
-    relaxed = run_dir / "au_relax"
-    if (relaxed / "geometry.in").is_file() and (relaxed / "electrode_metadata.json").is_file():
-        return relaxed
+    # au_relax 已从主链路移除：电极/结几何以 auN_build（默认 au60_build）为准。
+    # 旧 run 的 au_relax 若真的跑过 AIMS 弛豫，它才是送进 SCF 的几何；否则回退 build。
+    legacy = run_dir / "au_relax"
+    if ((legacy / "geometry.in").is_file()
+            and (legacy / "electrode_metadata.json").is_file()
+            and (legacy / "aims.out").is_file()):
+        return legacy
     for child in sorted(run_dir.iterdir()):
         if child.is_dir() and _BUILD_STAGE_RE.match(child.name):
             return child
+    if (legacy / "geometry.in").is_file() and (legacy / "electrode_metadata.json").is_file():
+        return legacy
     return None
 
 
@@ -313,7 +315,7 @@ def _stage_atoms(run_dir: Path, stage: str) -> int | None:
 def _resource_summary(run_dir: Path, state: RunState,
                       warnings: list[str]) -> dict[str, dict]:
     summary: dict[str, dict] = {}
-    for stage in ("gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te"):
+    for stage in ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te"):
         recorded = dict(state.stage(stage).resources or {})
         if recorded:
             summary[stage] = {"source": "state", **recorded,
@@ -565,8 +567,11 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     if isinstance(verdict, dict) and verdict.get("physics_verdict"):
         lines.append("| 项 | 值 |")
         lines.append("|---|---|")
+        engineering = verdict.get("engineering_passed")
+        if engineering is None:
+            engineering = verdict.get("passed")
         lines.append("| 工程判定 | %s |"
-                     % ("通过" if verdict.get("passed") else
+                     % ("通过" if engineering else
                         "未通过（errors=%s）" % _cell(verdict.get("errors"))))
         lines.append("| 物理判定 | %s（%s） |"
                      % (_cell(verdict.get("wording")),
@@ -636,7 +641,7 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     lines.append("| 阶段 | 墙钟 | --time | 内存 | rank/核 | 核时 | 来源 / 预算 |")
     lines.append("|---|---|---|---|---|---|---|")
     resources = man.get("resources") or {}
-    for stage in ("gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te"):
+    for stage in ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te"):
         item = resources.get(stage)
         if not item:
             lines.append("| `%s` | — | — | — | — | — | 未估算 |" % stage)

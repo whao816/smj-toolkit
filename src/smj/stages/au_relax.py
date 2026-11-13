@@ -1,17 +1,17 @@
-"""au_relax：固定两侧背层的几何弛豫（远端 AIMS 阶段，0.1.2 新增）。
+"""au_relax：可选的贴装后几何弛豫（远端 AIMS 阶段，0.1.2 新增）。
 
-手册 §5.3.1 要求：分子经锚定基接到预定义 Au 团簇后，**固定两个背层**做一次
-几何弛豫，防止电极在结构优化时塌陷；弛豫后的几何才是 `aims_scf` 的输入。
+默认协议不在电极扩展后再弛豫：``aims_tip_relax`` 已做全原子优化，
+``au60_build`` 只把每个 tip 扩展成完整金字塔团簇并沿用弛豫后的接触几何，
+此后结几何完全冻结。因此 ``electrode.relax`` 默认 **false**，本阶段只做本地
+直通（复制 au60 的几何与 metadata，写 ``relax_skipped.json``）。
 
-本阶段：
+仅当显式 ``electrode.relax: true``（旧口径/收敛检查）时：
 - prepare 复制 ``au60_build/geometry.in``，给两侧背层整层加
   ``constrain_relaxation .true.``，写 ``control.in``（bfgs 模板）+ ``sub_aims.sh``；
 - collect 要求 ``aims.out`` 正常结束且 ``geometry.in.next_step`` 存在，用
   next_step 覆盖 ``geometry.in``；随后按 det-v1 重算表面三元组，必须与
   ``au60_build`` 的 metadata 完全一致（背层冻结后表面原子不该移动）——
-  不一致即 StageError，不把"看起来跑完了"的几何交下游；
-- ``electrode.relax: false`` 时本阶段退化为本地直通（``local_only``）：
-  只把 au60 的几何与 metadata 复制过来，不提交任何作业。
+  不一致即 StageError，不把"看起来跑完了"的几何交下游。
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ class AuRelaxStage(Stage):
         verify_parent_geometry(self.name, upstream, metadata)
         natoms = self.count_aims_atoms(geometry)
 
-        if not bool(getattr(ctx.config.electrode, "relax", True)):
+        if not bool(getattr(ctx.config.electrode, "relax", False)):
             shutil.copy2(metadata["_path"], stage_dir / "electrode_metadata.json")
             (stage_dir / SKIP_MARKER).write_text(
                 json.dumps({"reason": "electrode.relax=false",
@@ -84,8 +84,8 @@ class AuRelaxStage(Stage):
                 inputs=[geometry],
                 artifacts=["geometry.in", "electrode_metadata.json", SKIP_MARKER],
                 resources=est_record({"local": True}),
-                notes=["electrode.relax=false：不做 AIMS 弛豫，直接沿用 au60_build 几何",
-                       "如需按手册 §5.3.1 固定背层弛豫，把 electrode.relax 改回 true"],
+                notes=["electrode.relax=false：电极扩展后几何冻结，直接沿用 au60_build 几何",
+                       "如需旧口径的贴装后弛豫，显式设 electrode.relax: true"],
                 commands=[],
                 local_only=True,
                 parent_stage="au60_build",

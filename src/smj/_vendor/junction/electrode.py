@@ -213,7 +213,8 @@ def backplane_indices(atoms: list[Atom], electrode_indices: list[int],
     return sorted(i + 1 for p, i in projected if abs(p - far) <= tol)
 
 
-def surface_indices(atoms: list[Atom], electrode_indices: list[int], tip_index: int, linker_index: int) -> list[int]:
+def surface_indices(atoms: list[Atom], electrode_indices: list[int], tip_index: int, linker_index: int,
+                    away: tuple[float, float, float] | None = None) -> list[int]:
     """选电极表面(沿 tip→linker 方向最远投影层)的 3 个 Au 作 aitranss 表面。
 
     W0-3(2026-11-05): 选择规则迁到 :mod:`surface_index`(确定性 det-v1),
@@ -221,7 +222,7 @@ def surface_indices(atoms: list[Atom], electrode_indices: list[int], tip_index: 
     都应看 :func:`surface_index.pick_surface_triple` 的 ``tie_count``。
     """
     return _pick_surface_triple(atoms, sorted(set(int(i) for i in electrode_indices)),
-                                tip_index, linker_index=linker_index).indices
+                                tip_index, linker_index=linker_index, away=away).indices
 
 
 def append_au60(input_path: str | Path, output_path: str | Path,

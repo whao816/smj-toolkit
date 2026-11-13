@@ -1,0 +1,142 @@
+{
+  "schema": "smj.run_spec.v1",
+  "created_at": "2026-11-12T21:55:15+08:00",
+  "reconstructed": false,
+  "rebound": false,
+  "run_id": "2CN-656-4-thiomethylphenyl",
+  "run_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl",
+  "config_sha256": "4ab6147bcc4eee789d4fe005bf3f798aedc4be66562abe3406b1faf5959c06f3",
+  "protocol_sha256": "4fdcf517551eefb62315938f9dcc0d2305244098589e8c59573b7e6ec386c45f",
+  "config": {
+    "run": {
+      "name": "2CN-656-4-thiomethylphenyl",
+      "dir": ".",
+      "mode": "slurm-ssh",
+      "clean": false,
+      "keep_going": false
+    },
+    "molecule": {
+      "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\molecule.xyz",
+      "charge": 0,
+      "multiplicity": 1,
+      "method": "b3lyp",
+      "basis": "6-31g(d)",
+      "family": null
+    },
+    "electrode": {
+      "au_per_electrode": 30,
+      "left_anchor": "S",
+      "right_anchor": "S",
+      "au_tip_distance": 2.35,
+      "anchor_au_s_target": 2.4,
+      "strip_thiol_h": false,
+      "vdw": true,
+      "nlayers": null,
+      "source": "library",
+      "library_dir": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library",
+      "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+      "relax": true,
+      "relax_force_threshold": "0.05",
+      "relax_freeze": "electrodes"
+    },
+    "transport": {
+      "temperature": 300.0,
+      "energy_window": [
+        -0.22,
+        0.0002,
+        -0.16
+      ],
+      "ener": null,
+      "estep": null,
+      "eend": null,
+      "require_te_out": true,
+      "resolved_window": [
+        -0.22,
+        0.0002,
+        -0.16
+      ]
+    },
+    "cluster": {
+      "host": "gpu-outside",
+      "user": "haow",
+      "port": 22,
+      "key": null,
+      "remote_root": "/home/haow/smj-runs",
+      "partition": "main",
+      "ntasks": 8,
+      "gres": "gpu:1",
+      "account": null,
+      "qos": null,
+      "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\species",
+      "time_limit": "06:00:00",
+      "mem": "24G",
+      "poll_seconds": 30.0,
+      "timeout_hours": 8.0,
+      "env": {
+        "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+        "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
+        "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+        "mkl_lib": "/opt/intel/oneapi/2025.3/lib",
+        "g16_module": "Gaussian/g16.c02",
+        "g16_scratch": "/data/tmp/g16-scratch/smj-2cn656",
+        "nproc": "8",
+        "g16_mem": "24G",
+        "g16_walltime": "08:00:00"
+      }
+    },
+    "paths": {
+      "templates": null,
+      "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\species"
+    },
+    "review": {
+      "require_a2": true,
+      "a2_deviation": 0.15,
+      "accept_deviation": null
+    }
+  },
+  "electrode_library": {
+    "path": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library\\fcc111.au.clusters.37_atoms\\fcc111.cluster.natoms37.x1.aims",
+    "exists": false,
+    "sha256": null
+  },
+  "software": {
+    "smj": "0.1.2",
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "git": {
+      "root": "D:\\dsh_projects\\AutoSMJ",
+      "commit": "9ded36b87845afbdd899ba475ee9df3a6ea2f778",
+      "dirty": true
+    },
+    "executables": {
+      "AIMS_BIN": {
+        "path": "\\data\\apps\\fhi-aims.221103-cuda12.8-oneapi2025.3\\bin\\aims.221103.scalapack.mpi.x",
+        "exists": false
+      },
+      "AITRANSS_BIN": {
+        "path": "\\data\\apps\\fhi-aims.221103-cuda12.8-oneapi2025.3\\bin\\aitranss.071813.openmp.ifx2025.3.x",
+        "exists": false
+      },
+      "MKL_LIB": {
+        "path": "\\opt\\intel\\oneapi\\2025.3\\lib",
+        "exists": false
+      }
+    },
+    "cluster_env_keys": [
+      "AIMS_BIN",
+      "AIMS_LD_MODULE",
+      "AITRANSS_BIN",
+      "G16_MEM",
+      "G16_MODULE",
+      "G16_SCRATCH",
+      "G16_WALLTIME",
+      "MKL_LIB",
+      "NPROC"
+    ]
+  },
+  "molecule": {
+    "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\molecule.xyz",
+    "exists": true,
+    "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f"
+  }
+}

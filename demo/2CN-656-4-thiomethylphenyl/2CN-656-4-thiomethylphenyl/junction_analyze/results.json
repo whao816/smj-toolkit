@@ -1,0 +1,22 @@
+{
+  "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\aitranss_te\\TE.dat",
+  "temperature_K": 300.0,
+  "points": 301,
+  "L0": 0.0004770530757729543,
+  "L1": -4.0018975461331135e-07,
+  "L2": 1.1132641821976584e-06,
+  "log10_G_over_G0_like": -3.321433299716706,
+  "S_uV_per_K": 2.796262966232121,
+  "k_e_pW_per_K": 0.28743585681372535,
+  "ZT_electronic": 0.00030164628338301105,
+  "fermi_nearest": {
+    "E_Hartree": -0.182,
+    "E_minus_Ef_eV": -0.00153306,
+    "T": 0.000470699079
+  },
+  "max_transmission": {
+    "E_Hartree": -0.1676,
+    "E_minus_Ef_eV": 0.39031087,
+    "T": 0.987441788
+  }
+}

@@ -161,24 +161,28 @@ def _run_dir_of(target: Any) -> tuple[Path, Any]:
 
 
 def find_build_dir(run_dir: str | Path) -> Path | None:
-    """定位 A2 确认的对象：优先 ``au_relax``（弛豫后几何），否则 ``auN_build``。
+    """定位 A2 确认的对象：``auN_build``（默认 ``au60_build``）。
 
-    0.1.2 起背层固定弛豫是独立阶段，A2 要看的是弛豫后真正送进 SCF 的那份
-    ``geometry.in``；``au_relax`` 存在且带完整几何/metadata 时以它为准，
-    否则回退建结阶段（``electrode.relax=false`` 或旧 run）。
+    2026-11-13 起 ``au_relax`` 已从主链路移除，A2 的对象就是贴装后的建结几何；
+    旧 run（只有 ``au_relax`` 而没有 build 目录）作为兼容回退。
     """
     root = Path(run_dir)
     if not root.is_dir():
         return None
-    relaxed = root / "au_relax"
-    if (relaxed / GEOMETRY_FILE).is_file() and (relaxed / METADATA_FILE).is_file():
-        return relaxed
     preferred = root / "au60_build"
+    legacy = root / "au_relax"
     if preferred.is_dir():
+        # 旧 run 的 A2 签在 au_relax 几何上；若新口径的 au60 还没有签署，
+        # 仍以旧签署对象为准，避免显式兼容旧 run 时误报 a2_missing。
+        if ((legacy / "a2_confirmation.json").is_file()
+                and not (preferred / "a2_confirmation.json").is_file()):
+            return legacy
         return preferred
     for child in sorted(root.iterdir()):
         if child.is_dir() and child.name.startswith("au") and child.name.endswith("_build"):
             return child
+    if (legacy / GEOMETRY_FILE).is_file() and (legacy / METADATA_FILE).is_file():
+        return legacy
     return None
 
 

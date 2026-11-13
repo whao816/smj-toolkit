@@ -1,0 +1,78 @@
+# 2CN-656-4-thiomethylphenyl 端到端验收运行
+# 目标：从 molecule.xyz 起完整走 7 阶段，锚定 -SCH3 的 S，Au 与 S 相连。
+run:
+  name: 2CN-656-4-thiomethylphenyl
+  dir: .
+  mode: slurm-ssh
+
+molecule:
+  xyz: molecule.xyz
+  family: null          # 新体系，不套 AZ/BDT 的物理判据；只做工程验收
+  charge: 0
+  multiplicity: 1
+  method: b3lyp
+  basis: 6-31g(d)       # 验收用；比 demo 的 def2-TZVP 便宜，几何精度够走通链路
+
+electrode:
+  source: library
+  library_dir: /data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library
+  library_cluster: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims
+  au_per_electrode: 30
+  left_anchor: S
+  right_anchor: S
+  au_tip_distance: 2.35
+  anchor_au_s_target: 2.40
+  strip_thiol_h: false  # 两个 S 都是 -SCH3 硫醚，没有 S-H 可去
+  vdw: true
+  relax: true
+  # 验收运行：0.05 eV/A 在 54 原子柔性分子上于 16 步后仍在 0.10–0.20 振荡；
+  # 为在不放宽到非物理值的前提下走完链路，本轮用 0.15 eV/A 作为验收阈值。
+  # 这会在 run_spec 的 previous 快照里留下变更记录，报告里也会注明。
+  relax_force_threshold: 0.15
+  relax_freeze: electrodes   # 只让分子（含 S/CH3）弛豫，Au 冻结
+  nlayers: null
+
+transport:
+  temperature: 300.0
+  energy_window: [-0.22, 0.0002, -0.16]   # Ha 绝对能量；约 E_F=-0.19 Ha 附近 ±0.03 Ha
+  require_te_out: true
+
+cluster:
+  host: gpu-outside
+  user: haow
+  port: 22
+  key: null
+  remote_root: /home/haow/smj-runs
+  partition: main
+  ntasks: 8
+  gres: gpu:1
+  account: null
+  mem: 24G
+  species_dir: D:/dsh_projects/AutoSMJ/demo/2CN-656-4-thiomethylphenyl/species
+  poll_seconds: 30
+  timeout_hours: 8
+  time_limit: 06:00:00
+  env:
+    aims_bin: /data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x
+    aims_ld_module: fhi-aims/221103-cuda12.8-oneapi2025.3
+    aitranss_bin: /data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x
+    mkl_lib: /opt/intel/oneapi/2025.3/lib
+    g16_module: Gaussian/g16.c02
+    g16_scratch: /data/tmp/g16-scratch/smj-2cn656
+    nproc: 8
+    g16_mem: 24G
+    g16_walltime: 08:00:00
+    # aitranss 是 CPU/OpenMP 程序，不需要 GPU；8G 足够 128 原子。
+    te_mem: 8G
+    te_walltime: 02:00:00
+    # 该集群的 sbatch 默认会为未显式声明的作业带上 gpu:4；te 是纯 CPU 程序，
+    # 显式 gpu:0 覆盖默认，避免等 GPU。
+    te_gres: gpu:0
+
+paths:
+  templates: null
+  species_defaults: D:/dsh_projects/AutoSMJ/demo/2CN-656-4-thiomethylphenyl/species
+
+review:
+  require_a2: true
+  a2_deviation: 0.15

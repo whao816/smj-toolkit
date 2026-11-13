@@ -1,0 +1,566 @@
+{
+  "schema": "smj.state.v1",
+  "run": "2CN-656-4-thiomethylphenyl-fr",
+  "created_at": "2026-11-13T09:56:51+08:00",
+  "updated_at": "2026-11-13T11:42:09+08:00",
+  "stages": {
+    "gaussian_opt": {
+      "status": "collected",
+      "job_id": "26065",
+      "remote_dir": "/home/haow/smj-runs/2CN-656-4-thiomethylphenyl-fr/gaussian_opt",
+      "prepared_at": "2026-11-13T09:57:19+08:00",
+      "submitted_at": "2026-11-13T09:57:25+08:00",
+      "finished_at": "2026-11-13T10:23:14+08:00",
+      "collected_at": "2026-11-13T10:23:20+08:00",
+      "elapsed_s": 1549.0,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "opt.xyz",
+        "mol.log",
+        "gaussian_summary.json"
+      ],
+      "resources": {
+        "walltime": "00:15:00",
+        "time_limit": "00:29:00",
+        "mem": "9G",
+        "ntasks": 1,
+        "cpus": null,
+        "cores": 1,
+        "atoms": 54,
+        "core_h": 0.25,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点线性外推：墙钟 60+10·N s，内存 4.0+0.05·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "gaussian": {
+          "normal_termination": true,
+          "final_scf_energy_hartree": -2061.10992343,
+          "imaginary_frequency_count": 0,
+          "atom_count": 54
+        }
+      },
+      "inputs_sha256": {
+        "mol.gjf": "1b6f818b7f6e30fa8665827281a56c2f245182b7bb86272c1a005d41418a0fba",
+        "sub_g16.sh": "983d144b3ff40863939be433526f74dbd0280d931b0b0eb7bf7e7713e310cb94",
+        "input_summary.json": "780c9a52d224e7a8b9311a38fc7d54339280277f4446af35e072510fa4421e7d"
+      },
+      "outputs_sha256": {
+        "opt.xyz": "f4d05c6a34da22c1d177390f0c4178bc57f39f4dcde0ff7fe83f392fe947de83",
+        "mol.log": "8308ebb9e1018c4df2e7694f2e5c18bfbd91ee33f545fd887a9cad801ee44135",
+        "gaussian_summary.json": "b319c0f01975673cdc38f58ae302b2b541c19854053e870ffff29c5e5cb965e5"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+      "script": "sub_g16.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\gaussian_opt\\mol.gjf",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\gaussian_opt\\sub_g16.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\gaussian_opt\\input_summary.json"
+      ],
+      "notes": [
+        "54 原子，b3lyp/6-31g(d)，nproc=8，partition=main",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_g16.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "mol.gjf",
+        "mol.log",
+        "sub_g16.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": []
+    },
+    "aims_tip_relax": {
+      "status": "collected",
+      "job_id": "26067",
+      "remote_dir": "/home/haow/smj-runs/2CN-656-4-thiomethylphenyl-fr/aims_tip_relax",
+      "prepared_at": "2026-11-13T10:25:21+08:00",
+      "submitted_at": "2026-11-13T10:25:28+08:00",
+      "finished_at": "2026-11-13T10:43:37+08:00",
+      "collected_at": "2026-11-13T10:43:52+08:00",
+      "elapsed_s": 1088.2,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in.next_step"
+      ],
+      "resources": {
+        "walltime": "00:39:00",
+        "time_limit": "01:14:00",
+        "mem": "17G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 56,
+        "core_h": 2.58,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_tip_relax": {
+          "source": "geometry.in.next_step",
+          "atom_count": 56,
+          "relaxed_au_s_A": {
+            "left": 2.426702228298435,
+            "right": 2.4245718102332017
+          },
+          "left_anchor": 45,
+          "right_anchor": 46,
+          "contact_pinned": false
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "eefa2b185db5d7cc80585f2661fd56b7b09c802038f41211c9e4198b603c827c",
+        "control.in": "7315bf70998958a1269c635d7365e8c0f91c110985bb85791e336d60a614f890",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "fae59a9bd41b9ab5bbabecccaca319d04343dbe669047b0ed6c2e0a99d0f02b8"
+      },
+      "outputs_sha256": {
+        "geometry.in.next_step": "4bbfc558c4e748ec452df8ce809724d6c3e88d32104a56b5ea88a7a8b02cd6b9"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_tip_relax\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_tip_relax\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_tip_relax\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_tip_relax\\input_summary.json"
+      ],
+      "notes": [
+        "56 原子（分子 54 + 2 Au tip），锚定原子 45/46（S）",
+        "tip 全原子弛豫（pin_contact=False），Au–S 初始放置距离 2.35 Å，species 目录 D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\species",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "aims.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": []
+    },
+    "au60_build": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-13T10:43:53+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-13T10:43:53+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in",
+        "electrode_metadata.json"
+      ],
+      "resources": {
+        "basis": "au60_build 为纯本地阶段，无集群资源",
+        "local": true
+      },
+      "results": {
+        "au60_build": {
+          "final_atom_count": 128,
+          "original_atom_count": 56,
+          "au_per_electrode": 37,
+          "left_tip_index": 55,
+          "right_tip_index": 56,
+          "surface_fingerprint": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+          "electrode_source": "library",
+          "library_cluster": {
+            "file": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "relpath": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+            "natoms": 37,
+            "nlayers_suggested": 3,
+            "fetched_from": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims"
+          },
+          "backplane_indices": {
+            "left": [
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90
+            ],
+            "right": [
+              112,
+              113,
+              114,
+              115,
+              116,
+              117,
+              118,
+              119,
+              120,
+              121,
+              122,
+              123,
+              124,
+              125,
+              126
+            ]
+          },
+          "surface_indices": {
+            "left": [
+              82,
+              83,
+              86
+            ],
+            "right": [
+              118,
+              119,
+              122
+            ]
+          }
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in.next_step": "4bbfc558c4e748ec452df8ce809724d6c3e88d32104a56b5ea88a7a8b02cd6b9"
+      },
+      "outputs_sha256": {
+        "geometry.in": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+        "electrode_metadata.json": "d19b655afe18fc8dce431b5e35baa7ee2d0dfbac4a102e033070f9a1509db1a1"
+      },
+      "parent_stage": "aims_tip_relax",
+      "parent_fingerprint": "4bbfc558c4e748ec452df8ce809724d6c3e88d32104a56b5ea88a7a8b02cd6b9",
+      "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_tip_relax\\geometry.in.next_step"
+      ],
+      "notes": [
+        "库团簇: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims（37 原子，建议 nlayers=3，sha256 8e676297c47c…）",
+        "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
+        "Au 每侧目标 37 个（库团簇整簇贴装），最终 128 原子",
+        "表面原子（1-based）left=[82, 83, 86] right=[118, 119, 122]，背层 left=[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90] right=[112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126]，指纹 a127578d12c0…"
+      ],
+      "commands": [],
+      "local_only": false
+    },
+    "au_relax": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-13T10:43:53+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-13T10:43:53+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in",
+        "electrode_metadata.json",
+        "relax_skipped.json"
+      ],
+      "resources": {
+        "local": true
+      },
+      "results": {
+        "au_relax": {
+          "enabled": false,
+          "atom_count": 128
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85"
+      },
+      "outputs_sha256": {
+        "geometry.in": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+        "electrode_metadata.json": "d19b655afe18fc8dce431b5e35baa7ee2d0dfbac4a102e033070f9a1509db1a1",
+        "relax_skipped.json": "9da1fabbf0ec582d5e5e0cab8282fe8d8ecd7d739b4c876dad4f4d8b561019da"
+      },
+      "parent_stage": "au60_build",
+      "parent_fingerprint": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+      "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\au_relax\\geometry.in"
+      ],
+      "notes": [
+        "electrode.relax=false：电极扩展后几何冻结，直接沿用 au60_build 几何",
+        "如需旧口径的贴装后弛豫，显式设 electrode.relax: true"
+      ],
+      "commands": [],
+      "local_only": true
+    },
+    "aims_scf": {
+      "status": "collected",
+      "job_id": "26068",
+      "remote_dir": "/home/haow/smj-runs/2CN-656-4-thiomethylphenyl-fr/aims_scf",
+      "prepared_at": "2026-11-13T10:43:53+08:00",
+      "submitted_at": "2026-11-13T10:44:00+08:00",
+      "finished_at": "2026-11-13T11:37:06+08:00",
+      "collected_at": "2026-11-13T11:37:16+08:00",
+      "elapsed_s": 3186.1,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "aims.out",
+        "control.in",
+        "geometry.in",
+        "basis-indices.out",
+        "omat.aims",
+        "mos.aims"
+      ],
+      "resources": {
+        "walltime": "01:23:00",
+        "time_limit": "02:36:00",
+        "mem": "16G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 128,
+        "core_h": 5.47,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点 132 原子 4320 s / 13.3 GiB；墙钟 x N^3.0、内存 x N^2.0 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_scf": {
+          "atom_count": 128,
+          "normal_termination": true,
+          "has_basis_indices": true,
+          "has_omat": true,
+          "has_mos": true,
+          "software": {
+            "program": "FHI-aims",
+            "source": "aims.out",
+            "version": "221103",
+            "aims_uuid": "E664726E-443A-4B59-A473-D94CFAD479F4",
+            "commit": "GITDIR-NOTFOUND"
+          }
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+        "control.in": "3d84900e945870dbfa74ca2cb4fb10f4d4bf08cd5ed4cb5149a8ae97b49e0cbb",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "00a04398d24c7e4aee11fcbc9c4b0a8901a9a70e19a2e1f4cee1de256dd49b35"
+      },
+      "outputs_sha256": {
+        "aims.out": "b74d53c9e964b92240a5c79af53f765aa8b05f6ebdaa47d948a0a3b5d294aee5",
+        "control.in": "3d84900e945870dbfa74ca2cb4fb10f4d4bf08cd5ed4cb5149a8ae97b49e0cbb",
+        "geometry.in": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+        "basis-indices.out": "129dc5dc1e6dbd580a3130a933cc6eef315ff7814b56175653b3fb9d72beea89",
+        "omat.aims": "5d6885c70f4fb219f83199bf9333b6209f6f1ed24f2a12939ad79cad13bfd3fa",
+        "mos.aims": "3c645de3ce4fe8eedbad8fdac2e25519c99b1f275fc715be0fba8c74299d95e7"
+      },
+      "parent_stage": "au_relax",
+      "parent_fingerprint": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+      "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_scf\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_scf\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_scf\\input_summary.json"
+      ],
+      "notes": [
+        "128 原子，ntasks=8，partition=main",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "control.in",
+        "aims.out",
+        "basis-indices.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [
+        "mos.aims",
+        "omat.aims"
+      ],
+      "download_missing": []
+    },
+    "aitranss_te": {
+      "status": "collected",
+      "job_id": "26070",
+      "remote_dir": "/home/haow/smj-runs/2CN-656-4-thiomethylphenyl-fr/aims_scf",
+      "prepared_at": "2026-11-13T11:37:16+08:00",
+      "submitted_at": "2026-11-13T11:37:22+08:00",
+      "finished_at": "2026-11-13T11:42:01+08:00",
+      "collected_at": "2026-11-13T11:42:09+08:00",
+      "elapsed_s": 279.7,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "TE.dat",
+        "te.out"
+      ],
+      "resources": {
+        "walltime": "00:49:00",
+        "time_limit": "01:33:00",
+        "mem": "10G",
+        "ntasks": 1,
+        "cpus": 1,
+        "cores": 1,
+        "atoms": 128,
+        "core_h": 0.81,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点 132 原子 2552 s / 8.0 GiB；墙钟 x N^3.0、内存 x N^1.5 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aitranss_te": {
+          "points": 301,
+          "te_bytes": 16394,
+          "max_transmission": 0.5911882613,
+          "has_te_out": true,
+          "require_te_out": true,
+          "software": {
+            "program": "aitranss",
+            "source": "te.out",
+            "version": "071813",
+            "compiled": "2026/09/23 at 15:38:33 on host gpu1"
+          }
+        }
+      },
+      "inputs_sha256": {
+        "tcontrol": "8c8de2080481f094b542e5fc27318f916a831e9296bbcadfa5b7ed88b95b20cd",
+        "self.energy.in": "3f05dfb497446e62b246ad1d4d1d3dcc2c74d324499fc97960fb39f67ee6e5cb",
+        "sub_te.sh": "947f2ded861fde3f4e4188f8a1f50b901fa8dd46abd65ff876d8be55cd9f6786",
+        "input_summary.json": "7571fc8f2d2a09328b8027217073cae5889d2132b65e5049d383d77648eecd11",
+        "geometry.in": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+        "electrode_metadata.json": "d19b655afe18fc8dce431b5e35baa7ee2d0dfbac4a102e033070f9a1509db1a1"
+      },
+      "outputs_sha256": {
+        "TE.dat": "327136be2b06ac78a43d5a801a0384abe1bdd2493dea4bdc9aabf34f57cf9489",
+        "te.out": "8f7989593eb73cb5aa62d9c9b641cb47e77cd0941e38c9e8afab2420bf09dc76"
+      },
+      "parent_stage": "au_relax",
+      "parent_fingerprint": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85",
+      "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+      "script": "sub_te.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\tcontrol",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\self.energy.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\sub_te.sh",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\input_summary.json",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\au_relax\\electrode_metadata.json"
+      ],
+      "notes": [
+        "能量窗 ener=-0.2200000000 / estep=0.0002000000 / eend=-0.1600000000，nlayers=3",
+        "表面索引 l=[82, 83, 86] r=[118, 119, 122]（来自 electrode_metadata.json）",
+        "self.energy.in：每侧 37 个电极 Au（含 tip，tip 记 empty）",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_te.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "tcontrol",
+        "TE.dat",
+        "te.out",
+        "self.energy.in",
+        "sub_te.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": []
+    },
+    "junction_analyze": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-13T11:42:09+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-13T11:42:09+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "results.json"
+      ],
+      "resources": {
+        "local": true,
+        "points": 301,
+        "temperature_K": 300.0
+      },
+      "results": {
+        "junction": {
+          "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat",
+          "temperature_K": 300.0,
+          "points": 301,
+          "L0": 0.001284826359091114,
+          "L1": 1.121338940111968e-05,
+          "L2": 4.464405163904677e-06,
+          "log10_G_over_G0_like": -2.8911555621258005,
+          "S_uV_per_K": -29.091841404032294,
+          "k_e_pW_per_K": 1.1277455092034885,
+          "ZT_electronic": 0.02241258527146982,
+          "fermi_nearest": {
+            "E_Hartree": -0.1796,
+            "E_minus_Ef_eV": -0.00219729,
+            "T": 0.001216503179
+          },
+          "max_transmission": {
+            "E_Hartree": -0.1706,
+            "E_minus_Ef_eV": 0.24270517,
+            "T": 0.5911882613
+          }
+        }
+      },
+      "inputs_sha256": {
+        "TE.dat": "327136be2b06ac78a43d5a801a0384abe1bdd2493dea4bdc9aabf34f57cf9489"
+      },
+      "outputs_sha256": {
+        "results.json": "16b8d98e433bd8c4321cccfafd11bfc1ba567c4027584906db9a1dd3bcbf639c"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat"
+      ],
+      "notes": [
+        "T = 300.0 K，301 个能量点；log10(G/G0)_like=-2.89116",
+        "本地阶段：只做 Landauer 积分，无集群提交"
+      ],
+      "commands": [],
+      "local_only": false
+    }
+  },
+  "results": {},
+  "warnings": []
+}

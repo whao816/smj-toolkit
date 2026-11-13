@@ -117,14 +117,23 @@ class RunInfo:
 
 @dataclass
 class MoleculeConfig:
-    """分子（Gaussian 优化阶段）参数。"""
+    """分子优化阶段参数。
+
+    ``opt_engine`` 选择分子预优化引擎：``aims``（默认，与后续 tip/SCF 同为
+    FHI-aims PBE/NAO）或 ``gaussian``（兼容旧 run）。Gaussian 分支继续用
+    ``method``/``basis``；FHI-aims 分支用 ``opt_functional``/``opt_basis``。
+    """
 
     xyz: str | None = None
     charge: int = 0
     multiplicity: int = 1
-    method: str = "b3lyp"
-    basis: str = "6-31g(d)"
+    method: str = "b3lyp"          # 仅 opt_engine=gaussian
+    basis: str = "6-31g(d)"        # 仅 opt_engine=gaussian
     family: str | None = None  # 判据标定族（如 AZ/BDT），见 criteria.SYSTEM_FAMILIES
+    opt_engine: str = "aims"       # aims | gaussian
+    opt_functional: str = "pbe"    # 仅 aims；与 aims_tip_relax/aims_scf 一致
+    opt_basis: str = "light"       # 仅 aims，记录用；实际 species 由 species_dir 决定
+    opt_force_threshold: str = "1.e-2"  # 仅 aims；Hartree/Bohr，写进 relax_geometry bfgs
 
 
 @dataclass
@@ -135,16 +144,24 @@ class ElectrodeConfig:
     left_anchor: str = "S"
     right_anchor: str = "S"
     au_tip_distance: float = 2.35
-    anchor_au_s_target: float = 2.40
+    #: tip 放置目标（Å）。None = 只用 au_tip_distance 放初始几何，不做任何 Au–S
+    #: 目标约束；最终键长/角度完全由 aims_tip_relax 的全原子弛豫决定。
+    #: 2.40 Å 只对**去质子硫醇盐**有参考意义；-SCH3 等硫醚不应把它当目标键长。
+    anchor_au_s_target: float | None = None
+    #: True = 把两个锚定原子和两个 tip 一起冻结（旧 W0-1 距离扫描口径）；
+    #: 默认 False = 全原子自由弛豫，tip 可以动。
+    pin_contact: bool = False
     strip_thiol_h: bool = True
     vdw: bool = True
     nlayers: int | None = None            # Aitranss 中心区层数；None = 按库文件头部建议
     source: str = "library"               # library = FHI-aims 预定义团簇；builtin = 原三角岛
     library_dir: str | None = None        # electrodes.library 目录；None = 常见路径/远端探测
     library_cluster: str = DEFAULT_CLUSTER
-    relax: bool = True                    # au_relax：固定背层的几何弛豫（手册 §5.3.1 要求）
+    #: 旧口径兼容：仅为显式重跑 legacy ``au_relax`` 阶段保留。主链路在
+    #: ``au60_build`` 后即冻结几何，不再消费此字段。
+    relax: bool = False
     relax_force_threshold: str = "1.e-2"  # BFGS 力收敛阈值（Hartree/Bohr）
-    #: au_relax 冻结谁：backplane = 只冻结两侧背层（手册口径）；electrodes = 冻结全部 Au，只让分子弛豫
+    #: 旧口径兼容：``au_relax`` 冻结谁（backplane / electrodes）；主链路不使用
     relax_freeze: str = "backplane"
 
 
@@ -157,6 +174,9 @@ class TransportConfig:
     ener: float | None = None             # 显式覆盖 energy_window 的分量
     estep: float | None = None
     eend: float | None = None
+    #: collect 时是否要求 aitranss 主输出 ``te.out`` 存在（结果可复核的一部分）。
+    #: 仅外部/历史 run 才应显式设为 false 豁免；不改变物理结果，故不进 protocol。
+    require_te_out: bool = True
 
     def resolved_window(self) -> tuple[float, float, float]:
         ener, estep, eend = self.energy_window
@@ -281,14 +301,18 @@ class RunConfig:
 _KNOWN_SECTIONS = {"run", "molecule", "electrode", "transport", "cluster", "paths", "review"}
 
 _RUN_KEYS = {"name", "dir", "mode", "clean", "keep_going"}
-_MOLECULE_KEYS = {"xyz", "charge", "multiplicity", "method", "basis", "family"}
+_MOLECULE_KEYS = {
+    "xyz", "charge", "multiplicity", "method", "basis", "family",
+    "opt_engine", "opt_functional", "opt_basis", "opt_force_threshold",
+}
 _ELECTRODE_KEYS = {
     "au_per_electrode", "left_anchor", "right_anchor", "au_tip_distance",
-    "anchor_au_s_target", "strip_thiol_h", "vdw", "nlayers",
+    "anchor_au_s_target", "pin_contact", "strip_thiol_h", "vdw", "nlayers",
     "source", "library_dir", "library_cluster", "relax", "relax_force_threshold",
     "relax_freeze",
 }
-_TRANSPORT_KEYS = {"temperature", "energy_window", "ener", "estep", "eend"}
+_TRANSPORT_KEYS = {"temperature", "energy_window", "ener", "estep", "eend",
+                   "require_te_out"}
 _CLUSTER_KEYS = {
     "host", "user", "port", "key", "remote_root", "partition", "ntasks", "gres",
     "account", "qos", "species_dir", "poll_seconds", "timeout_hours", "env",
@@ -329,7 +353,16 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         method=_as_str(data.get("method") or "b3lyp", "molecule.method"),
         basis=_as_str(data.get("basis") or "6-31g(d)", "molecule.basis"),
         family=_as_str(data.get("family"), "molecule.family", allow_empty=True) or None,
+        opt_engine=_as_str(data.get("opt_engine") or "aims", "molecule.opt_engine").lower(),
+        opt_functional=_as_str(
+            data.get("opt_functional") or "pbe", "molecule.opt_functional"),
+        opt_basis=_as_str(data.get("opt_basis") or "light", "molecule.opt_basis"),
+        opt_force_threshold=_as_str(
+            data.get("opt_force_threshold") or "1.e-2", "molecule.opt_force_threshold"),
     )
+    if cfg.opt_engine not in ("aims", "gaussian"):
+        raise ConfigError(
+            "molecule.opt_engine 应为 aims 或 gaussian，实际是 %r" % cfg.opt_engine)
     return cfg
 
 
@@ -342,8 +375,10 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
     au_value = None if au is None else _as_int(au, "electrode.au_per_electrode", minimum=1)
     if au_value is not None and au_value > 30:
         raise ConfigError("electrode.au_per_electrode 最多 30（Au60 每侧 30 个原子），实际是 %d" % au_value)
-    target = _as_float(data.get("anchor_au_s_target", 2.40), "electrode.anchor_au_s_target")
-    if not (1.5 <= target <= 4.0):
+    target_raw = data.get("anchor_au_s_target", None)
+    target = None if target_raw is None else _as_float(
+        target_raw, "electrode.anchor_au_s_target")
+    if target is not None and not (1.5 <= target <= 4.0):
         raise ConfigError("electrode.anchor_au_s_target 应在 1.5–4.0 Å，实际是 %s" % target)
     nlayers_raw = data.get("nlayers", None)
     nlayers = None if nlayers_raw is None else _as_int(nlayers_raw, "electrode.nlayers", minimum=1)
@@ -365,13 +400,14 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
         right_anchor=_as_str(data.get("right_anchor") or "S", "electrode.right_anchor"),
         au_tip_distance=_as_float(data.get("au_tip_distance", 2.35), "electrode.au_tip_distance"),
         anchor_au_s_target=target,
+        pin_contact=_as_bool(data.get("pin_contact", False), "electrode.pin_contact"),
         strip_thiol_h=_as_bool(data.get("strip_thiol_h", True), "electrode.strip_thiol_h"),
         vdw=_as_bool(data.get("vdw", True), "electrode.vdw"),
         nlayers=nlayers,
         source=source,
         library_dir=library_dir,
         library_cluster=cluster_rel,
-        relax=_as_bool(data.get("relax", True), "electrode.relax"),
+        relax=_as_bool(data.get("relax", False), "electrode.relax"),
         relax_force_threshold=threshold,
         relax_freeze=freeze,
     )
@@ -396,6 +432,8 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
         ener=_as_float(data["ener"], "transport.ener") if data.get("ener") is not None else None,
         estep=_as_float(data["estep"], "transport.estep") if data.get("estep") is not None else None,
         eend=_as_float(data["eend"], "transport.eend") if data.get("eend") is not None else None,
+        require_te_out=_as_bool(data.get("require_te_out", True),
+                                "transport.require_te_out"),
     )
     if cfg.temperature <= 0:
         raise ConfigError("transport.temperature 应 > 0 K，实际是 %s" % cfg.temperature)
@@ -529,8 +567,12 @@ molecule:
   xyz: {xyz}
   charge: 0
   multiplicity: 1
-  method: b3lyp
-  basis: 6-31g(d)
+  opt_engine: aims          # aims = 与 tip/SCF 同为 FHI-aims PBE/NAO（推荐）；gaussian = 旧口径
+  opt_functional: pbe       # 仅 opt_engine=aims
+  opt_basis: light          # 仅 opt_engine=aims；实际 species 由 cluster.species_dir 决定
+  opt_force_threshold: 1.e-2
+  method: b3lyp             # 仅 opt_engine=gaussian
+  basis: 6-31g(d)           # 仅 opt_engine=gaussian
   family: null              # 判据标定族（AZ/BDT/…）；未登记体系按"全部判据适用"处理
 
 electrode:
@@ -541,17 +583,19 @@ electrode:
   left_anchor: S
   right_anchor: S
   au_tip_distance: 2.35
-  anchor_au_s_target: 2.40
+  anchor_au_s_target: null  # null = 只按 au_tip_distance 放置，Au–S 由全原子弛豫决定
+  pin_contact: false        # false = aims_tip_relax 全原子自由弛豫（推荐）；true 仅用于距离扫描
   strip_thiol_h: true
   vdw: true
-  relax: true                     # au_relax：固定两侧背层做几何弛豫（手册 §5.3.1）
+  relax: false              # false = 电极扩展后几何冻结，SCF/输运不再弛豫（推荐）
   relax_force_threshold: 1.e-2
-  relax_freeze: backplane   # backplane = 只冻结两侧背层；electrodes = 冻结全部 Au，只让分子弛豫
+  relax_freeze: backplane   # 仅 relax: true 时生效；backplane = 冻背层，electrodes = 冻全部 Au
   nlayers: null             # Aitranss 中心区层数；null = 按库文件头部 -nlayers 建议
 
 transport:
   temperature: 300.0
   energy_window: [-0.21, 0.0002, -0.17]  # [ener, estep, eend] (Ha 绝对能量，围绕 Fermi)
+  require_te_out: true      # false = 允许缺 te.out 的外部/历史 run（显式豁免，不建议）
 
 cluster:
   host: null                # ~/.ssh/config 别名，如 cluster

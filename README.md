@@ -1,6 +1,6 @@
 # smj — 单分子结输运计算链（独立包）
 
-> 从**分子结构**到**透射谱**的端到端自动化：Gaussian 优化 → FHI-aims 加针尖/弛豫 →
+> 从**分子结构**到**透射谱**的端到端自动化：FHI-aims 分子优化 → FHI-aims 加针尖/弛豫 →
 > 本地构建 Au(111) 电极 → FHI-aims 静态 SCF → aitranss 透射 → Landauer 分析。
 > 整链可一把跑完，也可**逐阶段独立运行**；每个阶段的输入/产物都落在
 > `<run.dir>/<run.name>/<stage>/`，状态机在 `state.json` 里可查、可恢复。
@@ -14,23 +14,31 @@
 
 | | |
 |---|---|
-| 输入 | 分子 `.xyz`（默认硫醇 -SH 锚定）+ 电极/锚点/输运窗口参数（`smj.yaml`） |
+| 输入 | 分子 `.xyz`（默认硫醇 -SH 锚定；也支持 `-SCH3` 等硫醚，锚定 S 且 `strip_thiol_h: false`）+ 电极/锚点/输运窗口参数（`smj.yaml`） |
 | 输出 | `TE.dat`（透射谱）、`results.json`（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`）；`smj report` 另生成 `manifest.json`、`report.md` 与判定（`manifest.verdict`） |
 | 适用 | 单分子结 / 分子电子学：Au(111) 电极间硫醇锚定分子的电输运与热电 |
 | 不承诺 | 自带 Gaussian/FHI-aims/aitranss；自动替人选方法/基组/锚点；替代人工结构确认；把 20 Au/侧与 Au60 口径混比 |
 
-七阶段链（顺序固定，但可单独执行任意阶段）：
+六阶段链（顺序固定，但可单独执行任意阶段）：
 
 ```text
 molecule.xyz
-  └─ gaussian_opt      Gaussian 16 opt+freq            → opt.xyz
-      └─ aims_tip_relax  FHI-aims 加 Au 针尖 + 弛豫      → geometry.in.next_step
-          └─ au60_build  本地贴装 Au(111) 电极（库团簇）  → geometry.in + electrode_metadata.json
-              └─ au_relax    FHI-aims 背层固定弛豫        → 弛豫后的 geometry.in（背层冻结）
-                  └─ aims_scf     FHI-aims 静态 SCF      → aims.out / mos.aims
-                      └─ aitranss_te  aitranss 透射      → TE.dat
-                          └─ junction_analyze  Landauer  → results.json
+  └─ gaussian_opt      FHI-aims PBE/light 分子优化      → opt.xyz
+      └─ aims_tip_relax  FHI-aims 加 Au tip + 全原子弛豫  → geometry.in.next_step
+          └─ au60_build  把每个 tip 扩展为完整 Au(111) 金字塔团簇 → geometry.in + electrode_metadata.json
+              └─ aims_scf     FHI-aims 静态 SCF      → aims.out / mos.aims
+                  └─ aitranss_te  aitranss 透射      → TE.dat
+                      └─ junction_analyze  Landauer  → results.json
 ```
+
+`au_relax` 已从主链路移除：结几何在 `au60_build` 后即冻结，后续 SCF/输运不再弛豫。
+该阶段模块仍保留，仅供旧 run 或显式 `smj stage au_relax ...` 兼容使用。
+
+`gaussian_opt` 的引擎由 `molecule.opt_engine` 选择：默认 `aims`（FHI-aims
+PBE/light，与 tip/SCF 同一软件栈）；`gaussian` 保留旧口径（B3LYP/6-31G(d)，
+需 Gaussian 16 许可）。两种引擎的产物契约相同：`opt.xyz` 供 `aims_tip_relax`
+消费。FHI-aims 分支不做虚频检查（无现成一键 freq），几何可靠性靠
+`relax_geometry bfgs` 的力阈值与人工复核。
 
 ## 1. 安装
 
@@ -58,7 +66,7 @@ python -m pip install -e ".[all]"    # plot + dev
 
 ```bash
 smj --help
-smj verify      # Python/PyYAML/numpy、vendored junction、模板、7 个阶段模块
+smj verify      # Python/PyYAML/numpy、vendored junction、模板、阶段模块（含 legacy au_relax）
 ```
 
 ## 2. 5 分钟快速开始
@@ -75,7 +83,7 @@ smj init . --name demo --xyz molecule.xyz --mode dry-run
 #    注意：0.1.2 默认 electrode.source: library，需要 FHI-aims 的 electrodes.library
 #    （用 electrode.library_dir 指向它，或写 source: builtin 回退到自建电极）
 
-# 3) 看七阶段计划、依赖与当前状态
+# 3) 看六阶段计划、依赖与当前状态
 smj plan
 
 # 4) 只生成第一阶段输入（人工检查 mol.gjf / sub_g16.sh）
@@ -111,15 +119,14 @@ smj run --from aims_scf --to aitranss_te
 
 | 阶段 | 默认输入 | 主要产物 | 需提交？ | 示例命令 |
 |---|---|---|---|---|
-| `gaussian_opt` | `molecule.xyz`（或 `--xyz`） | `mol.gjf`、`sub_g16.sh`、`input_summary.json`；collect 后 `mol.log`、`opt.xyz`、`gaussian_summary.json` | 是（Gaussian） | `smj stage gaussian_opt --run --xyz molecule.xyz` |
+| `gaussian_opt` | `molecule.xyz`（或 `--xyz`） | 默认（aims）：`geometry.in`、`control.in`、`sub_aims.sh`、`input_summary.json`，collect 后 `aims.out`、`opt.xyz`；gaussian 引擎：`mol.gjf`、`sub_g16.sh`，collect 后 `mol.log`、`opt.xyz`、`gaussian_summary.json` | 是（FHI-aims 或 Gaussian） | `smj stage gaussian_opt --run --xyz molecule.xyz` |
 | `aims_tip_relax` | `gaussian_opt/opt.xyz`（或 `--geometry`） | `geometry.in`、`control.in`、`sub_aims.sh`；collect 后 `geometry.in.next_step` | 是（FHI-aims） | `smj stage aims_tip_relax --run --geometry gaussian_opt/opt.xyz` |
-| `au60_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json`（含背层索引与库团簇来源） | **否**（本地） | `smj stage au60_build --run --geometry aims_tip_relax/geometry.in.next_step` |
-| `au_relax` | `au60_build/geometry.in` + metadata | `geometry.in`（两侧背层全部 `constrain_relaxation`）、`control.in`、`sub_aims.sh`；collect 后 `geometry.in.next_step` | 是（FHI-aims） | `smj stage au_relax --run` |
-| `aims_scf` | `au_relax/geometry.in`（回退 `au60_build/geometry.in`，或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run` |
+| `au60_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json`（含背层索引与库团簇来源）；tip 被扩展为完整团簇，S–Au 距离/角度沿用弛豫结果 | **否**（本地） | `smj stage au60_build --run --geometry aims_tip_relax/geometry.in.next_step` |
+| `aims_scf` | `au60_build/geometry.in`（或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run` |
 | `aitranss_te` | `aims_scf/`（或 `--scf-dir`） | `tcontrol`、`sub_te.sh`；collect 后 `TE.dat`、`te.out` | 是（aitranss） | `smj stage aitranss_te --run --scf-dir /path/to/scf` |
 | `junction_analyze` | `aitranss_te/TE.dat`（或 `--te`） | `results.json` | **否**（本地） | `smj stage junction_analyze --run --te TE.dat` |
 
-FHI-aims 阶段（`aims_tip_relax`/`au_relax`/`aims_scf`）还需要 `cluster.species_dir` 或
+FHI-aims 阶段（`aims_tip_relax`/`aims_scf`）还需要 `cluster.species_dir` 或
 `paths.species_defaults` 指向 species 目录；缺失时 `prepare` 直接 `StageBlocked`
 （`smj preflight` 也会报 error）。`--geometry` 在三个消费几何的阶段
 （`aims_tip_relax`/`au60_build`/`aims_scf`）都可用，但语义不同：`aims_tip_relax`
@@ -132,18 +139,24 @@ FHI-aims 阶段（`aims_tip_relax`/`au_relax`/`aims_scf`）还需要 `cluster.sp
 §5.3.1 的要求），由 `electrode.source`、`electrode.library_dir`、`electrode.library_cluster`
 控制（默认 `fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims`）；库文件不进
 wheel，只在 metadata 里记 `sha256` 与相对路径。`electrode.nlayers: null` 表示取库文件头部
-建议的层数。`electrode.source: builtin` 回到旧的自建三角岛。`electrode.relax: true`
-（默认）让 `au_relax` 在贴装后冻住两侧背层整层、做一次小力阈值弛豫（手册 §5.3.1 的
-"固定两个背层做一次弛豫"）；置 `false` 时该阶段本地直通（写 `relax_skipped.json`）。
+建议的层数。`electrode.source: builtin` 回到旧的自建三角岛。
 
-`electrode.relax_freeze: electrodes` 则冻结全部 Au、只让分子弛豫——理想晶格电极本来
-就已弛豫好，把 60+ 个 Au 一起交给 BFGS 会让最大力在 0.4–0.9 eV/Å 之间来回；`backplane`
-（默认）只冻两侧背层，适用于电极本身还要微调的场合。
+默认协议是 **tip 全原子弛豫 → 扩展成完整团簇 → 几何冻结**：`electrode.pin_contact: false`
+（默认）让 `aims_tip_relax` 的 56 原子（分子 + 2 Au tip）全部自由弛豫，不用
+`anchor_au_s_target` 限制 Au–S，这一步给出的就是可靠的 Au–S 键长与连接角度；
+`au60_build` 只沿弛豫后的 tip→linker 方向把每个 tip 扩展为完整团簇，不改 S–Au
+距离/角度。扩展完成后结几何完全冻结，`aims_scf`/`aitranss_te` 不再做任何结构弛豫。
+
+`electrode.relax` / `relax_freeze` 字段仅为旧 run 或显式重跑 `au_relax` 保留；
+主链路已不消费它们。
+默认 `relax: false` 时这个开关不生效。
 
 `transport.energy_window: [ener, estep, eend]` 的单位是 **Hartree（绝对能量）**，与
 `tcontrol` 的 `$ener/$estep/$eend` 一致，要围绕 `aims_scf/aims.out` 的 Fermi 能级取值
 （Au 体系约 −0.19 Ha 附近取 ±0.02 Ha）。`TE.dat` 第一列是绝对 Hartree，第二列才是
-`E−E_F`（eV）。
+`E−E_F`（eV）。`transport.require_te_out`（默认 `true`）要求 `aitranss_te/te.out`
+也在场——它是 aitranss 主输出，缺了就无法复核这次透射计算；外部/历史 run 才显式设
+`false` 豁免。
 
 `molecule.family` 声明判据标定族（`AZ` = Au-(2,6-azulenedithiol)-Au、`BDT` 等）；
 未登记体系按"全部判据适用"处理（fail-safe）。BDT 的绿带（T(E_F)/G ∈ [0.03, 0.40]、
@@ -291,9 +304,6 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 │   └── geometry.in.next_step  aims.out
 ├── au60_build/
 │   └── geometry.in  electrode_metadata.json
-├── au_relax/
-│   ├── geometry.in  control.in  sub_aims.sh
-│   └── aims.out  geometry.in.next_step  electrode_metadata.json
 ├── aims_scf/
 │   ├── control.in  sub_aims.sh  geometry.in
 │   └── aims.out  mos.aims  basis-indices.out
@@ -318,7 +328,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差）；`--approve --who <名字>` 登记 A2 确认（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用 | `review.json`、`auN_build/a2_confirmation.json`；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
-| `smj plan` | 打印七阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
+| `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
 
 退出码：`0` 成功/作业已结束；`1` 失败或配置/输入错误；`2` 未完成（`--wait` 超时、
 作业可能仍在跑，或 `run` 有阶段停在 `waiting`），以及 **A2 签署被拒绝**
@@ -343,7 +353,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `run_spec.json` 不同，直接报错；确认要重绑才加 `--force`，旧快照保留为
   `run_spec.previous.json`。
 - **阶段哈希**：`state.json` 每阶段记录 `inputs_sha256` / `outputs_sha256` /
-  `parent_stage` / `parent_fingerprint`；`au_relax`、`aims_scf`、`aitranss_te`
+  `parent_stage` / `parent_fingerprint`；`aims_scf`、`aitranss_te`
   在 `prepare` 时校验上游 `geometry.in` 与电极 metadata 的 `surface_fingerprint`，
   不一致直接 `StageBlocked`（不会拿被换过的几何继续算）。
 - **报告绑定**：`manifest.json` 带 `run_spec` 与 `provenance`（run_spec 文件 sha256、
@@ -377,6 +387,11 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   默认 `true`，没有有效签名时 `smj review` 为 `blocked`。
 - **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
   （未测晶格热导就不下总 ZT 结论）。
+- **锚定化学不可混**：`2.40–2.49 Å` 是去质子**硫醇盐**的 Au–S 有源带。`-SCH3` 等
+  **硫醚**的 S–Au 是配位接触（2.6–2.7 Å 也可能正常），`smj review` 按 S 的成键环境
+  （S–C 数 / S–H）分流，不把该带套到硫醚上。默认 `anchor_au_s_target: null`、
+  `pin_contact: false`：只用 `au_tip_distance` 放初始几何，最终 Au–S 键长/角度由
+  `aims_tip_relax` 的全原子弛豫决定；不要把 2.40 Å 当作目标键长或约束。
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。
 - **资源估算是申请下限**：132 原子锚点外推，体系明显偏离时应按实测回填，不要当保证值。

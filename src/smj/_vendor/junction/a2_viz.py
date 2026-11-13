@@ -52,9 +52,13 @@ def _triangle_metrics(atoms, chosen, away):
 
 
 def _axis(atoms, metadata):
-    """输运轴 = 左锚 -> 右锚 单位方向(不预设 x/y/z, 与 validate_junction_geometry 同口径)。"""
-    lk = int(metadata['left_linker_index']) - 1
-    rk = int(metadata['right_linker_index']) - 1
+    """输运轴 = 左锚 -> 右锚 单位方向(不预设 x/y/z, 与 validate_junction_geometry 同口径)。
+
+    优先用两侧 tip: tip 是电极的物理端点, 分子弛豫后 S-S 连线可能偏离输运轴;
+    只有 metadata 缺 tip 时才回退到 linker。
+    """
+    lk = int(metadata.get('left_tip_index') or metadata['left_linker_index']) - 1
+    rk = int(metadata.get('right_tip_index') or metadata['right_linker_index']) - 1
     return unit(sub(atoms[rk].coord(), atoms[lk].coord())), atoms[lk].coord(), atoms[rk].coord()
 
 
@@ -77,7 +81,22 @@ def _side_audit(atoms, metadata, side, axis, mid):
     linker = int(metadata['%s_linker_index' % side]) - 1
     raw = list(metadata.get('%s_surface_indices' % side) or [])
     chosen = [int(i) - 1 for i in raw if str(i).strip()]
-    away = unit(sub(atoms[tip].coord(), atoms[linker].coord()))
+    # 表面层方向优先用三个表面原子自己的平面法向：metadata 的三元组就是待审计的
+    # 表面，法向由它们定义，不依赖 tip/tip 或 tip/linker 连线。分子弛豫后 S-C
+    # 倾斜时，tip->linker 不再等于表面法向；两侧 tip 连线也不一定平行于电极层
+    # （2026-11-13 的 2CN-656 验收 run 先后暴露过这两种情况）。三元组不足时
+    # 才回退到“离开结区”的输运轴。
+    if len(chosen) == 3 and len(set(chosen)) == 3:
+        p0, p1, p2 = (atoms[i].coord() for i in chosen)
+        nrm = cross(sub(p1, p0), sub(p2, p0))
+        if norm(nrm) > 1e-9:
+            away = unit(nrm)
+            if dot(away, sub(atoms[tip].coord(), p0)) > 0:
+                away = tuple(-x for x in away)   # 指向电极外侧，tip 在平面内侧
+        else:
+            away = tuple(-x for x in axis) if side == 'left' else tuple(axis)
+    else:
+        away = tuple(-x for x in axis) if side == 'left' else tuple(axis)
     cluster = _cluster(atoms, metadata, side, axis, mid)
     proj = {i: dot(atoms[i].coord(), away) for i in range(len(atoms))}
     top = max((proj[i] for i in cluster), default=0.0)
@@ -146,8 +165,16 @@ def _side_audit(atoms, metadata, side, axis, mid):
         # W0-3(2026-11-05): 索引规则改成确定性的 det-v1(surface_index.pick_surface_triple)。
         # 对 det-v1 的 run, "重算 == metadata" 是**硬检查**; 早于 det-v1 的 run 没有
         # surface_rule, 只记录不判死(它们已被 §11-S8 标成 legacy)。
-        equiv = surface_indices(atoms, cluster, tip, linker)
-        same_set = set(equiv) == set(i + 1 for i in chosen)
+        try:
+            equiv = surface_indices(atoms, cluster, tip, linker, away=away)
+            equiv_error = None
+        except ValueError as exc:
+            # 坏 metadata（例如把内层原子当表面）不应让审计“执行失败”而丢掉
+            # 其余检查；重算失败本身就是 deterministic_indices 不通过。
+            equiv = []
+            equiv_error = str(exc)
+        metrics['equiv_error'] = equiv_error
+        same_set = (not equiv_error) and set(equiv) == set(i + 1 for i in chosen)
         rule = str(metadata.get('surface_rule') or 'legacy')
         metrics['equivalent_triple'] = equiv
         metrics['equiv_same_set'] = same_set

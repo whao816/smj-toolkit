@@ -14,6 +14,11 @@
 #       export COM_DIR=...
 #       source $g16root/bsd/g16.profile
 {g16_setup}
+# Scratch must exist before g16 opens its files; a stale cluster path used to
+# abort the job with FIO/stdio error 2 before the first SCF step.
+# If {scratch} is still unset, runner._reject_unconfigured refuses submission
+# before this script ever runs.
+mkdir -p "{scratch}"
 export GAUSS_SCRDIR={scratch}
 srun g16 "$1"
 

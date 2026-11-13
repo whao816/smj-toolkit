@@ -1,0 +1,17 @@
+# 2CN-656 系列 demo 的大产物不进库（与 azulene demo 同一口径）
+2CN-656-4-thiomethylphenyl*/**/aims.out
+2CN-656-4-thiomethylphenyl*/**/slurm-*.out
+2CN-656-4-thiomethylphenyl*/**/mos.aims
+2CN-656-4-thiomethylphenyl*/**/omat.aims
+2CN-656-4-thiomethylphenyl*/**/basis-indices.out
+2CN-656-4-thiomethylphenyl*/**/te.out
+2CN-656-4-thiomethylphenyl*/**/self.energy.in
+2CN-656-4-thiomethylphenyl*/**/tcontrol
+2CN-656-4-thiomethylphenyl*/**/sub_*.sh
+2CN-656-4-thiomethylphenyl*/**/control.in
+2CN-656-4-thiomethylphenyl*/**/input_summary.json
+2CN-656-4-thiomethylphenyl*/**/mol.log
+2CN-656-4-thiomethylphenyl*/**/mol.gjf
+2CN-656-4-thiomethylphenyl*/**/*.next_step
+2CN-656-4-thiomethylphenyl*/**/TE.pdf
+2CN-656-4-thiomethylphenyl*/**/.tmp_preflight.json

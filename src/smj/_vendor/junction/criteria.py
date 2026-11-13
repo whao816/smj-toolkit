@@ -46,7 +46,8 @@ CRITERIA = [
 
     {'name': 'au_s_bond', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
      'band': [2.40, 2.49], 'source': dict(THY, locator='p.12'),
-     'note': '另有实验锚点 ' + JAC['doi'] + ' S-Au=2.42+-0.02; 仅方向性(两锚点均为表面/金字塔配位)'},
+     'note': '另有实验锚点 ' + JAC['doi'] + ' S-Au=2.42+-0.02; 仅方向性(两锚点均为表面/金字塔配位); '
+             '仅适用于去质子硫醇盐；-SCH3 等硫醚的 S–Au 是配位接触，2.40–2.49 Å 不适用'},
 
     {'name': 't_ef_magnitude', 'kind': 'physical', 'gate': 'error', 'implemented': True,
      'band': [0.03, 0.4], 'source': dict(THY, locator='p.13'),

@@ -1,0 +1,4 @@
+{
+  "reason": "electrode.relax=false",
+  "note": "跳过背层固定弛豫；下游直接消费 au60_build 几何"
+}

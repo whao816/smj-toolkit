@@ -44,6 +44,7 @@ class AimsTipRelaxStage(Stage):
             species_dir=species, env=env,
             strip_thiol_h=electrode.strip_thiol_h,
             anchor_au_s_target=electrode.anchor_au_s_target,
+            pin_contact=electrode.pin_contact,
             vdw=vdw_mode(electrode.vdw),
         )
         summary = written["summary"]
@@ -51,8 +52,8 @@ class AimsTipRelaxStage(Stage):
             "%d 原子（分子 %d + 2 Au tip），锚定原子 %d/%d（%s）"
             % (natoms, natoms - 2, summary.get("left_anchor"), summary.get("right_anchor"),
                electrode.left_anchor),
-            "Au–S 放置距离 %s Å（pin_contact=%s），species 目录 %s"
-            % (summary.get("placement_distance_A"), summary.get("contact_pinned"), species),
+            "tip 全原子弛豫（pin_contact=%s），Au–S 初始放置距离 %s Å，species 目录 %s"
+            % (summary.get("contact_pinned"), summary.get("placement_distance_A"), species),
             "prepare 只写输入与作业脚本，未提交任何远端命令",
         ]
         strip = summary.get("strip_thiol_h") or {}

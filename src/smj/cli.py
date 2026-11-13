@@ -3,7 +3,7 @@
 子命令一览::
 
     smj init      写一份 smj.yaml 模板
-    smj plan      打印 7 个阶段、依赖与当前状态
+    smj plan      打印 6 个阶段、依赖与当前状态
     smj preflight 提交前检查（调用 smj.preflight）
     smj stage     单阶段操作：--prepare / --submit / --wait / --collect / --run
     smj run       按 --from/--to 链式推进（prepare → submit → wait → collect）
@@ -759,7 +759,9 @@ def cmd_audit(args: argparse.Namespace) -> int:
                 add("error", "stage-dir-missing",
                     "status=%s 但阶段目录不存在: %s" % (stage.status, stage_dir), name)
             else:
-                expected = list(meta.get("outputs") or ()) or list(stage.artifacts)
+                # 优先用本阶段实际记录的 artifacts（引擎分派后 gaussian/aims
+                # 的产物名不同）；只有旧 run 没记录时才回退模块声明的 outputs。
+                expected = list(stage.artifacts) or list(meta.get("outputs") or ())
                 for artifact in expected:
                     if not (stage_dir / artifact).exists():
                         add("warning", "artifact-missing",
@@ -934,7 +936,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # plan ------------------------------------------------------------------ #
     plan = subparsers.add_parser(
-        "plan", help="打印 7 个阶段、依赖与当前状态",
+        "plan", help="打印 6 个阶段、依赖与当前状态",
         description="只读：不生成文件、不连远端。")
     _add_common(plan)
     plan.set_defaults(handler=cmd_plan)

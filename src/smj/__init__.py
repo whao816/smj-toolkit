@@ -2,7 +2,7 @@
 
 一条完整的计算链（每一步都可以单独运行）：
 
-    gaussian_opt     分子 XYZ -> Gaussian opt+freq -> 优化后分子 (opt.xyz)
+    gaussian_opt     分子 XYZ -> FHI-aims PBE 优化（默认）或 Gaussian -> opt.xyz
     aims_tip_relax   opt.xyz -> 加 Au 尖端 -> FHI-aims 弛豫 -> geometry.in.next_step
     au60_build       geometry.in.next_step -> 拼接 Au(111) 电极 -> geometry.in（本地）
     aims_scf         geometry.in -> FHI-aims SCF -> omat.aims/mos.aims/aims.out

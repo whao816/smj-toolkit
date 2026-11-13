@@ -1,0 +1,22 @@
+{
+  "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat",
+  "temperature_K": 300.0,
+  "points": 301,
+  "L0": 0.001284826359091114,
+  "L1": 1.121338940111968e-05,
+  "L2": 4.464405163904677e-06,
+  "log10_G_over_G0_like": -2.8911555621258005,
+  "S_uV_per_K": -29.091841404032294,
+  "k_e_pW_per_K": 1.1277455092034885,
+  "ZT_electronic": 0.02241258527146982,
+  "fermi_nearest": {
+    "E_Hartree": -0.1796,
+    "E_minus_Ef_eV": -0.00219729,
+    "T": 0.001216503179
+  },
+  "max_transmission": {
+    "E_Hartree": -0.1706,
+    "E_minus_Ef_eV": 0.24270517,
+    "T": 0.5911882613
+  }
+}
