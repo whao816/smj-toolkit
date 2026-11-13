@@ -27,7 +27,7 @@ ANCHORS: dict[str, dict[str, float]] = {
 
 #: 轻阶段：实测锚点 + 每原子增量
 LINEAR: dict[str, dict[str, float]] = {
-    "gaussian_opt": {"wall0": 60.0, "per_atom_wall": 10.0, "mem0": 4.0, "per_atom_mem": 0.05},
+    "molecule_opt": {"wall0": 60.0, "per_atom_wall": 10.0, "mem0": 4.0, "per_atom_mem": 0.05},
     "aims_tip_relax": {"wall0": 180.0, "per_atom_wall": 30.0, "mem0": 8.0, "per_atom_mem": 0.10},
     # au_relax：背层冻结后只弛豫中间区，原子数约为 au60 全体系的 1/3 自由度，
     # 但每步力都要算全体系，墙钟按"整体系的一次 BFGS"估（比 SCF 略贵）。
@@ -35,7 +35,7 @@ LINEAR: dict[str, dict[str, float]] = {
 }
 
 NTASKS: dict[str, int] = {
-    "gaussian_opt": 1,
+    "molecule_opt": 1,
     "aims_tip_relax": 4,
     "au_relax": 4,
     "aims_scf": 4,
@@ -51,7 +51,7 @@ MARGIN_MEM = 1.20
 TIME_LIMIT_FACTOR = 1.9
 
 FLOOR_WALL: dict[str, int] = {
-    "gaussian_opt": 900,
+    "molecule_opt": 900,
     "aims_tip_relax": 900,
     "au_relax": 1800,
     "aims_scf": 1800,
@@ -59,7 +59,7 @@ FLOOR_WALL: dict[str, int] = {
 }
 
 SMJ_STAGES: tuple[str, ...] = (
-    "gaussian_opt", "aims_tip_relax", "au_relax", "aims_scf", "aitranss_te",
+    "molecule_opt", "aims_tip_relax", "aims_scf", "aitranss_te",
 )
 
 
@@ -93,8 +93,8 @@ def estimate_smj_resources(stage: str, natoms: int = 1) -> dict:
         ``{walltime, time_limit, mem, ntasks, cpus, cores, atoms, core_h, capped, basis}``；
         本地阶段返回 ``{'local': True, ...}``；未知阶段返回 ``{'unknown': True, ...}``。
     """
-    if stage == "au60_build":
-        return {"local": True, "basis": "au60_build 为纯本地阶段，无集群资源"}
+    if stage == "electrode_build":
+        return {"local": True, "basis": "electrode_build 为纯本地阶段，无集群资源"}
     n = max(int(natoms or 1), 1)
     if stage in ANCHORS:
         a = ANCHORS[stage]

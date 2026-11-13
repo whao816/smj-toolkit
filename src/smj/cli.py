@@ -398,10 +398,14 @@ def cmd_plan(args: argparse.Namespace) -> int:
     rows = []
     for name in STAGE_ORDER:
         meta = _stage_meta(name, getattr(args, "stage_getter", None))
+        script = meta["script"] or "-"
+        if name == "molecule_opt":
+            engine = str(getattr(config.molecule, "opt_engine", "aims") or "aims").lower()
+            script = "sub_aims.sh" if engine == "aims" else "sub_g16.sh"
         rows.append({
             "stage": name,
             "kind": meta["kind"],
-            "script": meta["script"] or "-",
+            "script": script,
             "depends": ", ".join(meta["depends"]) or "-",
             "input": meta["input"],
             "status": state.status(name),
@@ -886,7 +890,7 @@ def _add_common(parser: argparse.ArgumentParser, *, with_config: bool = True) ->
 def _add_overrides(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("输入覆盖")
     group.add_argument("--xyz", metavar="PATH", help="分子结构 xyz（覆盖 molecule.xyz）")
-    group.add_argument("--geometry", metavar="PATH", help="Au60 结几何文件（覆盖 au60_build 输入）")
+    group.add_argument("--geometry", metavar="PATH", help="Au60 结几何文件（覆盖 electrode_build 输入）")
     group.add_argument("--scf-dir", dest="scf_dir", metavar="DIR", help="aims_scf 输出目录覆盖")
     group.add_argument("--te", metavar="PATH", help="TE.dat / tcontrol 输入目录覆盖")
     group.add_argument("--metadata", metavar="PATH", help="电极元数据 JSON 覆盖")
@@ -1018,9 +1022,9 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--who", default=None, metavar="NAME",
                         help="A2 签署人（写进 a2_confirmation.json）")
     review.add_argument("--stage", default=None, metavar="DIR",
-                        help="auN_build 目录（缺省自动定位 run 下的 auN_build）")
+                        help="electrode_build 目录（缺省自动定位 run 下的 electrode_build）")
     review.add_argument("--png", default=None, metavar="PATH",
-                        help="A2 核对图输出路径（缺省 <auN_build>/a2_surface_viz.png）")
+                        help="A2 核对图输出路径（缺省 <electrode_build>/a2_surface_viz.png）")
     review.add_argument("--tcontrol", default=None, metavar="PATH",
                         help="aitranss_te/tcontrol（用于核对表面索引一致性）")
     review.add_argument("--no-figure", action="store_true",

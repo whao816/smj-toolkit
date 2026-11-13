@@ -2,7 +2,7 @@
   "schema": "smj.report.v1",
   "run_id": "2CN-656-4-thiomethylphenyl-aimsopt",
   "root": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt",
-  "generated_at": "2026-11-13T19:51:58+08:00",
+  "generated_at": "2026-11-13T22:12:47+08:00",
   "spec": {
     "run": {
       "name": "2CN-656-4-thiomethylphenyl-aimsopt",
@@ -289,15 +289,15 @@
     "created_at": "2026-11-13T18:20:01+08:00",
     "updated_at": "2026-11-13T19:51:42+08:00",
     "stages": {
-      "gaussian_opt": "collected",
+      "molecule_opt": "collected",
       "aims_tip_relax": "collected",
-      "au60_build": "collected",
+      "electrode_build": "collected",
       "aims_scf": "collected",
       "aitranss_te": "collected",
       "junction_analyze": "collected"
     },
     "details": {
-      "gaussian_opt": {
+      "molecule_opt": {
         "job_id": "26082",
         "exit_code": 0,
         "elapsed_s": 964.0,
@@ -311,7 +311,7 @@
         "note": null,
         "error": null
       },
-      "au60_build": {
+      "electrode_build": {
         "job_id": null,
         "exit_code": null,
         "elapsed_s": null,
@@ -449,7 +449,7 @@
       "run_input_sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f"
     },
     "electrode": {
-      "stage": "au60_build",
+      "stage": "electrode_build",
       "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\au60_build\\geometry.in",
       "atom_count": 128,
       "au_per_electrode": 37,
@@ -474,7 +474,7 @@
     }
   },
   "stages": {
-    "gaussian_opt": {
+    "molecule_opt": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\gaussian_opt",
       "n_files": 8,
       "bytes": 23267337,
@@ -579,11 +579,29 @@
         }
       ]
     },
-    "au60_build": {
+    "electrode_build": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\au60_build",
-      "n_files": 2,
-      "bytes": 10707,
+      "n_files": 5,
+      "bytes": 251134,
       "files": [
+        {
+          "name": "a2_confirmation.json",
+          "bytes": 330,
+          "retrieval": "unknown",
+          "sha256": "375fbe17a8a6749fb9d30995423c81e43cdf1f2ff7b5480e5cb362b9d13854bf"
+        },
+        {
+          "name": "a2_surface_audit.json",
+          "bytes": 13800,
+          "retrieval": "unknown",
+          "sha256": "5348dd37c69fe69d589eb4702aceb1041ccf4db47c5b99bc098195b3a5d76d2c"
+        },
+        {
+          "name": "a2_surface_viz.png",
+          "bytes": 226297,
+          "retrieval": "unknown",
+          "sha256": "5bf993426898f1753c17423622753431d092e878931fafcf8acf93063590f631"
+        },
         {
           "name": "electrode_metadata.json",
           "bytes": 2697,
@@ -723,7 +741,7 @@
     }
   },
   "resources": {
-    "gaussian_opt": {
+    "molecule_opt": {
       "source": "state",
       "walltime": "00:38:00",
       "time_limit": "01:12:00",
@@ -924,7 +942,7 @@
     }
   ],
   "totals": {
-    "bytes": 46089454,
+    "bytes": 46329881,
     "gib": 0.043,
     "stages": 6
   }

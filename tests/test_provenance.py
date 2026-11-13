@@ -161,7 +161,7 @@ def test_prepare_and_collect_record_input_output_hashes(workdir):
     runner.prepare("gaussian_opt")
 
     stage = runner.state.stage("gaussian_opt")
-    stage_dir = runner.run_dir / "gaussian_opt"
+    stage_dir = runner.layout.stage_dir("gaussian_opt")
     # 断言按磁盘字节哈希（Windows 的 write_text 会把 \n 写成 \r\n）。
     assert _sha256_file(stage_dir / "input.txt") in set(stage.inputs_sha256.values())
     assert _sha256_file(workdir / "molecule.xyz") in set(stage.inputs_sha256.values())
@@ -170,7 +170,7 @@ def test_prepare_and_collect_record_input_output_hashes(workdir):
     stage = runner.state.stage("gaussian_opt")
     assert stage.outputs_sha256["out.txt"] == _sha256_file(stage_dir / "out.txt")
     saved = json.loads((runner.run_dir / "state.json").read_text(encoding="utf-8"))
-    assert saved["stages"]["gaussian_opt"]["outputs_sha256"]["out.txt"] == \
+    assert saved["stages"]["molecule_opt"]["outputs_sha256"]["out.txt"] == \
         _sha256_file(stage_dir / "out.txt")
 
 
@@ -232,7 +232,7 @@ def test_guard_geometry_fingerprint_rejects_mismatch(workdir):
     assert verify_parent_geometry("aims_scf", geometry, metadata)
 
 
-def test_discover_stages_includes_au_relax_even_if_vendored_lists_are_stale(
+def test_discover_stages_uses_state_order_not_vendored(
         workdir, monkeypatch):
     from smj import report as report_mod
     import smj._vendor.junction.manifest as vendored
@@ -246,18 +246,17 @@ def test_discover_stages_includes_au_relax_even_if_vendored_lists_are_stale(
     assert report_mod.discover_stages(run_dir) == list(STAGE_ORDER)
 
 
-def test_discover_stages_keeps_extra_auN_build_dirs(workdir):
+def test_discover_stages_collapses_legacy_auN_build_dirs(workdir):
     from smj.report import discover_stages
 
     run_dir = workdir / "run"
     for stage in STAGE_ORDER:
         (run_dir / stage).mkdir(parents=True)
+    # 旧 run 的 au20_build 目录由 RunLayout 回退到 electrode_build，不应再作为
+    # 额外阶段出现在阶段序列里。
     (run_dir / "au20_build").mkdir()
 
-    expected = list(STAGE_ORDER)
-    expected.insert(expected.index("au60_build") + 1, "au20_build")
-    assert discover_stages(run_dir) == expected
-
+    assert discover_stages(run_dir) == list(STAGE_ORDER)
 
 def test_review_flags_protocol_drift(workdir):
     config = _config(workdir)

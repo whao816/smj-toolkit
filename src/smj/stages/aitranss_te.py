@@ -2,7 +2,7 @@
 
 prepare 写 ``tcontrol``、``self.energy.in`` 与 ``sub_te.sh``：
 - ``tcontrol`` 由 ``aims_scf`` 目录里的 ``mos.aims``/``geometry.in`` 与
-  ``au60_build/electrode_metadata.json`` 的表面索引生成；
+  ``electrode_build/electrode_metadata.json`` 的表面索引生成；
 - ``self.energy.in`` 按几何里实际 Au 数分层生成（左右以 metadata 的 tip 索引为准）。
 aitranss 跑完产出 ``TE.dat``（collect 只做轻量核对，真正的量在 junction_analyze）。
 """
@@ -44,8 +44,8 @@ class AitranssTeStage(Stage):
             raise StageBlocked(
                 self.name, "缺 aims_scf/geometry.in（tcontrol 需要结几何）", [str(scf_geometry)])
         metadata = self._metadata(ctx)
-        geometry = ctx.artifact("au60_build", "geometry.in")
-        parent_stage = "au60_build"
+        geometry = ctx.artifact("electrode_build", "geometry.in")
+        parent_stage = "electrode_build"
         if not geometry.is_file():
             # 独立运行（--scf-dir）时上游目录可能不在：SCF 目录里的几何是同一份。
             geometry = scf_geometry
@@ -188,14 +188,14 @@ class AitranssTeStage(Stage):
                 raise StageBlocked(
                     self.name, "显式 metadata 不存在: %s" % override, [str(override)])
             return override
-        # au_relax 已从主链路移除：metadata 以 au60_build 为准。旧 run 可通过
+        # au_relax 已从主链路移除：metadata 以 electrode_build 为准。旧 run 可通过
         # --metadata 显式指定其 au_relax 快照。
-        candidate = ctx.artifact("au60_build", "electrode_metadata.json")
+        candidate = ctx.artifact("electrode_build", "electrode_metadata.json")
         if candidate.is_file():
             return candidate
         raise StageBlocked(
             self.name,
-            "缺 au60_build/electrode_metadata.json（tcontrol 需要六个表面索引，"
+            "缺 electrode_build/electrode_metadata.json（tcontrol 需要六个表面索引，"
             "self.energy.in 需要左右 tip 索引）",
             [str(candidate)],
         )

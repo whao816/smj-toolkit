@@ -6,7 +6,7 @@
 
 * 库文件解析的几条硬规则（接触层恰 1 原子、背层 >=3、层内共面、单一元素、
   头部 ``-nlayers``）；
-* ``au60_build`` 用库团簇装配后 metadata 带 ``electrode_source`` /
+* ``electrode_build`` 用库团簇装配后 metadata 带 ``electrode_source`` /
   ``library_cluster`` / 背层索引；
 * ``au_relax`` prepare 把**整层背层**写成 ``constrain_relaxation .true.``；
 * ``au_relax`` collect 的三条 fail-closed：没有 "Have a nice day"、缺
@@ -201,14 +201,14 @@ def test_parse_rejects_bad_library(text, message):
 
 
 # --------------------------------------------------------------------------- #
-# 2) au60_build（库团簇）+ au_relax prepare
+# 2) electrode_build（库团簇）+ au_relax prepare
 # --------------------------------------------------------------------------- #
-def test_au60_build_with_library_cluster(workdir, capsys):
+def test_electrode_build_with_library_cluster(workdir, capsys):
     cfg, run_dir = _write_project(workdir)
-    rc = _run("stage", "au60_build", "--prepare", "-c", str(cfg))
+    rc = _run("stage", "electrode_build", "--prepare", "-c", str(cfg))
     assert rc == 0, capsys.readouterr()
 
-    meta = json.loads((run_dir / "au60_build" / "electrode_metadata.json").read_text(
+    meta = json.loads((run_dir / "electrode_build" / "electrode_metadata.json").read_text(
         encoding="utf-8"))
     assert meta["electrode_source"] == "library"
     assert meta["library_cluster"]["relpath"].endswith("natoms18.x1.aims")
@@ -225,11 +225,11 @@ def test_au60_build_with_library_cluster(workdir, capsys):
 
 def test_au_relax_prepare_freezes_whole_backplane(workdir, capsys):
     cfg, run_dir = _write_project(workdir)
-    assert _run("stage", "au60_build", "--prepare", "-c", str(cfg)) == 0
+    assert _run("stage", "electrode_build", "--prepare", "-c", str(cfg)) == 0
     rc = _run("stage", "au_relax", "--prepare", "-c", str(cfg))
     assert rc == 0, capsys.readouterr()
 
-    meta = json.loads((run_dir / "au60_build" / "electrode_metadata.json").read_text(
+    meta = json.loads((run_dir / "electrode_build" / "electrode_metadata.json").read_text(
         encoding="utf-8"))
     frozen = sorted(meta["left_backplane_indices"] + meta["right_backplane_indices"])
     geometry = (run_dir / "au_relax" / "geometry.in").read_text(encoding="utf-8")
@@ -253,7 +253,7 @@ def test_au_relax_prepare_freezes_whole_backplane(workdir, capsys):
 def test_au_relax_prepare_can_freeze_all_gold(workdir, capsys):
     """relax_freeze=electrodes：冻结全部 Au（含 tip），只让分子骨架动。"""
     cfg, run_dir = _write_project(workdir, relax_freeze="electrodes")
-    assert _run("stage", "au60_build", "--prepare", "-c", str(cfg)) == 0
+    assert _run("stage", "electrode_build", "--prepare", "-c", str(cfg)) == 0
     rc = _run("stage", "au_relax", "--prepare", "-c", str(cfg))
     assert rc == 0, capsys.readouterr()
 
@@ -273,7 +273,7 @@ def test_au_relax_prepare_can_freeze_all_gold(workdir, capsys):
 
 def _prepare_relax(workdir) -> tuple[Path, Path]:
     cfg, run_dir = _write_project(workdir)
-    assert _run("stage", "au60_build", "--prepare", "-c", str(cfg)) == 0
+    assert _run("stage", "electrode_build", "--prepare", "-c", str(cfg)) == 0
     assert _run("stage", "au_relax", "--prepare", "-c", str(cfg)) == 0
     return cfg, run_dir
 
@@ -298,7 +298,7 @@ def test_au_relax_collect_requires_next_step(workdir, capsys):
 def test_au_relax_collect_rejects_moved_frozen_atoms(workdir, capsys):
     cfg, run_dir = _prepare_relax(workdir)
     (run_dir / "au_relax" / "aims.out").write_text("Have a nice day.\n", encoding="utf-8")
-    meta = json.loads((run_dir / "au60_build" / "electrode_metadata.json").read_text(
+    meta = json.loads((run_dir / "electrode_build" / "electrode_metadata.json").read_text(
         encoding="utf-8"))
     lines = (run_dir / "au_relax" / "geometry.in").read_text(encoding="utf-8").splitlines()
     idx = meta["left_backplane_indices"][0] - 1  # 0-based
@@ -318,7 +318,7 @@ def test_au_relax_collect_rejects_surface_mismatch(workdir, capsys):
     (run_dir / "au_relax" / "aims.out").write_text("Have a nice day.\n", encoding="utf-8")
     (run_dir / "au_relax" / "geometry.in.next_step").write_text(
         (run_dir / "au_relax" / "geometry.in").read_text(encoding="utf-8"), encoding="utf-8")
-    meta_path = run_dir / "au60_build" / "electrode_metadata.json"
+    meta_path = run_dir / "electrode_build" / "electrode_metadata.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta["left_surface_indices"] = [1, 2, 3]  # 与 det-v1 重算结果必然不符
     meta_path.write_text(json.dumps(meta), encoding="utf-8")
@@ -353,7 +353,7 @@ def test_au_relax_collect_ok_writes_relaxed_metadata(workdir, capsys):
 # --------------------------------------------------------------------------- #
 def test_relax_disabled_is_local_only(workdir, capsys):
     cfg, run_dir = _write_project(workdir, relax=False)
-    assert _run("stage", "au60_build", "--prepare", "-c", str(cfg)) == 0
+    assert _run("stage", "electrode_build", "--prepare", "-c", str(cfg)) == 0
     rc = _run("stage", "au_relax", "--prepare", "-c", str(cfg))
     assert rc == 0, capsys.readouterr()
 

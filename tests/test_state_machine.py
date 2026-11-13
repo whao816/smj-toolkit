@@ -152,6 +152,6 @@ def test_run_skips_skipped_stage(workdir):
 
 def test_skipped_is_done_and_blocks_nothing(workdir):
     runner = _runner(workdir)
-    runner.state.set("au60_build", status="skipped")
-    assert runner.state.is_done("au60_build")
-    assert runner.state.first_incomplete() == "gaussian_opt"
+    runner.state.set("electrode_build", status="skipped")
+    assert runner.state.is_done("electrode_build")
+    assert runner.state.first_incomplete() == "molecule_opt"

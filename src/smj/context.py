@@ -60,7 +60,7 @@ class StageContext:
 
     # -- 输入发现 ---------------------------------------------------------- #
     def molecule_xyz(self, *, required: bool = True) -> Path | None:
-        """gaussian_opt 的分子结构：``--xyz`` 覆盖 > ``molecule.xyz``。"""
+        """molecule_opt 的分子结构：``--xyz`` 覆盖 > ``molecule.xyz``。"""
         override = self.overrides.get("xyz")
         if override:
             # CLI 覆盖路径按当前工作目录解析（配置文件里的路径才按 yaml 目录解析）。
@@ -71,11 +71,11 @@ class StageContext:
         if path is None:
             if required:
                 raise StageBlocked(
-                    "gaussian_opt",
+                    "molecule_opt",
                     "未指定分子结构：请在 smj.yaml 设 molecule.xyz，或传 --xyz <文件>")
             return None
         if required and not path.exists():
-            raise StageBlocked("gaussian_opt", "分子结构文件不存在: %s" % path, [str(path)])
+            raise StageBlocked("molecule_opt", "分子结构文件不存在: %s" % path, [str(path)])
         return path
 
     def artifact(self, stage: str, *parts: str) -> Path:
@@ -103,7 +103,7 @@ class StageContext:
                  override: str | Path | None = None) -> Path:
         """目标阶段默认消费**上一阶段**的同名产物；``override`` 可显式替换。
 
-        例：``aims_scf`` 的 ``geometry.in`` 默认取 ``au60_build/geometry.in``；
+        例：``aims_scf`` 的 ``geometry.in`` 默认取 ``electrode_build/geometry.in``；
         ``--geometry other/geometry.in`` 时直接用它（阶段独立运行的关键）。
         """
         if override is not None:
@@ -132,7 +132,7 @@ class StageContext:
         # 用户显式 env 先行：后面只用估算值补缺，不覆盖用户值。
         env.update({k: v for k, v in cluster.env.items() if v is not None})
 
-        if stage == "gaussian_opt":
+        if stage == "molecule_opt":
             env.setdefault("ntasks", cluster.ntasks or 1)
             env.setdefault("nproc", cluster.ntasks or 8)
             env.setdefault("g16_mem", cluster.mem or res.get("mem") or "16G")
@@ -172,6 +172,9 @@ class StageContext:
         if not root:
             raise SmjError("run.mode=slurm-ssh 需要 cluster.remote_root")
         physical = "aims_scf" if stage == "aitranss_te" else stage
+        if stage == "molecule_opt" and self.layout.stage_dir(stage).name == "gaussian_opt":
+            # 旧 run 的远端目录仍叫 gaussian_opt；继续沿用，避免半途换目录。
+            physical = "gaussian_opt"
         return remote_join(root, self.config.run.name, physical)
 
     def remote_run(self, command: str, *, timeout: float | None = None,

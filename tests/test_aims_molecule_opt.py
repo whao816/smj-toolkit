@@ -14,7 +14,7 @@ import pytest
 
 from smj.config import ElectrodeConfig, MoleculeConfig
 from smj.errors import StageError
-from smj.stages.gaussian_opt import GaussianOptStage
+from smj.stages.molecule_opt import MoleculeOptStage
 
 XYZ = """2
 H2
@@ -83,8 +83,8 @@ def test_default_engine_is_aims():
 
 def test_aims_prepare_writes_three_files_without_gaussian(workdir):
     ctx = _ctx(workdir)
-    stage_dir = workdir / "run" / "gaussian_opt"
-    prepared = GaussianOptStage().prepare(ctx, stage_dir)
+    stage_dir = workdir / "run" / "molecule_opt"
+    prepared = MoleculeOptStage().prepare(ctx, stage_dir)
 
     assert prepared.script == "sub_aims.sh"
     assert (stage_dir / "geometry.in").exists()
@@ -103,20 +103,20 @@ def test_aims_prepare_writes_three_files_without_gaussian(workdir):
 
 def test_aims_prepare_maps_multiplicity_to_spin(workdir):
     ctx = _ctx(workdir, multiplicity=3)
-    stage_dir = workdir / "run" / "gaussian_opt"
-    GaussianOptStage().prepare(ctx, stage_dir)
+    stage_dir = workdir / "run" / "molecule_opt"
+    MoleculeOptStage().prepare(ctx, stage_dir)
     control = (stage_dir / "control.in").read_text(encoding="utf-8")
     assert "spin" in control and "2" in control
 
 
 def test_aims_collect_writes_opt_xyz_and_records_software(workdir):
     ctx = _ctx(workdir)
-    stage_dir = workdir / "run" / "gaussian_opt"
+    stage_dir = workdir / "run" / "molecule_opt"
     stage_dir.mkdir(parents=True, exist_ok=True)
     (stage_dir / "aims.out").write_text(AIMS_OUT, encoding="utf-8")
     (stage_dir / "geometry.in.next_step").write_text(AIMS_GEOM, encoding="utf-8")
 
-    collected = GaussianOptStage().collect(ctx, stage_dir)
+    collected = MoleculeOptStage().collect(ctx, stage_dir)
 
     opt = stage_dir / "opt.xyz"
     assert opt.exists()
@@ -124,27 +124,27 @@ def test_aims_collect_writes_opt_xyz_and_records_software(workdir):
     assert lines[0] == "2"
     observed = json.loads((ctx.layout.run_dir / "software_observed.json").read_text(
         encoding="utf-8"))
-    assert observed["gaussian_opt"]["version"] == "221103"
+    assert observed["molecule_opt"]["version"] == "221103"
     assert collected.results["software"]["version"] == "221103"
 
 
 def test_aims_collect_fails_closed_on_missing_next_step(workdir):
     ctx = _ctx(workdir)
-    stage_dir = workdir / "run" / "gaussian_opt"
+    stage_dir = workdir / "run" / "molecule_opt"
     stage_dir.mkdir(parents=True, exist_ok=True)
     (stage_dir / "aims.out").write_text(AIMS_OUT, encoding="utf-8")
 
     with pytest.raises(StageError, match="next_step"):
-        GaussianOptStage().collect(ctx, stage_dir)
+        MoleculeOptStage().collect(ctx, stage_dir)
 
 
 def test_aims_collect_fails_closed_on_abnormal_termination(workdir):
     ctx = _ctx(workdir)
-    stage_dir = workdir / "run" / "gaussian_opt"
+    stage_dir = workdir / "run" / "molecule_opt"
     stage_dir.mkdir(parents=True, exist_ok=True)
     (stage_dir / "aims.out").write_text(
         "FHI-aims version : 221103\n", encoding="utf-8")
     (stage_dir / "geometry.in.next_step").write_text(AIMS_GEOM, encoding="utf-8")
 
     with pytest.raises(StageError, match="Have a nice day"):
-        GaussianOptStage().collect(ctx, stage_dir)
+        MoleculeOptStage().collect(ctx, stage_dir)

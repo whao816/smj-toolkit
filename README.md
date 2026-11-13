@@ -23,18 +23,28 @@
 
 ```text
 molecule.xyz
-  └─ gaussian_opt      FHI-aims PBE/light 分子优化      → opt.xyz
+  └─ molecule_opt      FHI-aims PBE/light 分子优化      → opt.xyz
       └─ aims_tip_relax  FHI-aims 加 Au tip + 全原子弛豫  → geometry.in.next_step
-          └─ au60_build  把每个 tip 扩展为完整 Au(111) 金字塔团簇 → geometry.in + electrode_metadata.json
+          └─ electrode_build  把每个 tip 扩展为完整 Au(111) 金字塔团簇 → geometry.in + electrode_metadata.json
               └─ aims_scf     FHI-aims 静态 SCF      → aims.out / mos.aims
                   └─ aitranss_te  aitranss 透射      → TE.dat
                       └─ junction_analyze  Landauer  → results.json
 ```
 
-`au_relax` 已从主链路移除：结几何在 `au60_build` 后即冻结，后续 SCF/输运不再弛豫。
+`au_relax` 已从主链路移除：结几何在 `electrode_build` 后即冻结，后续 SCF/输运不再弛豫。
 该阶段模块仍保留，仅供旧 run 或显式 `smj stage au_relax ...` 兼容使用。
 
-`gaussian_opt` 的引擎由 `molecule.opt_engine` 选择：默认 `aims`（FHI-aims
+首段规范名是 `molecule_opt`（2026-11-13 起；旧名 `gaussian_opt` 仍可作为命令别名）。
+旧 run 的目录/状态键若仍是 `gaussian_opt/`，`RunLayout` 与 `RunState` 会回退读取，
+`smj report` 仍按 `molecule_opt` 展示；新 run 一律写 `molecule_opt/`。
+
+建结阶段规范名是 `electrode_build`（2026-11-13 起；旧名 `au60_build` 仍可作为
+命令别名；更早的 `au20_build`/`auN_build` 也会归一化到该阶段）。旧 run 的
+`au60_build/` 或 `auN_build/` 目录由 `RunLayout` 回退读取，`smj report` 按
+`electrode_build` 展示；新 run 一律写 `electrode_build/`。阶段名不再绑定
+“每侧 60 个 Au”的具体电极尺寸。
+
+`molecule_opt` 的引擎由 `molecule.opt_engine` 选择：默认 `aims`（FHI-aims
 PBE/light，与 tip/SCF 同一软件栈）；`gaussian` 保留旧口径（B3LYP/6-31G(d)，
 需 Gaussian 16 许可）。两种引擎的产物契约相同：`opt.xyz` 供 `aims_tip_relax`
 消费。FHI-aims 分支不做虚频检查（无现成一键 freq），几何可靠性靠
@@ -87,7 +97,7 @@ smj init . --name demo --xyz molecule.xyz --mode dry-run
 smj plan
 
 # 4) 只生成第一阶段输入（人工检查 mol.gjf / sub_g16.sh）
-smj stage gaussian_opt --prepare
+smj stage molecule_opt --prepare
 
 # 5) 干跑整链：逐阶段 prepare，不提交（预期停在缺上游产物的下一阶段，退出码 1）
 smj run --dry-run
@@ -119,23 +129,23 @@ smj run --from aims_scf --to aitranss_te
 
 | 阶段 | 默认输入 | 主要产物 | 需提交？ | 示例命令 |
 |---|---|---|---|---|
-| `gaussian_opt` | `molecule.xyz`（或 `--xyz`） | 默认（aims）：`geometry.in`、`control.in`、`sub_aims.sh`、`input_summary.json`，collect 后 `aims.out`、`opt.xyz`；gaussian 引擎：`mol.gjf`、`sub_g16.sh`，collect 后 `mol.log`、`opt.xyz`、`gaussian_summary.json` | 是（FHI-aims 或 Gaussian） | `smj stage gaussian_opt --run --xyz molecule.xyz` |
-| `aims_tip_relax` | `gaussian_opt/opt.xyz`（或 `--geometry`） | `geometry.in`、`control.in`、`sub_aims.sh`；collect 后 `geometry.in.next_step` | 是（FHI-aims） | `smj stage aims_tip_relax --run --geometry gaussian_opt/opt.xyz` |
-| `au60_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json`（含背层索引与库团簇来源）；tip 被扩展为完整团簇，S–Au 距离/角度沿用弛豫结果 | **否**（本地） | `smj stage au60_build --run --geometry aims_tip_relax/geometry.in.next_step` |
-| `aims_scf` | `au60_build/geometry.in`（或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run` |
+| `molecule_opt` | `molecule.xyz`（或 `--xyz`） | 默认（aims）：`geometry.in`、`control.in`、`sub_aims.sh`、`input_summary.json`，collect 后 `aims.out`、`opt.xyz`；gaussian 引擎：`mol.gjf`、`sub_g16.sh`，collect 后 `mol.log`、`opt.xyz`、`gaussian_summary.json` | 是（FHI-aims 或 Gaussian） | `smj stage molecule_opt --run --xyz molecule.xyz` |
+| `aims_tip_relax` | `molecule_opt/opt.xyz`（或 `--geometry`） | `geometry.in`、`control.in`、`sub_aims.sh`；collect 后 `geometry.in.next_step` | 是（FHI-aims） | `smj stage aims_tip_relax --run --geometry molecule_opt/opt.xyz` |
+| `electrode_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json`（含背层索引与库团簇来源）；tip 被扩展为完整团簇，S–Au 距离/角度沿用弛豫结果 | **否**（本地） | `smj stage electrode_build --run --geometry aims_tip_relax/geometry.in.next_step` |
+| `aims_scf` | `electrode_build/geometry.in`（或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run` |
 | `aitranss_te` | `aims_scf/`（或 `--scf-dir`） | `tcontrol`、`sub_te.sh`；collect 后 `TE.dat`、`te.out` | 是（aitranss） | `smj stage aitranss_te --run --scf-dir /path/to/scf` |
 | `junction_analyze` | `aitranss_te/TE.dat`（或 `--te`） | `results.json` | **否**（本地） | `smj stage junction_analyze --run --te TE.dat` |
 
 FHI-aims 阶段（`aims_tip_relax`/`aims_scf`）还需要 `cluster.species_dir` 或
 `paths.species_defaults` 指向 species 目录；缺失时 `prepare` 直接 `StageBlocked`
 （`smj preflight` 也会报 error）。`--geometry` 在三个消费几何的阶段
-（`aims_tip_relax`/`au60_build`/`aims_scf`）都可用，但语义不同：`aims_tip_relax`
-要**已优化分子的 XYZ**（`opt.xyz`），不是 FHI-aims 的 `geometry.in`；`au60_build`
+（`aims_tip_relax`/`electrode_build`/`aims_scf`）都可用，但语义不同：`aims_tip_relax`
+要**已优化分子的 XYZ**（`opt.xyz`），不是 FHI-aims 的 `geometry.in`；`electrode_build`
 与 `aims_scf` 要的才是 FHI-aims 几何。`aitranss_te` 除 SCF 目录外还要
-`au60_build/electrode_metadata.json`（六个表面索引与左右 tip 索引），可用
+`electrode_build/electrode_metadata.json`（六个表面索引与左右 tip 索引），可用
 `--metadata` 覆盖。
 
-`au60_build` 默认用 FHI-aims 自带的 `electrodes.library` 预定义团簇贴装电极（手册
+`electrode_build` 默认用 FHI-aims 自带的 `electrodes.library` 预定义团簇贴装电极（手册
 §5.3.1 的要求），由 `electrode.source`、`electrode.library_dir`、`electrode.library_cluster`
 控制（默认 `fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims`）；库文件不进
 wheel，只在 metadata 里记 `sha256` 与相对路径。`electrode.nlayers: null` 表示取库文件头部
@@ -144,7 +154,7 @@ wheel，只在 metadata 里记 `sha256` 与相对路径。`electrode.nlayers: nu
 默认协议是 **tip 全原子弛豫 → 扩展成完整团簇 → 几何冻结**：`electrode.pin_contact: false`
 （默认）让 `aims_tip_relax` 的 56 原子（分子 + 2 Au tip）全部自由弛豫，不用
 `anchor_au_s_target` 限制 Au–S，这一步给出的就是可靠的 Au–S 键长与连接角度；
-`au60_build` 只沿弛豫后的 tip→linker 方向把每个 tip 扩展为完整团簇，不改 S–Au
+`electrode_build` 只沿弛豫后的 tip→linker 方向把每个 tip 扩展为完整团簇，不改 S–Au
 距离/角度。扩展完成后结几何完全冻结，`aims_scf`/`aitranss_te` 不再做任何结构弛豫。
 
 `electrode.relax` / `relax_freeze` 字段仅为旧 run 或显式重跑 `au_relax` 保留；
@@ -177,7 +187,7 @@ Seebeck 为正）不该给薁作闸门，声明 `family: AZ` 后这三条记"不
 
 ```bash
 # 只做输入装配，拷到集群手工提交
-smj stage aims_scf --prepare --geometry /data/run/au60_build/geometry.in --config smj.yaml
+smj stage aims_scf --prepare --geometry /data/run/electrode_build/geometry.in --config smj.yaml
 
 # 外部已有 TE.dat，只做分析（--te 也可给 aitranss_te 输出目录）
 smj stage junction_analyze --run --te /data/te/TE.dat --config smj.yaml
@@ -276,8 +286,8 @@ config.cluster.host = "fake-cluster"
 config.cluster.remote_root = "/tmp/smj-fake"
 config.cluster.partition = "main"
 runner = StageRunner(config, transport=transport, dry_run=False)
-runner.prepare("gaussian_opt")
-sub = runner.submit("gaussian_opt")            # 只走内存：清理 → 上传 → 记录 job_id=4242
+runner.prepare("molecule_opt")
+sub = runner.submit("molecule_opt")            # 只走内存：清理 → 上传 → 记录 job_id=4242
 print(sub["job_id"], sub["cleaned"], len(sub["uploaded"]))
 print(transport.commands[-2:])                 # 看实际发出的命令
 ```
@@ -296,13 +306,13 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 ├── run_spec.previous.json       # 仅 --force 重绑时保留的上一份快照
 ├── manifest.json                # 产物清单（sha256、大小、阶段、回取模式）
 ├── report.md                    # 人读报告：概览/阶段状态/输入摘要/资源/输运/失败/产物
-├── gaussian_opt/                # 每阶段一个目录，输入+产物都在里面
+├── molecule_opt/                # 每阶段一个目录，输入+产物都在里面
 │   ├── mol.gjf  sub_g16.sh  input_summary.json
 │   └── mol.log  opt.xyz  gaussian_summary.json
 ├── aims_tip_relax/
 │   ├── geometry.in  control.in  sub_aims.sh
 │   └── geometry.in.next_step  aims.out
-├── au60_build/
+├── electrode_build/
 │   └── geometry.in  electrode_metadata.json
 ├── aims_scf/
 │   ├── control.in  sub_aims.sh  geometry.in
@@ -325,7 +335,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj status` | 读 `state.json`，打印阶段/状态/job id/远端目录/耗时/备注 | 终端表格（`--json` 机器可读） |
 | `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（7 节：概览/判定/阶段状态/输入摘要/资源/输运/失败原因/产物清单）；缺 `TE.dat` 时物理判定为「无法判定」而不是通过 | 报告文件；默认跳过已存在文件，`--force` 重写，`--no-checks` 不算判定 |
 | `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；出图与参考值比较用 Python API（`smj.analysis.analyze_run(..., plot=True, reference=...)`，需 `[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
-| `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差）；`--approve --who <名字>` 登记 A2 确认（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用 | `review.json`、`auN_build/a2_confirmation.json`；`blocked` 时退出 1 |
+| `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差）；`--approve --who <名字>` 登记 A2 确认（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用 | `review.json`、`electrode_build/a2_confirmation.json`；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
 | `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
@@ -341,8 +351,8 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   也不等于否证 H0**），`report.md` 的「## 0.1 判定」会列出未过/未评估的判据。
 - `review.require_a2` 默认 `true`：没有 `a2_confirmation.json` 或指纹与当前
   `geometry.in` 不一致时，`smj review` 直接 `blocked`。签署用
-  `smj review --approve --who <名字>`（A2 核对图落在 `auN_build/a2_surface_viz.png`，
-  审计结果落在 `auN_build/a2_surface_audit.json`）。
+  `smj review --approve --who <名字>`（A2 核对图落在 `electrode_build/a2_surface_viz.png`，
+  审计结果落在 `electrode_build/a2_surface_audit.json`）。
 
 ### 7.2 运行溯源（run_spec / 哈希闭环）
 
@@ -381,7 +391,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 - **Windows 本机执行需要 bash**：`run.mode: local` 依赖 `bash`；`slurm-ssh` 还需要可用的
   `ssh`/`scp`（Git-Bash 自带 OpenSSH）与目标集群免密登录。沙箱内网络受限时，请在宿主
   shell 里执行真跑。
-- **结构确认是人的责任**：`au60_build` 之后的 A2 表面确认是红线，管线不会自动放行。
+- **结构确认是人的责任**：`electrode_build` 之后的 A2 表面确认是红线，管线不会自动放行。
   签署是 `smj review --approve --who <名字>`：审计不过或出图失败直接拒绝（退出 2），
   签名绑定当前 `geometry.in` 的 sha256，几何一改旧签名即失效；`review.require_a2`
   默认 `true`，没有有效签名时 `smj review` 为 `blocked`。

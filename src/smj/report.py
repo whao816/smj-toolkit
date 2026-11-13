@@ -3,7 +3,7 @@
 输入是三样**已有事实**（不臆造）：
 
 - ``<run>/state.json`` —— 阶段状态机（:class:`smj.state.RunState`）；
-- ``<run>/<stage>/`` —— 各阶段产物目录（含 ``auN_build`` 变体目录）；
+- ``<run>/<stage>/`` —— 各阶段产物目录（旧 run 的 ``auN_build`` 由布局回退）；
 - 可选的既有 ``manifest.json`` / ``report.md`` —— 只读参考格式，**不覆盖**
   除非显式 ``force=True``。
 
@@ -42,12 +42,12 @@ REPORT_SCHEMA = "smj.report.v1"
 #: 单文件哈希上限（超过且未被策略标为 full 的只记大小，避免为 GB 级产物白算校验）。
 _HASH_MAX_BYTES = 8 * 1024 * 1024
 
-#: 已知阶段（用于阶段状态表；``auN_build`` 变体由目录发现另行补入）。
+#: 已知阶段（用于阶段状态表）；旧 ``auN_build`` 目录通过 RunLayout 回退。
 _BUILD_STAGE_RE = re.compile(r"^au\d+_build$")
 
 #: 阶段默认几何产物（用于资源估算的原子数）。
 _STAGE_GEOMETRY = {
-    "gaussian_opt": ("opt.xyz", "molecule.xyz", "geometry.in"),
+    "molecule_opt": ("opt.xyz", "molecule.xyz", "geometry.in"),
     "aims_tip_relax": ("geometry.in.next_step", "geometry.in"),
     "aims_scf": ("geometry.in",),
     "aitranss_te": ("geometry.in",),
@@ -106,7 +106,8 @@ def _retrieval_mode(stage: str, name: str) -> str:
     except Exception:  # noqa: BLE001
         return "unknown"
     try:
-        return str(retrieval_mode(stage, name))
+        # vendored 策略仍以 gaussian_opt 命名首段；molecule_opt 沿用其条目。
+        return str(retrieval_mode("gaussian_opt" if stage == "molecule_opt" else stage, name))
     except Exception:  # noqa: BLE001
         return "unknown"
 
@@ -158,34 +159,19 @@ def discover_stages(run_dir: str | Path) -> list[str]:
     """按 run 目录**实际存在**的阶段子目录，按执行顺序返回阶段名。
 
     2026-11 P0-2：阶段清单的唯一事实源是 :data:`smj.state.STAGE_ORDER`。
-    2026-11-13：``au_relax`` 已从主链路移除，不再出现在阶段序列；``auN_build``
-    变体目录仍作为扩展追加在 ``au60_build`` 之后。
+    2026-11-13：``au_relax`` 已从主链路移除；``electrode_build`` 的旧目录
+    ``au60_build`` / ``auN_build`` 由 :class:`smj.state.RunLayout` 回退定位，
+    因此这里不再把旧目录当成额外阶段追加。
     """
     root = Path(run_dir)
     if not root.is_dir():
         return []
-    ordered = [stage for stage in STAGE_ORDER if (root / stage).is_dir()]
-    extras = sorted(
-        (child.name for child in root.iterdir()
-         if child.is_dir() and _BUILD_STAGE_RE.match(child.name)
-         and child.name not in STAGE_ORDER),
-        key=lambda name: (_build_number(name), name))
-    if not extras:
-        return ordered
-    if "au60_build" in ordered:
-        index = ordered.index("au60_build") + 1
-    elif "aims_tip_relax" in ordered:
-        index = ordered.index("aims_tip_relax") + 1
-    else:
-        index = 0
-    ordered[index:index] = extras
-    return ordered
-
+    return [stage for stage in STAGE_ORDER if RunLayout(root).exists(stage)]
 
 def _inventory(run_dir: Path, stages: Iterable[str]) -> dict[str, dict]:
     inventory: dict[str, dict] = {}
     for stage in stages:
-        stage_dir = run_dir / stage
+        stage_dir = RunLayout(run_dir).stage_dir(stage)
         if not stage_dir.is_dir():
             continue
         files = []
@@ -211,20 +197,23 @@ def _inventory(run_dir: Path, stages: Iterable[str]) -> dict[str, dict]:
 # 输入 / 资源 / 输运 / 失败
 # --------------------------------------------------------------------------- #
 def _find_build_dir(run_dir: Path) -> Path | None:
-    # au_relax 已从主链路移除：电极/结几何以 auN_build（默认 au60_build）为准。
-    # 旧 run 的 au_relax 若真的跑过 AIMS 弛豫，它才是送进 SCF 的几何；否则回退 build。
+    # au_relax 已从主链路移除：电极/结几何以 electrode_build（旧名 au60_build /
+    # auN_build）为准。旧 run 的 au_relax 若真的跑过 AIMS 弛豫，它才是送进 SCF
+    # 的几何；否则回退 build。
     legacy = run_dir / "au_relax"
     if ((legacy / "geometry.in").is_file()
             and (legacy / "electrode_metadata.json").is_file()
             and (legacy / "aims.out").is_file()):
         return legacy
+    build = RunLayout(run_dir).stage_dir("electrode_build")
+    if (build / "geometry.in").is_file() or (build / "electrode_metadata.json").is_file():
+        return build
     for child in sorted(run_dir.iterdir()):
         if child.is_dir() and _BUILD_STAGE_RE.match(child.name):
             return child
     if (legacy / "geometry.in").is_file() and (legacy / "electrode_metadata.json").is_file():
         return legacy
     return None
-
 
 def _input_summary(run_dir: Path, spec: Mapping[str, Any],
                    warnings: list[str], *,
@@ -251,8 +240,8 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
         "electrode": None,
         "te": None,
     }
-    # 分子结构：优先 gaussian_opt/opt.xyz（Gaussian 优化产物），否则 run 根的 xyz。
-    molecule_xyz = run_dir / "gaussian_opt" / "opt.xyz"
+    # 分子结构：优先 molecule_opt/opt.xyz（旧 run 回退 gaussian_opt），否则 run 根的 xyz。
+    molecule_xyz = RunLayout(run_dir).artifact("molecule_opt", "opt.xyz")
     if not molecule_xyz.is_file():
         candidates = sorted(run_dir.glob("*.xyz"))
         molecule_xyz = candidates[0] if candidates else molecule_xyz
@@ -266,7 +255,7 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
         if molecule_meta.get("sha256"):
             inputs["molecule"]["run_input_sha256"] = molecule_meta["sha256"]
 
-    # 电极：auN_build/electrode_metadata.json 的既有键（不补造）。
+    # 电极：electrode_build/electrode_metadata.json 的既有键（不补造）。
     build = _find_build_dir(run_dir)
     if build is not None:
         metadata_path = build / "electrode_metadata.json"
@@ -278,7 +267,7 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
                 warnings.append("electrode_metadata.json 不可解析: %s" % exc)
         geometry = build / "geometry.in"
         inputs["electrode"] = {
-            "stage": build.name,
+            "stage": "electrode_build",
             "geometry": str(geometry) if geometry.is_file() else None,
             "atom_count": _atom_count(geometry) if geometry.is_file() else None,
             "au_per_electrode": meta.get("au_per_electrode"),
@@ -301,10 +290,10 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
 
 def _stage_atoms(run_dir: Path, stage: str) -> int | None:
     for name in _STAGE_GEOMETRY.get(stage, ()):
-        path = run_dir / stage / name
+        path = RunLayout(run_dir).stage_dir(stage) / name
         if path.is_file():
             return _atom_count(path, xyz=name.endswith(".xyz"))
-    # aims_scf / aitranss_te 的几何落在上游 auN_build。
+    # aims_scf / aitranss_te 的几何落在上游 electrode_build。
     if stage in ("aims_scf", "aitranss_te"):
         build = _find_build_dir(run_dir)
         if build is not None:
@@ -315,7 +304,7 @@ def _stage_atoms(run_dir: Path, stage: str) -> int | None:
 def _resource_summary(run_dir: Path, state: RunState,
                       warnings: list[str]) -> dict[str, dict]:
     summary: dict[str, dict] = {}
-    for stage in ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te"):
+    for stage in ("molecule_opt", "aims_tip_relax", "aims_scf", "aitranss_te"):
         recorded = dict(state.stage(stage).resources or {})
         if recorded:
             summary[stage] = {"source": "state", **recorded,
@@ -641,7 +630,7 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     lines.append("| 阶段 | 墙钟 | --time | 内存 | rank/核 | 核时 | 来源 / 预算 |")
     lines.append("|---|---|---|---|---|---|---|")
     resources = man.get("resources") or {}
-    for stage in ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te"):
+    for stage in ("molecule_opt", "aims_tip_relax", "aims_scf", "aitranss_te"):
         item = resources.get(stage)
         if not item:
             lines.append("| `%s` | — | — | — | — | — | 未估算 |" % stage)

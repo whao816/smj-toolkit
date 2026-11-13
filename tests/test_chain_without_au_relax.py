@@ -19,9 +19,9 @@ from smj.state import (
 
 def test_stage_order_is_six_stages_without_au_relax():
     assert STAGE_ORDER == (
-        "gaussian_opt",
+        "molecule_opt",
         "aims_tip_relax",
-        "au60_build",
+        "electrode_build",
         "aims_scf",
         "aitranss_te",
         "junction_analyze",
@@ -32,7 +32,7 @@ def test_stage_order_is_six_stages_without_au_relax():
 
 def test_legacy_au_relax_keeps_aliases_and_neighbours():
     assert normalize_stage("au-relax") == "au_relax"
-    assert previous_stage("au_relax") == "au60_build"
+    assert previous_stage("au_relax") == "electrode_build"
     assert next_stage("au_relax") == "aims_scf"
     with pytest.raises(SmjError, match="已从主链路移除"):
         stage_index("au_relax")

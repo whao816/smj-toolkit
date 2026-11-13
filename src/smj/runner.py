@@ -291,7 +291,7 @@ class StageRunner:
         for stale in ("download_fetched", "download_head_fetched", "download_missing"):
             self.state.stage(key).extra.pop(stale, None)
 
-        # 0.1.2：slurm-ssh 下 prepare 也可能要访问集群（au60_build 从远端
+        # 0.1.2：slurm-ssh 下 prepare 也可能要访问集群（electrode_build 从远端
         # electrodes.library 取回库团簇）。__init__ 里传输层是惰性创建的，
         # 这里先建好，否则 ctx.transport 为 None，resolve_cluster 的远端分支
         # 永远走不到，默认 source: library 的本地阶段直接失败。
@@ -488,7 +488,7 @@ class StageRunner:
 
         download: dict[str, Any] | None = None
         local_only = bool(self.state.stage(key).extra.get("local_only"))
-        # 0.1.2：本地阶段（au60_build / junction_analyze）没有远端产物，
+        # 0.1.2：本地阶段（electrode_build / junction_analyze）没有远端产物，
         # slurm-ssh 模式下也不能走 download —— 它们不在 artifacts 台账里，
         # 旧实现会抛「未知 smj 阶段」。
         remote_stage = bool(getattr(stage, "needs_submit", True))
@@ -496,9 +496,9 @@ class StageRunner:
                 and not local_only and remote_stage):
             self._log("[%s] 回取产物 ..." % key)
             names = None
-            if key == "gaussian_opt":
+            if key == "molecule_opt":
                 engine = str(getattr(getattr(self.config, "molecule", None),
-                                     "opt_engine", "gaussian") or "gaussian")
+                                     "opt_engine", "aims") or "aims")
                 if engine.lower() == "aims":
                     # vendored retrieval_plan 的 gaussian_opt 条目是 Gaussian 口径
                     # （mol.gjf/mol.log/sub_g16.sh）；aims 引擎的产物名不同，显式给出。

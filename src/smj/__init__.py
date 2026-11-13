@@ -2,9 +2,9 @@
 
 一条完整的计算链（每一步都可以单独运行）：
 
-    gaussian_opt     分子 XYZ -> FHI-aims PBE 优化（默认）或 Gaussian -> opt.xyz
+    molecule_opt     分子 XYZ -> FHI-aims PBE 优化（默认）或 Gaussian -> opt.xyz（阶段名 molecule_opt，旧名 gaussian_opt 兼容）
     aims_tip_relax   opt.xyz -> 加 Au 尖端 -> FHI-aims 弛豫 -> geometry.in.next_step
-    au60_build       geometry.in.next_step -> 拼接 Au(111) 电极 -> geometry.in（本地）
+    electrode_build       geometry.in.next_step -> 拼接 Au(111) 电极 -> geometry.in（本地）
     aims_scf         geometry.in -> FHI-aims SCF -> omat.aims/mos.aims/aims.out
     aitranss_te      SCF 产物 -> Aitranss 透射谱 -> TE.dat
     junction_analyze TE.dat -> Landauer 电导/Seebeck/ZT -> results.json（本地）

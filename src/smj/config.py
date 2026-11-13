@@ -138,7 +138,7 @@ class MoleculeConfig:
 
 @dataclass
 class ElectrodeConfig:
-    """电极 / 结几何参数（au60_build 与 aims_tip_relax、aitranss_te 共用）。"""
+    """电极 / 结几何参数（electrode_build 与 aims_tip_relax、aitranss_te 共用）。"""
 
     au_per_electrode: int | None = 30     # 仅 builtin：每侧 Au 数；None/30 = 完整 Au60
     left_anchor: str = "S"
@@ -158,7 +158,7 @@ class ElectrodeConfig:
     library_dir: str | None = None        # electrodes.library 目录；None = 常见路径/远端探测
     library_cluster: str = DEFAULT_CLUSTER
     #: 旧口径兼容：仅为显式重跑 legacy ``au_relax`` 阶段保留。主链路在
-    #: ``au60_build`` 后即冻结几何，不再消费此字段。
+    #: ``electrode_build`` 后即冻结几何，不再消费此字段。
     relax: bool = False
     relax_force_threshold: str = "1.e-2"  # BFGS 力收敛阈值（Hartree/Bohr）
     #: 旧口径兼容：``au_relax`` 冻结谁（backplane / electrodes）；主链路不使用

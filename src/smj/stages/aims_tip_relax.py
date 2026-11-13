@@ -20,15 +20,15 @@ from .base import Collected, Prepared, Stage, register
 @register
 class AimsTipRelaxStage(Stage):
     name = "aims_tip_relax"
-    depends = ("gaussian_opt",)
+    depends = ("molecule_opt",)
     script = "sub_aims.sh"
-    input_hint = "消费 gaussian_opt/opt.xyz"
+    input_hint = "消费 molecule_opt/opt.xyz"
     outputs = ("geometry.in.next_step",)
 
     # -- prepare ----------------------------------------------------------- #
     def prepare(self, ctx, stage_dir: Path) -> Prepared:
         stage_dir = Path(stage_dir)
-        # --geometry 允许跳过 gaussian_opt，直接把已优化分子结构喂给本阶段。
+        # --geometry 允许跳过 molecule_opt，直接把已优化分子结构喂给本阶段。
         xyz = ctx.upstream(self.name, "opt.xyz", override=ctx.override_path("geometry"))
         species = self._species_dir(ctx)
         electrode = ctx.config.electrode

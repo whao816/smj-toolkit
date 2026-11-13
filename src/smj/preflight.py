@@ -4,7 +4,7 @@
 
 1. 分子结构可读 / 原子重叠；
 2. ``species_dir`` 存在且覆盖分子元素（缺目录或缺元素 = error）；
-3. 建结几何闸门（有 ``auN_build/geometry.in`` 时调 vendored
+3. 建结几何闸门（有 ``electrode_build/geometry.in`` 时调 vendored
    ``validate_junction_geometry``：表面索引、输运轴、接触重叠、Au-S 锚定、A2 确认）；
 4. 资源估算（每阶段墙钟/内存，超过 72 h / 128 GiB 上限 = error）；
 5. 集群与 SSH 连通（``slurm-ssh`` 且**没有传输层**时明确"未执行远端检查"，
@@ -49,8 +49,8 @@ _ENV_ALIASES = {
     "g16_scratch": "G16_SCRATCH",
 }
 
-#: 资源检查的阶段（本地阶段 au60_build 不计集群预算）。
-_RESOURCE_STAGES = ("gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te")
+#: 资源检查的阶段（本地阶段 electrode_build 不计集群预算）。
+_RESOURCE_STAGES = ("molecule_opt", "aims_tip_relax", "aims_scf", "aitranss_te")
 
 #: 分子重叠检查的规模上限（超过只提示，不做 O(N^2)）。
 _OVERLAP_MAX_ATOMS = 2000
@@ -194,7 +194,7 @@ def _molecule_check(result: PreflightResult, config: Any,
         return None
     if path is None:
         result.add("error", "molecule_missing",
-                   "未指定分子结构（molecule.xyz / --xyz），gaussian_opt 无法 prepare")
+                   "未指定分子结构（molecule.xyz / --xyz），molecule_opt 无法 prepare")
         return None
     path = Path(path)
     if not path.is_file():
@@ -287,6 +287,9 @@ def _species_check(result: PreflightResult, config: Any,
 
 
 def _find_build_dir(run_dir: Path) -> Path | None:
+    preferred = RunLayout(run_dir).stage_dir("electrode_build")
+    if preferred.is_dir():
+        return preferred
     try:
         for child in sorted(run_dir.iterdir()):
             if child.is_dir() and child.name.startswith("au") and child.name.endswith("_build"):
@@ -297,13 +300,13 @@ def _find_build_dir(run_dir: Path) -> Path | None:
 
 
 def _geometry_check(result: PreflightResult, run_dir: Path, layout: RunLayout) -> None:
-    build = layout.stage_dir("au60_build")
+    build = layout.stage_dir("electrode_build")
     if not build.is_dir():
         build = _find_build_dir(run_dir)
     geometry = build / "geometry.in" if build is not None else None
     if geometry is None or not geometry.is_file():
         result.add("info", "geometry_not_ready",
-                   "尚无建结 geometry.in（将由 auN_build 阶段生成），结构几何闸门未执行")
+                   "尚无建结 geometry.in（将由 electrode_build 阶段生成），结构几何闸门未执行")
         return
     try:
         from smj._vendor.junction.validate import validate_junction_geometry  # lazy: vendored
@@ -362,24 +365,24 @@ def _resource_check(result: PreflightResult, config: Any, run_dir: Path,
     tip_path = layout.artifact("aims_tip_relax", "geometry.in.next_step")
     tip_n = _geometry_count(tip_path)
     counts = {
-        "gaussian_opt": molecule_n,
+        "molecule_opt": molecule_n,
         "aims_tip_relax": tip_n or ((molecule_n + 2) if molecule_n else None),
         "aims_scf": build_n or natoms,
         "aitranss_te": build_n or natoms,
     }
     stages = [stage] if stage else list(_RESOURCE_STAGES)
     for name in stages:
-        if name == "au60_build":
+        if name == "electrode_build":
             n = build_n or molecule_n
             if not n:
                 result.add("warning", "resource_skipped",
-                           "au60_build: 无原子数，资源估算跳过")
+                           "electrode_build: 无原子数，资源估算跳过")
                 continue
             estimate = estimate_smj_resources(name, int(n))
             result.estimates[name] = {**estimate,
                                       "budget": {"ok": True, "reason": "本地阶段"}}
             result.add("info", "resource_local",
-                       "au60_build 为本地阶段，不占集群预算（%s 原子）" % n, stage=name)
+                       "electrode_build 为本地阶段，不占集群预算（%s 原子）" % n, stage=name)
             continue
         n = counts.get(name)
         if not n:
@@ -387,8 +390,8 @@ def _resource_check(result: PreflightResult, config: Any, run_dir: Path,
                        "%s: 无原子数（结构产物未就绪），资源估算跳过" % name)
             continue
         estimator = name
-        if name == "gaussian_opt":
-            engine = str(getattr(getattr(config, "molecule", None), "opt_engine", "gaussian"))
+        if name == "molecule_opt":
+            engine = str(getattr(getattr(config, "molecule", None), "opt_engine", "aims"))
             if engine.lower() == "aims":
                 # 分子预优化已改为 FHI-aims PBE/NAO，预算按 AIMS 标定而不是 Gaussian。
                 estimator = "aims_tip_relax"

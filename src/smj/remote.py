@@ -41,6 +41,9 @@ from .transport import CommandResult, Transport, remote_join
 
 #: 阶段 -> 远端作业脚本（与主仓 SMJ_STAGE_SCRIPTS 一致）
 SMJ_STAGE_SCRIPTS: dict[str, str] = {
+    # 2026-11-13：规范名 molecule_opt；远端脚本由 prepared.script 决定，
+    # 这里保留映射供 build_stage_script/detect_stage_script 使用。
+    "molecule_opt": "sub_g16.sh",
     "gaussian_opt": "sub_g16.sh",
     "aims_tip_relax": "sub_aims.sh",
     "au_relax": "sub_aims.sh",
@@ -373,7 +376,11 @@ class RemoteSession:
         ``head`` 里的 ``mos.aims`` 永远不回取，导致 aitranss_te 阶段读不到 nsaos
         而在第 5 阶段必断（P0）。这里保留完整计划供 :meth:`download` 消费。
         """
-        plan = _artifacts.retrieval_plan(normalize_stage(stage))
+        canonical = normalize_stage(stage)
+        # vendored 计划仍以 gaussian_opt 命名首段；molecule_opt 沿用它的
+        # Gaussian 产物清单（AIMS 引擎在 runner 里显式传 names，不走到这里）。
+        plan_name = "gaussian_opt" if canonical == "molecule_opt" else canonical
+        plan = _artifacts.retrieval_plan(plan_name)
         if plan.get("unknown"):
             raise StageError(plan.get("reason") or "未知阶段: %s" % stage)
         return {

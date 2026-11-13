@@ -1,16 +1,16 @@
 """au_relax：可选的贴装后几何弛豫（远端 AIMS 阶段，0.1.2 新增）。
 
 默认协议不在电极扩展后再弛豫：``aims_tip_relax`` 已做全原子优化，
-``au60_build`` 只把每个 tip 扩展成完整金字塔团簇并沿用弛豫后的接触几何，
+``electrode_build`` 只把每个 tip 扩展成完整金字塔团簇并沿用弛豫后的接触几何，
 此后结几何完全冻结。因此 ``electrode.relax`` 默认 **false**，本阶段只做本地
 直通（复制 au60 的几何与 metadata，写 ``relax_skipped.json``）。
 
 仅当显式 ``electrode.relax: true``（旧口径/收敛检查）时：
-- prepare 复制 ``au60_build/geometry.in``，给两侧背层整层加
+- prepare 复制 ``electrode_build/geometry.in``，给两侧背层整层加
   ``constrain_relaxation .true.``，写 ``control.in``（bfgs 模板）+ ``sub_aims.sh``；
 - collect 要求 ``aims.out`` 正常结束且 ``geometry.in.next_step`` 存在，用
   next_step 覆盖 ``geometry.in``；随后按 det-v1 重算表面三元组，必须与
-  ``au60_build`` 的 metadata 完全一致（背层冻结后表面原子不该移动）——
+  ``electrode_build`` 的 metadata 完全一致（背层冻结后表面原子不该移动）——
   不一致即 StageError，不把"看起来跑完了"的几何交下游。
 """
 
@@ -54,9 +54,9 @@ def _gold_indices(geometry: Path) -> list[int]:
 @register
 class AuRelaxStage(Stage):
     name = "au_relax"
-    depends = ("au60_build",)
+    depends = ("electrode_build",)
     script = "sub_aims.sh"
-    input_hint = "消费 au60_build 的 geometry.in 与背层索引"
+    input_hint = "消费 electrode_build 的 geometry.in 与背层索引"
     outputs = ("aims.out",)
 
     # -- prepare ----------------------------------------------------------- #
@@ -67,7 +67,7 @@ class AuRelaxStage(Stage):
         geometry = stage_dir / "geometry.in"
         shutil.copy2(upstream, geometry)
         metadata = self._read_metadata(ctx, stage_dir)
-        # P0-3：先证明"要弛豫的几何"就是 au60_build 指纹记录的那一份。
+        # P0-3：先证明"要弛豫的几何"就是 electrode_build 指纹记录的那一份。
         verify_parent_geometry(self.name, upstream, metadata)
         natoms = self.count_aims_atoms(geometry)
 
@@ -75,7 +75,7 @@ class AuRelaxStage(Stage):
             shutil.copy2(metadata["_path"], stage_dir / "electrode_metadata.json")
             (stage_dir / SKIP_MARKER).write_text(
                 json.dumps({"reason": "electrode.relax=false",
-                            "note": "跳过背层固定弛豫；下游直接消费 au60_build 几何"},
+                            "note": "跳过背层固定弛豫；下游直接消费 electrode_build 几何"},
                            ensure_ascii=False, indent=2),
                 encoding="utf-8")
             ctx.log("au_relax: electrode.relax=false，本地直通（%d 原子）" % natoms)
@@ -84,11 +84,11 @@ class AuRelaxStage(Stage):
                 inputs=[geometry],
                 artifacts=["geometry.in", "electrode_metadata.json", SKIP_MARKER],
                 resources=est_record({"local": True}),
-                notes=["electrode.relax=false：电极扩展后几何冻结，直接沿用 au60_build 几何",
+                notes=["electrode.relax=false：电极扩展后几何冻结，直接沿用 electrode_build 几何",
                        "如需旧口径的贴装后弛豫，显式设 electrode.relax: true"],
                 commands=[],
                 local_only=True,
-                parent_stage="au60_build",
+                parent_stage="electrode_build",
                 parent_fingerprint=sha256_file(upstream),
             )
 
@@ -120,7 +120,7 @@ class AuRelaxStage(Stage):
                 "prepare 只写输入与作业脚本，未提交任何远端命令",
             ],
             commands=submit_command(self.script),
-            parent_stage="au60_build",
+            parent_stage="electrode_build",
             parent_fingerprint=sha256_file(upstream),
         )
 
@@ -170,11 +170,11 @@ class AuRelaxStage(Stage):
         indices_ok, mismatch = self._verify_surface(before, after, metadata)
         if not indices_ok:
             raise StageError(
-                "au_relax 后 det-v1 表面三元组与 au60_build metadata 不一致: %s；"
+                "au_relax 后 det-v1 表面三元组与 electrode_build metadata 不一致: %s；"
                 "背层冻结失效或电极塌陷，拒绝交下游" % mismatch)
 
         meta = {k: v for k, v in metadata.items() if k != "_path"}
-        input_geometry = ctx.artifact("au60_build", "geometry.in")
+        input_geometry = ctx.artifact("electrode_build", "geometry.in")
         meta["relax"] = {
             "enabled": True,
             "converged": True,
@@ -206,11 +206,11 @@ class AuRelaxStage(Stage):
 
     # -- 内部 -------------------------------------------------------------- #
     def _read_metadata(self, ctx, stage_dir: Path) -> dict:
-        path = ctx.artifact("au60_build", "electrode_metadata.json")
+        path = ctx.artifact("electrode_build", "electrode_metadata.json")
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise StageBlocked(self.name, "读不到 au60_build 的 electrode_metadata.json: %s" % exc)
+            raise StageBlocked(self.name, "读不到 electrode_build 的 electrode_metadata.json: %s" % exc)
         data["_path"] = str(path)
         return data
 
@@ -253,8 +253,8 @@ class AuRelaxStage(Stage):
         if not out:
             raise StageBlocked(
                 self.name,
-                "au60_build metadata 既没有背层索引，也无法按电极索引现算；"
-                "请重跑 au60_build 生成 left/right_backplane_indices")
+                "electrode_build metadata 既没有背层索引，也无法按电极索引现算；"
+                "请重跑 electrode_build 生成 left/right_backplane_indices")
         return sorted(set(out))
 
     @staticmethod

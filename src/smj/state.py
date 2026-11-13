@@ -7,9 +7,10 @@ r"""run 目录布局与 ``state.json``（阶段状态机）。
         manifest.json              # 产物清单（可选，report 生成）
         report.md                  # 人读报告（可选）
         logs/                      # 本包自己的日志
-        gaussian_opt/              # 每个阶段一个目录，阶段之间只通过文件耦合
+        molecule_opt/              # 每个阶段一个目录，阶段之间只通过文件耦合
+                                   # （旧 run 仍可能是 gaussian_opt/，RunLayout 回退读取）
         aims_tip_relax/
-        au60_build/
+        electrode_build/           # 旧 run 仍可能是 au60_build/ 或 auN_build/
         aims_scf/
         aitranss_te/
         junction_analyze/
@@ -37,9 +38,9 @@ from typing import Any, Mapping
 from .errors import SmjError
 
 STAGE_ORDER: tuple[str, ...] = (
-    "gaussian_opt",
+    "molecule_opt",
     "aims_tip_relax",
-    "au60_build",
+    "electrode_build",
     "aims_scf",
     "aitranss_te",
     "junction_analyze",
@@ -49,11 +50,11 @@ STAGE_ORDER: tuple[str, ...] = (
 #: （``smj stage au_relax`` 仍可用），不再参与 ``run``、``plan``、report 的阶段序列。
 LEGACY_STAGES: tuple[str, ...] = ("au_relax",)
 
-#: 远程阶段（需要 Slurm 作业）；au60_build / junction_analyze 是纯本地阶段。
+#: 远程阶段（需要 Slurm 作业）；electrode_build / junction_analyze 是纯本地阶段。
 REMOTE_STAGES: tuple[str, ...] = (
-    "gaussian_opt", "aims_tip_relax", "aims_scf", "aitranss_te",
+    "molecule_opt", "aims_tip_relax", "aims_scf", "aitranss_te",
 )
-LOCAL_STAGES: tuple[str, ...] = ("au60_build", "junction_analyze")
+LOCAL_STAGES: tuple[str, ...] = ("electrode_build", "junction_analyze")
 
 STATUSES: tuple[str, ...] = (
     "pending", "prepared", "submitted", "waiting", "finished", "failed", "collected", "skipped",
@@ -65,18 +66,28 @@ STATUSES: tuple[str, ...] = (
 DONE_STATUSES: tuple[str, ...] = ("finished", "collected", "skipped")
 
 _ALIASES = {
-    "gaussian": "gaussian_opt",
-    "g16": "gaussian_opt",
-    "opt": "gaussian_opt",
-    "gaussian-opt": "gaussian_opt",
+    # 2026-11-13：阶段规范名改为 molecule_opt；gaussian_opt 仅作旧 run/旧命令别名。
+    "molecule": "molecule_opt",
+    "mol": "molecule_opt",
+    "molecule-opt": "molecule_opt",
+    "molecule_optimization": "molecule_opt",
+    "gaussian_opt": "molecule_opt",
+    "gaussian-opt": "molecule_opt",
+    "gaussian": "molecule_opt",
+    "g16": "molecule_opt",
+    "opt": "molecule_opt",
     "tip": "aims_tip_relax",
     "tip_relax": "aims_tip_relax",
     "tip-relax": "aims_tip_relax",
     "relax": "aims_tip_relax",
-    "au60": "au60_build",
-    "build": "au60_build",
-    "au60-build": "au60_build",
-    "electrode": "au60_build",
+    "au60": "electrode_build",
+    "au60_build": "electrode_build",
+    "au60-build": "electrode_build",
+    "build": "electrode_build",
+    "electrode": "electrode_build",
+    "electrode-build": "electrode_build",
+    "junction_build": "electrode_build",
+    "junction-build": "electrode_build",
     "au-relax": "au_relax",
     "aurelax": "au_relax",
     "relax_au": "au_relax",
@@ -111,6 +122,10 @@ def normalize_stage(name: str) -> str:
         return key
     if key in _ALIASES:
         return _ALIASES[key]
+    # 旧 run 的目录/状态键可能叫 au20_build/au60_build/auN_build；统一到
+    # electrode_build（具体目录由 RunLayout.stage_dir 回退定位）。
+    if re.match(r"^au\d+_build$", key):
+        return "electrode_build"
     raise SmjError("未知阶段 %r；可选: %s（legacy: %s）"
                    % (name, ", ".join(STAGE_ORDER), ", ".join(LEGACY_STAGES)))
 
@@ -132,9 +147,9 @@ def next_stage(name: str) -> str | None:
 
 def previous_stage(name: str) -> str | None:
     normalized = normalize_stage(name)
-    # au_relax 已不在链路上；旧 run 单独操作它时，其上游仍是 au60_build。
+    # au_relax 已不在链路上；旧 run 单独操作它时，其上游仍是 electrode_build。
     if normalized == "au_relax":
-        return "au60_build"
+        return "electrode_build"
     idx = stage_index(normalized)
     return STAGE_ORDER[idx - 1] if idx > 0 else None
 
@@ -404,7 +419,27 @@ class RunLayout:
         return self.run_dir / "logs"
 
     def stage_dir(self, name: str) -> Path:
-        return self.run_dir / normalize_stage(name)
+        canonical = normalize_stage(name)
+        path = self.run_dir / canonical
+        # 2026-11-13：molecule_opt 是规范名；旧 run 的目录仍叫 gaussian_opt。
+        # 只在规范目录不存在时回退，避免新 run 误写旧目录。
+        if canonical == "molecule_opt":
+            legacy = self.run_dir / "gaussian_opt"
+            if not path.exists() and legacy.is_dir():
+                return legacy
+        elif canonical == "electrode_build" and not path.exists():
+            # 旧 run：au60_build 是默认名；更早的自定义 run 可能是 auN_build。
+            legacy = self.run_dir / "au60_build"
+            if legacy.is_dir():
+                return legacy
+            variants = sorted(
+                (child for child in self.run_dir.glob("au*_build") if child.is_dir()),
+                key=lambda child: (int(re.match(r"^au(\d+)_build$", child.name).group(1))
+                                   if re.match(r"^au(\d+)_build$", child.name) else 10 ** 9,
+                                   child.name))
+            if variants:
+                return variants[0]
+        return path
 
     def exists(self, name: str) -> bool:
         return self.stage_dir(name).is_dir()
@@ -425,17 +460,21 @@ class RunLayout:
         return path
 
     # 常见上游产物的快捷方式（便于"阶段独立运行"时发现默认输入）
+    def molecule_xyz(self) -> Path:
+        return self.artifact("molecule_opt", "opt.xyz")
+
+    # 旧名字保留（第三方脚本兼容）；molecule_opt 是规范名。
     def gaussian_xyz(self) -> Path:
-        return self.artifact("gaussian_opt", "opt.xyz")
+        return self.molecule_xyz()
 
     def tip_geometry(self) -> Path:
         return self.artifact("aims_tip_relax", "geometry.in.next_step")
 
     def electrode_geometry(self) -> Path:
-        return self.artifact("au60_build", "geometry.in")
+        return self.artifact("electrode_build", "geometry.in")
 
     def electrode_metadata(self) -> Path:
-        return self.artifact("au60_build", "electrode_metadata.json")
+        return self.artifact("electrode_build", "electrode_metadata.json")
 
     def scf_dir(self) -> Path:
         return self.stage_dir("aims_scf")

@@ -72,7 +72,7 @@ def _metadata(**overrides) -> dict:
 
 def _case(workdir: Path, *, geometry_text: str | None = None,
           metadata: dict | None = None, with_metadata: bool = True,
-          build_name: str = "au60_build") -> tuple[Path, Path]:
+          build_name: str = "electrode_build") -> tuple[Path, Path]:
     run_dir = workdir / "run"
     build = run_dir / build_name
     build.mkdir(parents=True)

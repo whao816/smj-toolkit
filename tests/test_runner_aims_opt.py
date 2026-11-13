@@ -12,7 +12,7 @@ from smj.config import ClusterConfig, MoleculeConfig, RunConfig, RunInfo
 from smj.runner import StageRunner
 from smj.testing import FakeTransport
 
-REMOTE = "/remote/runs/t/gaussian_opt"
+REMOTE = "/remote/runs/t/molecule_opt"
 
 
 def _config(workdir: Path) -> RunConfig:
@@ -28,7 +28,7 @@ def _config(workdir: Path) -> RunConfig:
 
 
 class _AimsStage:
-    name = "gaussian_opt"
+    name = "molecule_opt"
     needs_submit = True
     script = "sub_aims.sh"
     outputs = ("opt.xyz", "aims.out")
@@ -64,4 +64,4 @@ def test_aims_gaussian_opt_collect_downloads_aims_names(workdir):
     assert any("aims.out" in command for command in gets)
     assert any("geometry.in.next_step" in command for command in gets)
     assert not any("mol.log" in command for command in gets)
-    assert runner.state.status("gaussian_opt") == "collected"
+    assert runner.state.status("molecule_opt") == "collected"

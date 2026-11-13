@@ -1,8 +1,8 @@
 """A2 人工确认（签署）的打包侧入口（F4，2026-11-11 本地补丁）。
 
 **缺口**：独立包此前没有任何签署命令。``smj review`` 只**读取**
-``auN_build/a2_confirmation.json``；真正能登记的路径是 vendored 的
-``python -m smj._vendor.junction.a2_viz --stage <auN_build> --sign-who <名字>``，
+``electrode_build/a2_confirmation.json``；真正能登记的路径是 vendored 的
+``python -m smj._vendor.junction.a2_viz --stage <electrode_build> --sign-who <名字>``，
 既没写进 README，review 的提示还指向主仓的 ``agenticdft smj-review``
 （独立包里不存在）。于是"红线"在默认配置下（``review.require_a2: false``）
 根本不出现在任何路径上。
@@ -33,7 +33,7 @@ from typing import Any
 from .config import RunConfig
 from .errors import SmjError
 from .review import AUDIT_FILE, CONFIRM_FILE, GEOMETRY_FILE, METADATA_FILE, find_build_dir
-from .state import now_iso
+from .state import RunLayout, normalize_stage, now_iso
 
 A2_SCHEMA = "smj.a2.v1"
 
@@ -116,7 +116,16 @@ def _resolve_build_dir(run_dir: Path, stage: str | Path | None) -> Path | None:
         candidate = Path(stage)
         if not candidate.is_absolute():
             candidate = run_dir / candidate
-        return candidate if candidate.is_dir() else None
+        if candidate.is_dir():
+            return candidate
+        # ``--stage au60_build`` / ``au20_build`` 这类旧名或尺寸名，按
+        # RunLayout 的兼容回退定位到规范目录。
+        try:
+            key = normalize_stage(str(stage))
+        except SmjError:
+            return None
+        fallback = RunLayout(run_dir).stage_dir(key)
+        return fallback if fallback.is_dir() else None
     return find_build_dir(run_dir)
 
 
@@ -142,7 +151,7 @@ def approve_a2(target: Any, *, who: str, stage: str | Path | None = None,
                no_figure: bool = False,
                tcontrol: str | Path | None = None,
                force: bool = False) -> A2Approval:
-    """登记 auN_build 的 A2 人工确认；审计/出图不通过时拒绝。
+    """登记 electrode_build 的 A2 人工确认；审计/出图不通过时拒绝。
 
     Parameters
     ----------
@@ -151,7 +160,7 @@ def approve_a2(target: Any, *, who: str, stage: str | Path | None = None,
     who:
         签署人（必填，写进 ``a2_confirmation.json``）。
     stage:
-        ``auN_build`` 目录（相对 run 目录或绝对路径）；缺省用
+        ``electrode_build`` 目录（相对 run 目录或绝对路径）；缺省用
         :func:`smj.review.find_build_dir` 自动定位。
     no_figure:
         不出图直接签署（显式声明"已在别处看过图"；无 matplotlib 时用）。
@@ -168,7 +177,7 @@ def approve_a2(target: Any, *, who: str, stage: str | Path | None = None,
     if build_dir is None:
         return _refuse(
             "no_build_dir",
-            "找不到 auN_build 阶段目录（A2 确认的对象是建结几何）：%s" % run_dir,
+            "找不到 electrode_build 阶段目录（A2 确认的对象是建结几何）：%s" % run_dir,
             **base)
     geometry = build_dir / GEOMETRY_FILE
     metadata_path = build_dir / METADATA_FILE

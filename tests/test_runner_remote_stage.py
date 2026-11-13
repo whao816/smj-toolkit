@@ -7,8 +7,8 @@
    走不到 —— 默认 ``electrode.source: library`` 在 slurm-ssh 下端直接失败，
    报错还是"未找到 electrodes.library"，把人指向错误的排查方向。
 2. ``StageRunner.collect()`` 在 slurm-ssh 下对所有阶段都调用 ``download()``，
-   而本地阶段（au60_build / junction_analyze）不在 artifacts 台账里，于是
-   ``smj stage au60_build --collect`` 报"未知 smj 阶段"。
+   而本地阶段（electrode_build / junction_analyze）不在 artifacts 台账里，于是
+   ``smj stage electrode_build --collect`` 报"未知 smj 阶段"。
 
 注：本机 %TEMP% 在 DSH 沙箱写限制之外，测试统一用 conftest 的 ``workdir``。
 """
@@ -58,7 +58,7 @@ class _TransportSpyStage:
 class _LocalStage:
     """本地阶段：needs_submit=False，不应触发任何回取。"""
 
-    name = "au60_build"
+    name = "electrode_build"
     needs_submit = False
     script = None
     outputs = ("electrode_metadata.json",)
@@ -91,11 +91,11 @@ def test_local_stage_collect_does_not_download(workdir):
     transport = FakeTransport()
     runner = _runner(workdir, stage, transport=transport)
 
-    runner.prepare("au60_build")
-    runner.collect("au60_build")
+    runner.prepare("electrode_build")
+    runner.collect("electrode_build")
 
     assert stage.calls == 1
     downloads = [cmd for kind, cmd in transport.commands if kind in ("get", "run")]
     assert downloads == [], "本地阶段不应发起任何远端读写: %r" % (transport.commands,)
-    assert runner.state.status("au60_build") == "collected"
-    assert runner.state.stage("au60_build").results == {"ok": True}
+    assert runner.state.status("electrode_build") == "collected"
+    assert runner.state.stage("electrode_build").results == {"ok": True}

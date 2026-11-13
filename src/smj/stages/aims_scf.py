@@ -1,6 +1,6 @@
 """aims_scf：Au60 结的 FHI-aims 自洽场计算（远端阶段）。
 
-prepare 把 ``au60_build/geometry.in``（贴装后的结几何；``au_relax`` 已从主链路
+prepare 把 ``electrode_build/geometry.in``（贴装后的结几何；``au_relax`` 已从主链路
 移除）拷进本阶段目录，写 ``control.in`` + ``sub_aims.sh``；AIMS 跑完产出
 ``aims.out``、``basis-indices.out`` 与 ``mos.aims`` —— 后两者是 aitranss_te 的
 必要输入。结几何在 SCF/输运阶段保持冻结，不再弛豫。
@@ -26,9 +26,9 @@ from .base import Collected, Prepared, Stage, register
 @register
 class AimsScfStage(Stage):
     name = "aims_scf"
-    depends = ("au60_build",)
+    depends = ("electrode_build",)
     script = "sub_aims.sh"
-    input_hint = "消费 au60_build/geometry.in（冻结的结几何）"
+    input_hint = "消费 electrode_build/geometry.in（冻结的结几何）"
     # aitranss 的 tcontrol 直接消费后三个文件；缺任何一个都跑不了透射。
     outputs = ("aims.out", "basis-indices.out", "omat.aims", "mos.aims")
 
@@ -41,9 +41,9 @@ class AimsScfStage(Stage):
         geometry = stage_dir / "geometry.in"
         shutil.copy2(upstream, geometry)
         notes: list[str] = []
-        # P0-3：SCF 必须用 au60_build 产出并已由 A2 确认/锚定的那份几何。
-        metadata_path = ctx.artifact("au60_build", "electrode_metadata.json")
-        parent_stage = "au60_build"
+        # P0-3：SCF 必须用 electrode_build 产出并已由 A2 确认/锚定的那份几何。
+        metadata_path = ctx.artifact("electrode_build", "electrode_metadata.json")
+        parent_stage = "electrode_build"
         if metadata_path.is_file():
             verify_parent_geometry(self.name, upstream, metadata_path)
         else:

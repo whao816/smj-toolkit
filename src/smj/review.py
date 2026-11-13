@@ -2,10 +2,10 @@
 
 复核分两层，**不混在一起**：
 
-1. **结构几何** —— 有 ``auN_build/geometry.in`` 时调 vendored
+1. **结构几何** —— 有 ``electrode_build/geometry.in`` 时调 vendored
    ``validate_junction_geometry``（表面索引/输运轴/接触重叠/Au-S 锚定），
    error 级问题直接阻断；
-2. **A2 人工确认** —— 读 ``auN_build/a2_confirmation.json``（vendored
+2. **A2 人工确认** —— 读 ``electrode_build/a2_confirmation.json``（vendored
    ``fingerprint.record_confirmation`` 的格式）与当前几何指纹：
 
    - ``ReviewConfig.require_a2=True`` 且**无 A2 数据** -> ``blocked``；
@@ -35,7 +35,8 @@ from typing import Any
 
 from .config import ReviewConfig
 from .provenance import load_run_spec, protocol_sha256
-from .state import now_iso
+from .errors import SmjError
+from .state import RunLayout, normalize_stage, now_iso
 
 REVIEW_SCHEMA = "smj.review.v1"
 
@@ -161,7 +162,7 @@ def _run_dir_of(target: Any) -> tuple[Path, Any]:
 
 
 def find_build_dir(run_dir: str | Path) -> Path | None:
-    """定位 A2 确认的对象：``auN_build``（默认 ``au60_build``）。
+    """定位 A2 确认的对象：``electrode_build``（旧名 ``au60_build`` / ``auN_build``）。
 
     2026-11-13 起 ``au_relax`` 已从主链路移除，A2 的对象就是贴装后的建结几何；
     旧 run（只有 ``au_relax`` 而没有 build 目录）作为兼容回退。
@@ -169,10 +170,10 @@ def find_build_dir(run_dir: str | Path) -> Path | None:
     root = Path(run_dir)
     if not root.is_dir():
         return None
-    preferred = root / "au60_build"
+    preferred = RunLayout(root).stage_dir("electrode_build")
     legacy = root / "au_relax"
     if preferred.is_dir():
-        # 旧 run 的 A2 签在 au_relax 几何上；若新口径的 au60 还没有签署，
+        # 旧 run 的 A2 签在 au_relax 几何上；若新口径的 electrode_build 还没有签署，
         # 仍以旧签署对象为准，避免显式兼容旧 run 时误报 a2_missing。
         if ((legacy / "a2_confirmation.json").is_file()
                 and not (preferred / "a2_confirmation.json").is_file()):
@@ -243,7 +244,7 @@ def _structure_review(result: ReviewResult, build_dir: Path | None,
                       metadata: Mapping[str, Any] | None = None) -> None:
     if build_dir is None:
         result.add("warning", "geometry_missing",
-                   "无 auN_build 阶段目录，结构几何复核跳过（阶段未 prepare？）")
+                   "无 electrode_build 阶段目录，结构几何复核跳过（阶段未 prepare？）")
         return
     geo_path = Path(geometry) if geometry else build_dir / GEOMETRY_FILE
     if not geo_path.is_file():
@@ -299,7 +300,7 @@ def _a2_state(build_dir: Path | None) -> dict:
                              "audit": None, "recorded": None, "current": None,
                              "deviation": None, "reason": None}
     if build_dir is None:
-        state["reason"] = "无 auN_build 阶段目录"
+        state["reason"] = "无 electrode_build 阶段目录"
         return state
     confirm_path = build_dir / CONFIRM_FILE
     audit_path = build_dir / AUDIT_FILE
@@ -485,6 +486,16 @@ def review_run(target: Any, *, force: bool = True,
             candidate = run_dir / candidate
         if candidate.is_dir():
             build_dir = candidate
+        else:
+            # 旧名 ``au60_build`` / 尺寸名 ``au20_build`` 走兼容回退。
+            try:
+                key = normalize_stage(str(stage))
+            except SmjError:
+                key = None
+            if key is not None:
+                fallback = RunLayout(run_dir).stage_dir(key)
+                if fallback.is_dir():
+                    build_dir = fallback
     if build_dir is None:
         build_dir = find_build_dir(run_dir)
     _structure_review(result, build_dir, geometry=geometry, metadata=metadata)
