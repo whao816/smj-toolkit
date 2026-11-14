@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+    tags: ["v*"]
+  pull_request:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: pytest / py${{ matrix.python-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+        exclude:
+          - os: windows-latest
+            python-version: "3.10"
+          - os: windows-latest
+            python-version: "3.11"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Run test suite
+        run: python -m pytest -q
+
+  dist:
+    name: build wheel + sdist, install smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel + sdist (RECORD self-check)
+        run: python scripts/build_wheel.py --check --sdist
+      - name: Install wheel into a clean venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install dist/*.whl
+      - name: Smoke test installed CLI
+        run: |
+          set -euo pipefail
+          export PATH="$RUNNER_TEMP/venv/bin:$PATH"
+          smj --version
+          smj verify
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cd "$RUNNER_TEMP/smoke"
+          printf '2\nsmoke molecule\nC 0 0 0\nH 1.09 0 0\n' > molecule.xyz
+          smj init . --name smoke --xyz molecule.xyz --mode dry-run
+          smj plan -c smj.yaml
+      - name: Install from sdist into a clean venv
+        run: |
+          python -m venv "$RUNNER_TEMP/venv_sdist"
+          "$RUNNER_TEMP/venv_sdist/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv_sdist/bin/python" -m pip install dist/*.tar.gz
+          "$RUNNER_TEMP/venv_sdist/bin/smj" --version
+          "$RUNNER_TEMP/venv_sdist/bin/smj" verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smj-toolkit-dist
+          path: dist/*
+          if-no-files-found: error

@@ -10,6 +10,8 @@
 - 补全分发元数据：`readme` 长描述、authors、keywords、classifiers（Python 3.10–3.12 / Linux / Science）。
 - `scripts/build_wheel.py` 支持 `--sdist`：同时产出可复现的 wheel 与 sdist（固定时间戳、排序、RECORD sha256 自检）。
 - 版本号升至 0.2.0rc1；`smj verify` 在从 wheel 解包的环境下通过。
+- 新增 GitHub Actions CI（`.github/workflows/ci.yml`）：pytest 矩阵 Python 3.10–3.12（Ubuntu）与 3.12（Windows），
+  以及 wheel/sdist 构建 + 干净 venv 安装冒烟（`smj verify` / `smj init` / `smj plan`）。
 
 ### 默认行为（可能影响既有配置）
 
