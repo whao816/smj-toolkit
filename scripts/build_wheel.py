@@ -42,6 +42,7 @@ SUMMARY = "Single-molecule junction transport workflow (standalone)"
 FIXED_DATE = (1980, 1, 1, 0, 0, 0)
 FIXED_EPOCH = 315532800  # 1980-01-01T00:00:00Z，sdist 的 tar/gzip 时间戳
 
+#: 兜底 classifiers：pyproject 读不到时使用；正常路径以 pyproject.toml 为准，避免元数据漂移。
 CLASSIFIERS = (
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -51,9 +52,24 @@ CLASSIFIERS = (
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Chemistry",
     "Topic :: Scientific/Engineering :: Physics",
 )
+
+
+def _classifiers() -> tuple[str, ...]:
+    """优先从 pyproject.toml 读 classifiers（Python 3.10 无 tomllib 时回退常量）。"""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+        return CLASSIFIERS
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    items = data.get("project", {}).get("classifiers")
+    if isinstance(items, list) and items:
+        return tuple(str(item) for item in items)
+    return CLASSIFIERS
 
 
 def _version() -> str:
@@ -104,7 +120,7 @@ def _metadata(version: str) -> str:
         "Requires-Dist: matplotlib>=3.7; extra == \"all\"",
         "Requires-Dist: pytest>=8; extra == \"all\"",
         "Keywords: single-molecule junction, transport, FHI-aims, aitranss, DFT",
-    ] + ["Classifier: %s" % c for c in CLASSIFIERS] + [
+    ] + ["Classifier: %s" % c for c in _classifiers()] + [
         "Description-Content-Type: text/markdown",
         "",
         readme,

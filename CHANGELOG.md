@@ -19,7 +19,8 @@
   `smj verify` 六项通过、`smj init` + `smj plan` 输出六阶段；`pip show` 正确解析 METADATA 2.4
   （`License-Expression: MIT`），`pip check` 无破损依赖；PyYAML 6.0.3 / numpy 2.5.4 均有 cp314 wheel，
   安装过程未触发本地编译。
-- 3.13/3.14 已加入 CI 矩阵作为观察项；local 全量 `pytest` 通过后再写入 package classifiers。
+- 本地全量 `pytest`（125 passed）在 Python 3.14.4 上通过；package classifiers 已加入 3.13/3.14，
+  CI 矩阵同时覆盖这两个版本（3.13 未在本机单独跑过，由 CI 观察项兜底）。
 
 ### 默认行为（可能影响既有配置）
 
