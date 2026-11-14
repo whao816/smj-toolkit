@@ -52,7 +52,7 @@ PBE/light，与 tip/SCF 同一软件栈）；`gaussian` 保留旧口径（B3LYP/
 
 ## 1. 安装
 
-要求 **Python ≥ 3.10**；运行时依赖只有 **PyYAML** 与 **numpy**。
+要求 **Python ≥ 3.10**；运行时依赖只有 **PyYAML** 与 **numpy**。发布包已在 Ubuntu 26.04 / Python 3.14.4 上完成 wheel 与 sdist 的用户视角安装冒烟（`smj verify` / `init` / `plan`）；CI 矩阵覆盖 Python 3.10–3.14（Ubuntu）与 3.12（Windows）。
 
 ```bash
 # 源码可编辑安装（在仓库根执行；pyproject.toml 在根，源码在 src/）
@@ -61,7 +61,7 @@ python -m pip install -e .
 # 或构建 wheel 后安装（产物在 dist/）
 python scripts/gen_vendor_json.py           # 先刷新 vendored 补丁台账（VENDOR.json 随 wheel 分发）
 python scripts/build_wheel.py --check       # 只用标准库，不需要 setuptools/build；--check 按 RECORD 校验
-python -m pip install dist/smj_toolkit-0.1.1-py3-none-any.whl
+python -m pip install dist/smj_toolkit-0.2.0rc1-py3-none-any.whl
 ```
 
 可选依赖：
@@ -69,7 +69,7 @@ python -m pip install dist/smj_toolkit-0.1.1-py3-none-any.whl
 ```bash
 python -m pip install -e ".[plot]"   # matplotlib，用于 T(E) 出图与 A2 核对图
 python -m pip install -e ".[dev]"    # pytest，跑本包测试
-python -m pip install -e ".[all]"    # plot + dev
+python -m pip install -e ".[plot,dev]"    # plot + dev
 ```
 
 安装后验证（在仓库根执行）：
