@@ -1,21 +1,27 @@
-"""用标准库构建 ``dist/smj_toolkit-<version>-py3-none-any.whl``。
+"""用标准库构建 ``dist/smj_toolkit-<version>-py3-none-any.whl``（可选 sdist）。
 
 为什么不用 ``python -m build`` / ``pip wheel``：本机系统 Python 没有 setuptools，
 ``ensurepip`` 在沙箱里也装不进去，而本包是纯 Python、无编译步骤 —— wheel 就是
-一个按 PEP 427 布局的 zip。本脚本只依赖标准库，输出**可复现**（固定时间戳、
-按路径排序、deflate），RECORD 里的 sha256 与文件一一对应，`pip install` 可校验。
+一个按 PEP 427 布局的 zip，sdist 就是一个按 PEP 517 布局的 tar.gz。本脚本只依赖
+标准库，输出**可复现**（固定时间戳、按路径排序、deflate/gzip），RECORD 里的 sha256
+与文件一一对应，`pip install` 可校验。
 
 用法::
 
-    python scripts/build_wheel.py            # 构建到 dist/
-    python scripts/build_wheel.py --check    # 构建后对照 RECORD 自检
+    python scripts/build_wheel.py             # 只构建 wheel 到 dist/
+    python scripts/build_wheel.py --check     # 构建后对照 RECORD 自检
+    python scripts/build_wheel.py --sdist     # 同时构建 sdist（tar.gz）
+    python scripts/build_wheel.py --check --sdist
 """
 from __future__ import annotations
 
 import argparse
 import base64
+import gzip
 import hashlib
+import io
 import sys
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -34,6 +40,20 @@ INCLUDE_PATTERNS = (
 AUTHOR = "AgenticDFT contributors"
 SUMMARY = "Single-molecule junction transport workflow (standalone)"
 FIXED_DATE = (1980, 1, 1, 0, 0, 0)
+FIXED_EPOCH = 315532800  # 1980-01-01T00:00:00Z，sdist 的 tar/gzip 时间戳
+
+CLASSIFIERS = (
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+)
 
 
 def _version() -> str:
@@ -64,12 +84,15 @@ def _package_files() -> list[tuple[str, Path]]:
 
 
 def _metadata(version: str) -> str:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
     return "\n".join([
         "Metadata-Version: 2.4",
         "Name: smj-toolkit",
         "Version: %s" % version,
         "Summary: %s" % SUMMARY,
         "Author: %s" % AUTHOR,
+        "License-Expression: MIT",
+        "License-File: LICENSE",
         "Requires-Python: >=3.10",
         "Requires-Dist: PyYAML<7,>=6",
         "Requires-Dist: numpy>=1.24",
@@ -80,13 +103,18 @@ def _metadata(version: str) -> str:
         "Provides-Extra: all",
         "Requires-Dist: matplotlib>=3.7; extra == \"all\"",
         "Requires-Dist: pytest>=8; extra == \"all\"",
+        "Keywords: single-molecule junction, transport, FHI-aims, aitranss, DFT",
+    ] + ["Classifier: %s" % c for c in CLASSIFIERS] + [
+        "Description-Content-Type: text/markdown",
+        "",
+        readme,
         "",
     ])
 
 
 WHEEL_META = "\n".join([
     "Wheel-Version: 1.0",
-    "Generator: smj-build-wheel (stdlib, 0.1.1 local)",
+    "Generator: smj-build-wheel (stdlib)",
     "Root-Is-Purelib: true",
     "Tag: py3-none-any",
     "",
@@ -115,11 +143,15 @@ def build() -> Path:
                          "src/smj/_vendor/junction/templates/ 是否存在")
     if not any(name.endswith("VENDOR.json") for name, _ in package_files):
         raise SystemExit("打包文件里没有 VENDOR.json：先运行 python scripts/gen_vendor_json.py")
+    license_file = ROOT / "LICENSE"
+    if not license_file.is_file():
+        raise SystemExit("缺少 LICENSE：发布包必须带许可证")
 
     for rel, path in package_files:
         entries.append((rel, path.read_bytes()))
 
     entries.extend([
+        (dist_info + "/licenses/LICENSE", license_file.read_bytes()),
         (dist_info + "/METADATA", _metadata(version).encode("utf-8")),
         (dist_info + "/WHEEL", WHEEL_META.encode("utf-8")),
         (dist_info + "/entry_points.txt", ENTRY_POINTS.encode("utf-8")),
@@ -139,6 +171,38 @@ def build() -> Path:
             info.external_attr = 0o644 << 16
             zf.writestr(info, data)
     return wheel
+
+
+def _sdist_files(version: str) -> list[tuple[str, bytes]]:
+    files: list[tuple[str, bytes]] = []
+    for name in ("pyproject.toml", "README.md", "LICENSE", "CHANGELOG.md"):
+        files.append((name, (ROOT / name).read_bytes()))
+    for rel, path in _package_files():
+        files.append(("src/" + rel, path.read_bytes()))
+    for path in sorted((ROOT / "tests").glob("*.py")):
+        files.append(("tests/" + path.name, path.read_bytes()))
+    for path in sorted((ROOT / "scripts").glob("*.py")):
+        files.append(("scripts/" + path.name, path.read_bytes()))
+    files.append(("PKG-INFO", _metadata(version).encode("utf-8")))
+    return files
+
+
+def build_sdist(version: str) -> Path:
+    """按 PEP 517 布局写 tar.gz（固定 mtime/uid/gid，可复现）。"""
+    root = "smj_toolkit-%s" % version
+    DIST.mkdir(parents=True, exist_ok=True)
+    archive = DIST / ("%s.tar.gz" % root)
+    with gzip.GzipFile(str(archive), "wb", mtime=FIXED_EPOCH) as gz:
+        with tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tf:
+            for name, data in sorted(_sdist_files(version)):
+                info = tarfile.TarInfo("%s/%s" % (root, name))
+                info.size = len(data)
+                info.mtime = FIXED_EPOCH
+                info.mode = 0o644
+                info.uid = info.gid = 0
+                info.uname = info.gname = ""
+                tf.addfile(info, io.BytesIO(data))
+    return archive
 
 
 def check(wheel: Path) -> int:
@@ -162,11 +226,6 @@ def check(wheel: Path) -> int:
                     problems.append("sha256 不符: %s" % name)
             if size and len(data) != int(size):
                 problems.append("大小不符: %s" % name)
-        for name in sorted(names):
-            if name.endswith("/RECORD"):
-                continue
-            if name.endswith(".dist-info/RECORD"):
-                continue
     if problems:
         for item in problems:
             print("FAIL %s" % item)
@@ -178,6 +237,7 @@ def check(wheel: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="构建后按 RECORD 自检")
+    parser.add_argument("--sdist", action="store_true", help="同时构建 sdist（tar.gz）")
     args = parser.parse_args(argv)
 
     vendor_json = SRC / "smj" / "_vendor" / "junction" / "VENDOR.json"
@@ -186,7 +246,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     wheel = build()
     print("构建 %s（%d 字节）" % (wheel, wheel.stat().st_size))
-    return check(wheel) if args.check else 0
+    code = check(wheel) if args.check else 0
+    if code:
+        return code
+    if args.sdist:
+        archive = build_sdist(_version())
+        print("构建 %s（%d 字节）" % (archive, archive.stat().st_size))
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover

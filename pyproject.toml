@@ -4,10 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smj-toolkit"
-version = "0.1.2"
+version = "0.2.0rc1"
 description = "Single-molecule junction transport workflow (standalone)"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "AgenticDFT contributors" }]
 requires-python = ">=3.10"
 dependencies = ["PyYAML>=6,<7", "numpy>=1.24"]
+keywords = ["single-molecule junction", "transport", "FHI-aims", "aitranss", "DFT"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.7"]

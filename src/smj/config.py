@@ -140,7 +140,7 @@ class MoleculeConfig:
 class ElectrodeConfig:
     """电极 / 结几何参数（electrode_build 与 aims_tip_relax、aitranss_te 共用）。"""
 
-    au_per_electrode: int | None = 30     # 仅 builtin：每侧 Au 数；None/30 = 完整 Au60
+    au_per_electrode: int | None = 30     # 仅 builtin 生效；None = 完整 60/侧；library 忽略
     left_anchor: str = "S"
     right_anchor: str = "S"
     au_tip_distance: float = 2.35
@@ -170,7 +170,9 @@ class TransportConfig:
     """透射谱 / Landauer 分析参数。"""
 
     temperature: float = 300.0
-    energy_window: tuple[float, float, float] = (-2.5, 0.02, 2.5)  # (ener, estep, eend) in Ha
+    #: (ener, estep, eend)，单位 Ha 绝对能量。默认围绕 Au Fermi（≈ −0.19 Ha）取
+    #: ±0.02 Ha；实际体系应在 aims_scf 后按 E_F 调整（生产窗口别用 5 Ha 全窗）。
+    energy_window: tuple[float, float, float] = (-0.21, 0.0002, -0.17)
     ener: float | None = None             # 显式覆盖 energy_window 的分量
     estep: float | None = None
     eend: float | None = None
@@ -374,7 +376,15 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
     au = data.get("au_per_electrode", 30)
     au_value = None if au is None else _as_int(au, "electrode.au_per_electrode", minimum=1)
     if au_value is not None and au_value > 30:
-        raise ConfigError("electrode.au_per_electrode 最多 30（Au60 每侧 30 个原子），实际是 %d" % au_value)
+        raise ConfigError(
+            "electrode.au_per_electrode 最多 30（builtin 按完整原子层截断），实际是 %d" % au_value)
+    if source == "library":
+        # 0.2.0rc1：library 模式完全忽略该键 —— 团簇大小由 electrodes.library 文件决定。
+        if "au_per_electrode" in data:
+            warnings.append(
+                "electrode.au_per_electrode 仅对 source: builtin 生效；"
+                "当前 source: library 按库团簇整簇贴装，该键已忽略")
+        au_value = None
     target_raw = data.get("anchor_au_s_target", None)
     target = None if target_raw is None else _as_float(
         target_raw, "electrode.anchor_au_s_target")
@@ -418,7 +428,7 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
 
 def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportConfig:
     _warn_unknown("transport", data, _TRANSPORT_KEYS, warnings)
-    window = data.get("energy_window", [-2.5, 0.02, 2.5])
+    window = data.get("energy_window", [-0.21, 0.0002, -0.17])
     if not isinstance(window, (list, tuple)) or len(window) != 3:
         raise ConfigError("transport.energy_window 应为 [ener, estep, eend] 三个数，实际是 %r" % (window,))
     ener = _as_float(window[0], "transport.energy_window[0]")
@@ -579,7 +589,7 @@ electrode:
   source: library           # library = FHI-aims electrodes.library 预定义团簇；builtin = 自建三角岛
   library_dir: null         # electrodes.library 目录；null = 本机常见路径 / slurm-ssh 远端探测
   library_cluster: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims
-  au_per_electrode: 30      # 仅 builtin：每侧 Au 原子数（最大 30 = 完整 Au60）
+  # au_per_electrode: 30    # 仅 builtin：每侧 Au 原子数（null = 完整 60/侧）；library 模式忽略该键；按需取消注释
   left_anchor: S
   right_anchor: S
   au_tip_distance: 2.35

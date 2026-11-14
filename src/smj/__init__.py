@@ -17,7 +17,7 @@
 - 真实计算在这台机器之外（Slurm 集群）；本地只做输入装配、提交、等待、解析与分析。
 """
 
-__version__ = "0.1.2"
+__version__ = "0.2.0rc1"
 
 from .errors import (  # noqa: F401
     ConfigError,

@@ -90,7 +90,7 @@ smj init . --name demo --xyz molecule.xyz --mode dry-run
 
 # 2) 编辑 ./smj.yaml：分子路径、电极参数；真跑时补 cluster 段
 #    （见 §4；只想先看输入装配的话保持 run.mode: dry-run 即可）
-#    注意：0.1.2 默认 electrode.source: library，需要 FHI-aims 的 electrodes.library
+#    注意：默认 electrode.source: library，需要 FHI-aims 的 electrodes.library
 #    （用 electrode.library_dir 指向它，或写 source: builtin 回退到自建电极）
 
 # 3) 看六阶段计划、依赖与当前状态
@@ -163,7 +163,9 @@ wheel，只在 metadata 里记 `sha256` 与相对路径。`electrode.nlayers: nu
 
 `transport.energy_window: [ener, estep, eend]` 的单位是 **Hartree（绝对能量）**，与
 `tcontrol` 的 `$ener/$estep/$eend` 一致，要围绕 `aims_scf/aims.out` 的 Fermi 能级取值
-（Au 体系约 −0.19 Ha 附近取 ±0.02 Ha）。`TE.dat` 第一列是绝对 Hartree，第二列才是
+（Au 体系约 −0.19 Ha 附近取 ±0.02 Ha）。**默认 `[-0.21, 0.0002, -0.17]` Ha**（201 点，
+步长约 5.4 meV，与 `smj init` 模板一致）；生产仍应在 SCF 后按实际 E_F 调整窗口。
+`TE.dat` 第一列是绝对 Hartree，第二列才是
 `E−E_F`（eV）。`transport.require_te_out`（默认 `true`）要求 `aitranss_te/te.out`
 也在场——它是 aitranss 主输出，缺了就无法复核这次透射计算；外部/历史 run 才显式设
 `false` 豁免。
@@ -245,7 +247,9 @@ cluster:
 缺省值不静默成功：输入渲染器在缺 `g16root`/`g16_scratch` 等键时，会把
 `UNCONFIGURED` 写进作业脚本（例如 `export g16root=UNCONFIGURED`），这样的脚本在集群上会
 直接失败。`smj preflight` 在**非 `dry-run`** 模式下检查 Gaussian 许可、FHI-aims 与
-aitranss 可执行文件，缺一项即 error（退出码 1）；`smj run` 不会自动替你跑 preflight，
+aitranss 可执行文件，缺一项即 error（退出码 1）；`molecule.opt_engine: aims` 时分子优化
+走 FHI-aims，Gaussian 路径/许可检查被跳过（记 info `gaussian_not_required`）。
+`smj run` 不会自动替你跑 preflight，
 真跑前请先跑一次。`dry-run` 不触网、也不核对二进制，所以干跑通过不等于集群能跑。
 0.1.1 起提交前会再扫一遍作业脚本：仍含 `UNCONFIGURED` 时 `--submit` / `smj run` 直接
 拒绝（`StageError`，退出 1），不再让它到集群上才失败。
@@ -335,7 +339,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj status` | 读 `state.json`，打印阶段/状态/job id/远端目录/耗时/备注 | 终端表格（`--json` 机器可读） |
 | `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（7 节：概览/判定/阶段状态/输入摘要/资源/输运/失败原因/产物清单）；缺 `TE.dat` 时物理判定为「无法判定」而不是通过 | 报告文件；默认跳过已存在文件，`--force` 重写，`--no-checks` 不算判定 |
 | `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；出图与参考值比较用 Python API（`smj.analysis.analyze_run(..., plot=True, reference=...)`，需 `[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
-| `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差）；`--approve --who <名字>` 登记 A2 确认（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用 | `review.json`、`electrode_build/a2_confirmation.json`；`blocked` 时退出 1 |
+| `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差）；`--approve --who <名字>` 登记 A2 确认（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用，`--a2/--no-a2` 临时覆盖 `review.require_a2` | `review.json`、`electrode_build/a2_confirmation.json`；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
 | `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
@@ -353,6 +357,9 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `geometry.in` 不一致时，`smj review` 直接 `blocked`。签署用
   `smj review --approve --who <名字>`（A2 核对图落在 `electrode_build/a2_surface_viz.png`，
   审计结果落在 `electrode_build/a2_surface_audit.json`）。
+- **命令行临时开关**：`smj review --no-a2` 让本次复核不要求 A2（缺记录/指纹失效只降为
+  info/warning），`--a2` 在 yaml 写 `false` 时强制开启；缺省沿用
+  `review.require_a2`。开关只作用于当次调用，不写回配置，也不进 `run_spec` 的协议哈希。
 
 ### 7.2 运行溯源（run_spec / 哈希闭环）
 
@@ -397,6 +404,9 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   默认 `true`，没有有效签名时 `smj review` 为 `blocked`。
 - **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
   （未测晶格热导就不下总 ZT 结论）。
+- **电极厚度口径**：`electrode.au_per_electrode` 只在 `source: builtin` 生效
+  （`null` = 完整 60 Au/侧；整数按完整原子层截断，30 → 35/侧；上限 30）。默认
+  `source: library` 时该键被完全忽略，团簇大小由 `electrodes.library` 文件决定。
 - **锚定化学不可混**：`2.40–2.49 Å` 是去质子**硫醇盐**的 Au–S 有源带。`-SCH3` 等
   **硫醚**的 S–Au 是配位接触（2.6–2.7 Å 也可能正常），`smj review` 按 S 的成键环境
   （S–C 数 / S–H）分流，不把该带套到硫醚上。默认 `anchor_au_s_target: null`、
@@ -418,3 +428,8 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `failed` 且 exit_code 非 0 | 看 `<stage>/slurm-*.out`、`aims.out`/`mol.log` 尾部 |
 | 报告没更新 | `smj report --force`（默认跳过已存在文件） |
 | 独立复核与管线不一致 | `smj analyze` 的 `independent_check` 结果，先查单位/口径 |
+
+## 11. 许可证
+
+MIT License，见 [LICENSE](LICENSE)。Copyright (c) 2026 AgenticDFT contributors。
+

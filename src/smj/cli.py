@@ -684,6 +684,13 @@ def cmd_review(args: argparse.Namespace) -> int:
     kwargs: dict[str, Any] = {"force": args.force}
     if args.accept_deviation is not None:
         kwargs["accept_deviation"] = args.accept_deviation
+    if getattr(args, "require_a2", None) is not None:
+        # 命令行开关只作用于本次 review 调用（不写回 smj.yaml、不进 run_spec）：
+        # --no-a2 等价 require_a2=false，--a2 强制开启。
+        review_cfg = getattr(config, "review", None)
+        if review_cfg is not None:
+            kwargs["review_config"] = dataclasses.replace(
+                review_cfg, require_a2=bool(args.require_a2))
     result = _invoke(func, config, **kwargs)
     data = _as_mapping(result)
     ok = _truthy_ok(data)
@@ -1031,6 +1038,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="不出图直接签署（显式声明已看过图；无 matplotlib 时用）")
     review.add_argument("--accept-deviation", type=float, metavar="FRAC",
                         help="放宽 A2 相对偏差门槛（如 0.2）")
+    review.add_argument(
+        "--a2", dest="require_a2", action=argparse.BooleanOptionalAction,
+        default=None,
+        help="本次复核的 A2 表面确认开关：--no-a2 关闭（等价 "
+             "review.require_a2: false，缺记录/指纹失效只降为提示），"
+             "--a2 强制开启；缺省沿用 smj.yaml 的 review.require_a2")
     review.set_defaults(handler=cmd_review)
 
     # audit / verify -------------------------------------------------------- #

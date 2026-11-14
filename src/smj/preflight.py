@@ -463,6 +463,15 @@ def _cluster_check(result: PreflightResult, config: Any, transport: Any,
                % cluster.remote_root)
 
 
+def _needs_gaussian_check(config: Any) -> bool:
+    """0.2.0rc1：只有 Gaussian 分子优化才检查 Gaussian 路径/许可。
+
+    ``opt_engine=aims`` 时分子优化走 FHI-aims，G16ROOT/G16_MODULE 缺失不应
+    阻断预检（真实 BDT run 曾被这条误伤）。
+    """
+    return getattr(getattr(config, "molecule", None), "opt_engine", "gaussian") == "gaussian"
+
+
 def _env_check(result: PreflightResult, config: Any, mode: str,
                env: Mapping[str, Any] | None) -> None:
     merged = build_env(config, env)
@@ -472,10 +481,16 @@ def _env_check(result: PreflightResult, config: Any, mode: str,
                    "（提交前在目标机器上再跑一次非 dry-run 预检）")
         return
     from smj._vendor.junction import preflight as vendored  # lazy: vendored
-    for code, name, func in (
-            ("aims_unavailable", "FHI-aims", vendored.aims_executable),
-            ("gaussian_unavailable", "Gaussian", vendored.gaussian_license),
-            ("aitranss_unavailable", "aitranss", vendored.aitranss_binary)):
+    probes = [
+        ("aims_unavailable", "FHI-aims", vendored.aims_executable),
+        ("aitranss_unavailable", "aitranss", vendored.aitranss_binary),
+    ]
+    if _needs_gaussian_check(config):
+        probes.insert(1, ("gaussian_unavailable", "Gaussian", vendored.gaussian_license))
+    else:
+        result.add("info", "gaussian_not_required",
+                   "opt_engine=aims：分子优化走 FHI-aims，跳过 Gaussian 路径/许可检查")
+    for code, name, func in probes:
         try:
             report = func(merged)
         except Exception as exc:  # noqa: BLE001

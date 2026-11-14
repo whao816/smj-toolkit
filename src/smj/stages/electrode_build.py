@@ -47,10 +47,12 @@ class ElectrodeBuildStage(Stage):
                     "警告: tcontrol nlayers=%s 与库文件建议值 %s 不一致 —— 手册要求取"
                     "库文件头部建议值，请核对 electrode.nlayers"
                     % (electrode.nlayers, cluster.nlayers_suggested))
+        # 0.2.0rc1：library 模式完全忽略 au_per_electrode（团簇大小由库文件决定）。
+        au_target = None if cluster is not None else electrode.au_per_electrode
         try:
             metadata = append_au60(
                 source, geometry, metadata_path,
-                au_per_electrode=electrode.au_per_electrode,
+                au_per_electrode=au_target,
                 cluster=cluster,
                 provenance=cluster.provenance() if cluster is not None else None,
             )
@@ -72,6 +74,9 @@ class ElectrodeBuildStage(Stage):
             notes.append("库团簇: %s（%d 原子，建议 nlayers=%s，sha256 %s…）"
                          % (cluster.relpath, cluster.natoms,
                             cluster.nlayers_suggested, cluster.sha256[:12]))
+            notes.append(
+                "au_per_electrode 仅对 source: builtin 生效；library 模式按库团簇整簇贴装"
+                "（该键已忽略）")
         notes.extend([
             "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
             "Au 每侧目标 %s 个（%s），最终 %d 原子"

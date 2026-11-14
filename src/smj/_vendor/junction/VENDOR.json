@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
-  "repo_commit": "00294d91ed1ab69c37e18958578e8101e6701c96",
+  "repo_commit": "8a6e52d152421bcaaf1aa1eaf7957e55e14f36b2",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -214,57 +214,6 @@
         "tests/test_library_au_relax.py",
         "tests/test_a2_approve.py"
       ]
-    },
-    {
-      "id": "A2-transport-axis",
-      "commit": "local",
-      "files": [
-        "a2_viz.py",
-        "surface_index.py",
-        "electrode.py"
-      ],
-      "what": "A2 表面层方向改用 metadata 三元组自身的平面法向（法向朝向电极外侧），三元组不足时才回退到两侧 tip 连线 / 输运轴；surface_index.pick_surface_triple 与 electrode.surface_indices 接受 away 参数；重算失败记录为 audit 不通过而不是执行失败。",
-      "why": "2026-11-13 的 2CN-656 验收 run 先后暴露两类失败：S-C 倾斜使 tip->linker 方向不再等于表面法向；两侧 tip 连线也不一定平行于电极层。由待审计的三个表面原子定义法向可同时避免这两种情况，且坏 metadata 仍会被 same_surface_layer/deterministic_indices 判失败。"
-    },
-    {
-      "id": "anchor-chemistry",
-      "commit": "local",
-      "files": [
-        "validate.py",
-        "criteria.py"
-      ],
-      "what": "④ 锚定几何先按 S 的成键环境判化学（thioether/thiol/thiolate）；只有 thiolate 套 2.40–2.49 Å 硫醇盐有源带，thioether/thiol 只判 3.5 Å vdW 接触上限；check value 增 chemistry；criteria.au_s_bond 注明仅硫醇盐适用。",
-      "why": "2026-11-13 验收的 -SCH3 硫醚结 Au–S=2.676 Å 被硫醇盐带误判为偏离；2.40–2.49 Å 是去质子硫醇盐/表面配位带，不适用于硫醚。",
-      "tests": [
-        "tests/test_anchor_chemistry.py"
-      ]
-    },
-    {
-      "id": "g16-scratch-mkdir",
-      "commit": "local",
-      "files": [
-        "templates/sub_g16.sh"
-      ],
-      "what": "sub_g16.sh 在 export GAUSS_SCRDIR 前 mkdir -p 远端 scratch 目录。",
-      "why": "2026-11-13 的新验收 run 首次提交时 scratch 不存在，g16 立即 FIO/stdio error 2 退出（exit 134），作业只跑了数秒；流水线应自建 scratch，而不是依赖人工预建。"
-    },
-    {
-      "id": "g16-scf-xqc",
-      "commit": "local",
-      "files": [
-        "templates/gaussian_opt_freq.gjf"
-      ],
-      "what": "Gaussian 输入路由加 scf=(xqc,maxcycle=512) int=ultrafine，坐标块后保留空行；金属团簇 SCF 在 128 周期不收敛时用二次收敛兜底。",
-      "why": "2026-11-13 的 56 原子 AIMS-vs-Gaussian tip 对比作业在第 2 步 SCF 129 周期后 Convergence failure（Conv=0.21D-04），需要更稳的 SCF；重写模板时又漏掉坐标后空行，导致 Gaussian 在 ZSymb 读 EOF（0.1 s、segmentation violation），一并修复。"
-    },
-    {
-      "id": "aims-molecule-opt",
-      "commit": "local",
-      "files": [
-        "inputs.py"
-      ],
-      "what": "新增 make_aims_molecule_opt_input：分子 XYZ -> FHI-aims relax 输入（geometry.in/control.in/sub_aims.sh），与 tip/SCF 同一软件栈。",
-      "why": "2026-11-13 用户要求 gaussian_opt 可换成 FHI-aims，避免 B3LYP/6-31G(d) 分子优化与 PBE/light tip/SCF 的混合口径；Gaussian 分支保留兼容。"
     }
   ],
   "note": "0.1.1 本地补丁的权威记录；回迁主仓后应删除对应条目并重新 sync。本文件由 scripts/gen_vendor_json.py 生成，勿手改。"
