@@ -2,6 +2,21 @@
 
 本项目遵循语义化版本（0.x 阶段：次版本可含不兼容变更；rc 视为发布候选）。
 
+## 0.2.0 — 2026-11-15
+
+与 0.2.0rc1 相同的代码；本版补齐发布记录与真实体系验证。
+
+### 验证（真实集群，FHI-aims 221103 + aitranss 071813）
+
+- 三套体系跑通全链（molecule_opt → tip_relax → electrode_build → SCF → TE → Landauer）：
+  BDT（86 原子，L0=0.279）、azulene-2,6-dithiol（92 原子，L0=0.381）、
+  2CN-656-4-thiomethylphenyl（硫醚，128 原子，L0=0.00132）；工程判定全部通过，
+  物理判定均为 inconclusive（`t_ef_no_peak_near_ef`）。详见 `docs/validation-0.2.0.md`。
+- 网格收敛对照：BDT 与「冻结 S–Au=2.42 Å」两套几何上，estep 0.0002→0.00005 Ha
+  （301→1201 点）后 L0/S/k_e/ZT_e 相对差 < 1e-8；`runs/_compare/BDT-对照实验报告.md`。
+- 新增 `RELEASING.md`（版本 bump → 测试 → wheel/sdist → 安装冒烟 → tag/CI → Release）；
+  README 增加「已验证体系」小节。
+
 ## 0.2.0rc1 — 2026-11-14
 
 ### 打包与发布工程

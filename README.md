@@ -50,6 +50,21 @@ PBE/light，与 tip/SCF 同一软件栈）；`gaussian` 保留旧口径（B3LYP/
 消费。FHI-aims 分支不做虚频检查（无现成一键 freq），几何可靠性靠
 `relax_geometry bfgs` 的力阈值与人工复核。
 
+## 0.1 已验证体系（0.2.0）
+
+三套真实体系已在 Slurm 集群上用本包跑通全链（FHI-aims + aitranss），数值与耗时见
+[`docs/validation-0.2.0.md`](docs/validation-0.2.0.md)：
+
+| 体系 | 锚定化学 | 结原子数 | 每侧 Au | G/G0 (L0) | 物理判定 |
+|---|---|---|---|---|---|
+| 1,4-benzenedithiol (BDT) | 硫醇盐 | 86 | 37 | 0.279 | inconclusive（E_F 附近有峰） |
+| azulene-2,6-dithiol (AZ) | 硫醇盐 | 92 | 37 | 0.381 | inconclusive（E_F 附近有峰） |
+| 2CN-656-4-thiomethylphenyl | 硫醚 | 128 | 37 | 0.00132 | inconclusive（E_F 附近有峰） |
+
+三套的**工程判定均通过**（SCF 收敛、TE 数据完整、阶段哈希闭环、A2 已签署）；
+物理判据的 `inconclusive` 是 `t_ef_no_peak_near_ef`（E_F 1 eV 内有透射峰），
+不代表管线失败。BDT 族判据只对标定族生效，AZ/2CN 不做该族比对。
+
 ## 1. 安装
 
 要求 **Python ≥ 3.10**；运行时依赖只有 **PyYAML** 与 **numpy**。发布包已在 Ubuntu 26.04 / Python 3.14.4 上完成 wheel 与 sdist 的用户视角安装冒烟（`smj verify` / `init` / `plan`）；CI 矩阵覆盖 Python 3.10–3.14（Ubuntu）与 3.12（Windows）。
@@ -61,7 +76,7 @@ python -m pip install -e .
 # 或构建 wheel 后安装（产物在 dist/）
 python scripts/gen_vendor_json.py           # 先刷新 vendored 补丁台账（VENDOR.json 随 wheel 分发）
 python scripts/build_wheel.py --check       # 只用标准库，不需要 setuptools/build；--check 按 RECORD 校验
-python -m pip install dist/smj_toolkit-0.2.0rc1-py3-none-any.whl
+python -m pip install dist/smj_toolkit-0.2.0-py3-none-any.whl
 ```
 
 可选依赖：
