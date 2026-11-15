@@ -215,12 +215,11 @@ def molecule_from_smiles(smiles: str, *, seed: int = 0,
         AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=2000, mmffVariant='MMFF94s')
 
     out: list[list[Atom]] = []
-    conf = mol.GetConformer()
     for cid in conf_ids:
+        conf = mol.GetConformer(int(cid))
         atoms = []
         for idx, atom in enumerate(mol.GetAtoms()):
-            pos = conf.GetAtomPosition(idx) if conf.GetNumAtoms() == mol.GetNumAtoms() \
-                else mol.GetConformer(int(cid)).GetAtomPosition(idx)
+            pos = conf.GetAtomPosition(idx)
             atoms.append(Atom(element=atom.GetSymbol(), x=pos.x, y=pos.y, z=pos.z))
         out.append(atoms)
     if dedupe_tol is None:

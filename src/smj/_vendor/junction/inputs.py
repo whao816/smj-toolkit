@@ -146,13 +146,21 @@ def make_aims_molecule_opt_input(xyz_path: str | Path, outdir: str | Path,
                                  force_threshold: str = '1.e-2',
                                  basis: str = 'light',
                                  env: dict | None = None,
-                                 vdw: str | None = None) -> dict:
+                                 vdw: str | None = None,
+                                 spin_moment: float | None = None) -> dict:
     """分子 XYZ -> FHI-aims 全分子几何优化输入（六阶段链的 molecule opt）。
 
     与 ``make_gaussian_input`` 同位置，但产物是 ``geometry.in`` + ``control.in`` +
     ``sub_aims.sh``。几何在优化后由 ``geometry.in.next_step`` 交给
     ``aims_tip_relax``，因此不再依赖 Gaussian。``spin`` 用 FHI-aims 的
     ``spin`` 字段：闭壳层填 ``none``，多重度 M 填 ``M - 1``。
+
+    ``spin_moment`` 只在开壳层用：写 ``fixed_spin_moment``（μB，取 ``M - 1``）把
+    总自旋在弛豫过程中固定住，避免 BFGS 步间自旋态漂移；``None``（闭壳层）不写
+    该行，行为与旧版一致。
+
+    ``sc_iter_limit`` 保持 FHI-aims 自带的 1000（不是 SCF 模板的 500），因为单步
+    SCF 在弛豫里更常见"差几步才收敛"，收紧步数上限只会把可跑完的体系变成失败。
     """
     e = _env(env)
     if not species_dir:
@@ -163,12 +171,18 @@ def make_aims_molecule_opt_input(xyz_path: str | Path, outdir: str | Path,
     write_aims_geometry(geom, atoms)
     make_control(geom, out / 'control.in', 'relax', species_dir,
                  xc=xc, spin=spin, charge=charge,
-                 force_threshold=force_threshold, vdw=vdw)
+                 force_threshold=force_threshold, vdw=vdw,
+                 sc_iter_limit=1000, spin_moment=spin_moment)
     sub = out / 'sub_aims.sh'
     _write(sub, _render_aims_sub(e, int(e['ntasks'])))
     summary = {
         'engine': 'aims', 'xc': xc, 'basis': basis, 'spin': spin,
         'charge': charge, 'force_threshold': force_threshold,
+        'spin_moment': spin_moment,
+        'scf': {'sc_accuracy_rho': '1E-5', 'sc_accuracy_eev': '1E-3',
+                'sc_accuracy_etot': '1E-6', 'sc_accuracy_forces': '5E-3',
+                'sc_iter_limit': 1000, 'occupation_type': 'gaussian 0.01',
+                'mixer': 'pulay'},
         'species_dir': str(species_dir), 'atom_count': len(atoms),
         'ntasks': e['ntasks'], 'partition': e['partition'],
         'aims_gpus': str(e.get('aims_gpus') or '').strip() or 'cpu',

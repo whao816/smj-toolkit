@@ -67,6 +67,13 @@ def vdw_line(vdw: str | None) -> str:
     raise ValueError('未知 vdw 取值 %r: 只支持 hirshfeld/ts(缺省关); 见 W0-5 裁决' % (vdw,))
 
 
+def _spin_moment_line(spin_moment: float | None) -> str:
+    """relax 模板里的 ``fixed_spin_moment`` 行；``None`` 表示不写（闭壳层）。"""
+    if spin_moment is None:
+        return ""
+    return "  fixed_spin_moment  %g" % float(spin_moment)
+
+
 def make_control(
     geometry_path: str | Path,
     output_path: str | Path,
@@ -81,6 +88,7 @@ def make_control(
     sc_iter_limit: int = 500,
     states: list[int] | None = None,
     vdw: str | None = None,
+    spin_moment: float | None = None,
 ) -> None:
     atoms = read_aims_geometry(geometry_path)
     if mode == "relax":
@@ -104,6 +112,7 @@ def make_control(
         occupation_width=occupation_width,
         fixed_spin_moment=fixed_spin_moment,
         sc_iter_limit=sc_iter_limit,
+        spin_moment_line=_spin_moment_line(spin_moment),
         species_blocks=species_blocks(atoms, species_dir),
         vdw_line=vdw_line(vdw),
         **extra,

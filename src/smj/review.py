@@ -317,6 +317,50 @@ def _structure_review(result: ReviewResult, build_dir: Path | None,
     }
     if verdict.get("passed") and not verdict.get("warnings"):
         result.add("info", "structure_ok", "结构几何闸门通过")
+    _anchor_report(result, geo_path, meta)
+
+
+def _anchor_report(result: ReviewResult, geo_path: Path,
+                   meta: Mapping[str, Any]) -> None:
+    """锚定接触几何（M–X 距离 / C–X–M 角）——只报告，不判定。
+
+    ``validate_junction_geometry`` 已核 Au–S 锚定是否在带内；这里补的是**角度**：
+    S 若接近线形（~180°）通常意味着过度拉伸/插进金属，C–S–M 明显小于 90° 则可能
+    被相邻原子挤压。合格区间取决于锚定化学与表面位点，所以只写 ``info`` + JSON。
+    """
+    try:
+        from smj._vendor.junction.geometry import read_aims_geometry  # lazy: vendored
+
+        from smj.checks import anchor_contacts
+
+        atoms = read_aims_geometry(geo_path)
+    except Exception:  # noexcept: 几何不可解析时 validate 已经报过
+        return
+    metal = "Au"
+    for key in ("electrode", "electrode_element", "metal"):
+        value = meta.get(key) if isinstance(meta, Mapping) else None
+        if isinstance(value, str) and value:
+            metal = value
+        elif isinstance(value, Mapping) and value.get("element"):
+            metal = str(value["element"])
+    contacts = anchor_contacts(atoms, metal_element=metal)
+    result.structure["anchors"] = contacts
+    if not contacts:
+        result.add("info", "structure:anchor_contacts",
+                   "未找到贴着 %s 的锚定原子（S/N/Se）：接触几何无法报告" % metal)
+        return
+    parts = []
+    for item in contacts:
+        text = "%s%d–%s%d %.2f Å" % (
+            item["anchor_element"], item["anchor"], item["metal_element"],
+            item["metal"], item["metal_distance_A"])
+        if item["angle_deg"] is not None:
+            text += "，%s%d–%s%d–%s%d %.1f°" % (
+                item["neighbor_element"], item["neighbor"], item["anchor_element"],
+                item["anchor"], item["metal_element"], item["metal"], item["angle_deg"])
+        parts.append(text)
+    result.add("info", "structure:anchor_contacts",
+               "锚定接触：%s（只报告；合格区间取决于锚定化学与位点）" % "；".join(parts))
 
 
 # --------------------------------------------------------------------------- #

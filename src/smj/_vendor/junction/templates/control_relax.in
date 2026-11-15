@@ -1,10 +1,26 @@
 ################################################################################
 # FHI-aims Au-tip geometry relaxation
+#
+# SCF 精度显式给出（与 control_scf.in 同源），不再依赖 FHI-aims 的自动默认：
+# 旧版本日志会是 "No s.c.f. convergence criteria ... provided" +
+# "sc_accuracy_forces not_checked"——力的精度没有单独保证，而 BFGS 吃的正是力。
+# sc_accuracy_forces 单位 eV/Ang，按手册建议取几何阈值（1.e-2 eV/Ang）的一半。
 ################################################################################
   xc                 {xc}{vdw_line}
   spin               {spin}
   charge             {charge}
+{spin_moment_line}
   relativistic       atomic_zora scalar
+
+  occupation_type    gaussian {occupation_width}
+  mixer              pulay
+  n_max_pulay        10
+  charge_mix_param   0.2
+  sc_accuracy_rho    1E-5
+  sc_accuracy_eev    1E-3
+  sc_accuracy_etot   1E-6
+  sc_accuracy_forces 5E-3
+  sc_iter_limit      {sc_iter_limit}
 
   relax_geometry     bfgs {force_threshold}
   aggregated_energy_tolerance 1.0e-1

@@ -135,7 +135,9 @@ class MoleculeConfig:
     opt_engine: str = "aims"       # aims | gaussian
     opt_functional: str = "pbe"    # 仅 aims；与 aims_tip_relax/aims_scf 一致
     opt_basis: str = "light"       # 仅 aims，记录用；实际 species 由 species_dir 决定
-    opt_force_threshold: str = "1.e-2"  # 仅 aims；Hartree/Bohr，写进 relax_geometry bfgs
+    # 仅 aims：写进 `relax_geometry bfgs <值>`；FHI-aims 口径是**最大力分量**，
+    # 单位 eV/Å（不是 Hartree/Bohr）。默认 1.e-2 eV/Å ≈ 1.9e-4 Ha/Bohr，已经偏紧。
+    opt_force_threshold: str = "1.e-2"
 
 
 @dataclass
@@ -170,7 +172,7 @@ class ElectrodeConfig:
     #: 旧口径兼容：仅为显式重跑 legacy ``au_relax`` 阶段保留。主链路在
     #: ``electrode_build`` 后即冻结几何，不再消费此字段。
     relax: bool = False
-    relax_force_threshold: str = "1.e-2"  # BFGS 力收敛阈值（Hartree/Bohr）
+    relax_force_threshold: str = "1.e-2"  # BFGS 力收敛阈值（eV/Å，最大力分量）
     #: 旧口径兼容：``au_relax`` 冻结谁（backplane / electrodes）；主链路不使用
     relax_freeze: str = "backplane"
 
@@ -477,6 +479,18 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
     if cfg.opt_engine not in ("aims", "gaussian"):
         raise ConfigError(
             "molecule.opt_engine 应为 aims 或 gaussian，实际是 %r" % cfg.opt_engine)
+    try:
+        threshold = float(cfg.opt_force_threshold)
+    except ValueError:
+        raise ConfigError(
+            "molecule.opt_force_threshold 应为数字（单位 eV/Å），实际是 %r"
+            % cfg.opt_force_threshold) from None
+    # 上限 0.1 eV/Å：再松就不是"优化过的分子"了；下限只是防写错（0 或负数会让
+    # relax_geometry 永远不收敛）。
+    if not 0.0 < threshold <= 0.1:
+        raise ConfigError(
+            "molecule.opt_force_threshold 应在 (0, 0.1] eV/Å（FHI-aims 的 relax_geometry "
+            "判据是最大力分量，不是 Hartree/Bohr），实际是 %r" % cfg.opt_force_threshold)
     return cfg
 
 

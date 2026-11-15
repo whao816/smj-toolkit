@@ -218,6 +218,7 @@ def _make_runner(args: argparse.Namespace, config: RunConfig) -> StageRunner:
     logger = None if getattr(args, "quiet", False) else (lambda message: print(message))
     return StageRunner(
         config,
+        run_dir=getattr(args, "run_dir", None),
         logger=logger,
         overrides=_overrides_from_args(args),
         dry_run=True if getattr(args, "dry_run", False) else None,
@@ -389,6 +390,158 @@ def cmd_init(args: argparse.Namespace) -> int:
     print("  1) 准备分子结构 %s（或改 molecule.xyz 指向真实文件）" % args.xyz)
     print("  2) smj plan -c %s" % path)
     print("  3) smj run -c %s --dry-run   # 只生成输入，不提交" % path)
+    return EXIT_OK
+
+
+def cmd_conformers(args: argparse.Namespace) -> int:
+    """SMILES → 构象粗筛（ETKDGv3 + MMFF94s + 重原子 RMSD 去重）。"""
+    from . import conformers as conformers_mod
+
+    try:
+        kept = conformers_mod.select_conformers(
+            args.smiles, n_conformers=args.n, seed=args.seed,
+            rmsd_tol=args.rmsd_tol, keep=args.keep)
+        written = conformers_mod.write_conformers(
+            kept, args.dir, out=args.out, smiles=args.smiles,
+            n_conformers=args.n, seed=args.seed, rmsd_tol=args.rmsd_tol)
+    except (ValueError, RuntimeError) as exc:  # RuntimeError 兜住缺 RDKit
+        _error(str(exc), debug=bool(getattr(args, "debug", False)))
+        return EXIT_FAILED
+    if args.json:
+        _emit_json(written["data"])
+        return EXIT_OK
+    print("构象筛选: %s（ETKDGv3 %d 个候选 → MMFF94s 排序 → 去重保留 %d 个）"
+          % (args.smiles, args.n, len(kept)))
+    for item in kept:
+        print("  %d  %9.3f kcal/mol  RMSD %.3f Å  %2d 原子"
+              % (item.rank, item.energy_kcal, item.rmsd_to_first_A, item.atom_count))
+    print("已写 %s（rank 1，可直接给 smj init --xyz）" % written["out"])
+    print("已写 %s（清单；MMFF 只作粗筛，top-k 建议各跑一次下游链再比较）"
+          % written["manifest"])
+    return EXIT_OK
+
+
+def cmd_variants(args: argparse.Namespace) -> int:
+    """中性分子 → 硫醇盐 / 金帽对照臂（只生成输入，判定交给下游链）。"""
+    from . import variants as variants_mod
+
+    anchors = tuple(part.strip() for part in str(args.anchor).split(",") if part.strip())
+    kinds = ("thiolate", "aucap") if args.kind == "both" else (args.kind,)
+    try:
+        atoms = variants_mod.load_source(args.xyz)
+        built = variants_mod.build_variants(
+            atoms, charge=args.charge, multiplicity=args.multiplicity,
+            kinds=kinds, anchor_elements=anchors, au_distance=args.au_distance)
+        written = variants_mod.write_variants(built, args.dir, source=args.xyz)
+    except (ValueError, OSError) as exc:
+        _error(str(exc), debug=bool(getattr(args, "debug", False)))
+        return EXIT_FAILED
+    if args.json:
+        _emit_json(written["data"])
+        return EXIT_OK
+    print("对照臂: %s（%d 原子，charge %+d，multiplicity %d）"
+          % (Path(args.xyz).name, len(atoms), args.charge, args.multiplicity))
+    for entry in written["variants"]:
+        print("  %-8s %3d 原子  charge %+d  电子数 %d  移除 H %s"
+              % (entry["name"], entry["atom_count"], entry["charge"],
+                 entry["electron_count"],
+                 entry["removed_h_indices"] or "-"))
+        print("           %s" % entry["xyz"])
+    print("已写 %s（含 caveat 与 config_hint）" % written["manifest"])
+    print("下一步：两条臂各跑一次 `smj stage molecule_opt --run --xyz <臂>.xyz`，"
+          "按 variants.json 的 config_hint 设 charge/multiplicity，再比较 C–S 键长、"
+          "gap 与 aims_tip_relax 后的锚–Au 接触几何")
+    return EXIT_OK
+
+
+def cmd_species(args: argparse.Namespace) -> int:
+    """审计 species 目录：实际档位、基组规模、逐文件 sha256。"""
+    from . import species as species_mod
+
+    elements = [part.strip() for part in str(args.elements or "").split(",") if part.strip()]
+    try:
+        atoms = None
+        if args.xyz:
+            from ._vendor.junction.geometry import read_xyz
+            atoms = list(read_xyz(args.xyz))
+        payload = species_mod.summary(
+            args.dir, atoms, elements=elements or None, label=args.label)
+        if args.out:
+            written = species_mod.write_species_json(payload, args.out)
+    except (OSError, ValueError) as exc:
+        _error(str(exc), debug=bool(getattr(args, "debug", False)))
+        return EXIT_FAILED
+    if args.json:
+        _emit_json(payload)
+        return EXIT_OK
+    print("species 目录: %s" % payload["species_dir"])
+    print("实际档位: %s（配置标签 %s）"
+          % (payload["actual_tier"], payload["declared_label"] or "未声明"))
+    print("  %-4s %-8s %-4s %-4s %s" % ("元素", "档位", "基组", "最高l", "sha256[:12]"))
+    for item in payload["elements"]:
+        print("  %-4s %-8s %-4d %-4s %s"
+              % (item["element"], item["tier"], item["basis_functions"],
+                 item["max_angular"] or "-", item["sha256"][:12]))
+    for warning in payload["warnings"]:
+        print("警告: %s" % warning)
+    if args.out:
+        print("已写 %s" % written)
+    return EXIT_OK
+
+
+def cmd_ensemble(args: argparse.Namespace) -> int:
+    """构象自动分支：生成批处理脚本，或汇总各构象 run 的散布。"""
+    from . import ensemble as ensemble_mod
+
+    if args.report:
+        try:
+            payload = ensemble_mod.report_ensemble(args.dir)
+        except (OSError, ValueError) as exc:
+            _error(str(exc), debug=bool(getattr(args, "debug", False)))
+            return EXIT_FAILED
+        if args.json:
+            _emit_json(payload)
+            return EXIT_OK
+        print("构象散布: %s（%d 个构象，%d 个已有结果）"
+              % (payload["smiles"], payload["kept"], len(payload["rows"])))
+        print("  %-4s %-10s %-8s %-10s %-8s" % ("#", "gap/eV", "maxF", "E/kcal", "tier"))
+        for row in payload["rows"]:
+            print("  %-4d %-10s %-8s %-10s %-8s"
+                  % (row["rank"],
+                     "%.3f" % row["gap_ev"] if isinstance(row["gap_ev"], (int, float)) else "-",
+                     ("%.4f" % row["max_force_ev_per_A"]
+                      if isinstance(row["max_force_ev_per_A"], (int, float)) else "-"),
+                     ("%.2f" % row["energy_kcal"]
+                      if isinstance(row["energy_kcal"], (int, float)) else "-"),
+                     row["tier"] or "-"))
+        gap = payload["spread"]["gap_ev"]
+        if gap is not None:
+            print("gap 极差 %.3f eV（这就是构象贡献的量级；<0.05 eV 可认为构象不敏感）" % gap)
+        else:
+            print("至少需要两个构象的 results.json 才能给极差")
+        if payload["missing"]:
+            print("尚无结果: %s" % ", ".join(payload["missing"]))
+        print("注意: %s" % payload["caveat"])
+        return EXIT_OK
+
+    try:
+        written = ensemble_mod.write_ensemble(
+            args.smiles, args.dir, n_conformers=args.n, keep=args.keep,
+            seed=args.seed, rmsd_tol=args.rmsd_tol, run_root=args.run_root,
+            config=args.config)
+    except (ValueError, RuntimeError) as exc:  # RuntimeError 兜住缺 RDKit
+        _error(str(exc), debug=bool(getattr(args, "debug", False)))
+        return EXIT_FAILED
+    if args.json:
+        _emit_json(written["data"])
+        return EXIT_OK
+    print("构象分支: %s（去重保留 %d 个）" % (args.smiles, len(written["conformers"])))
+    for entry in written["conformers"]:
+        print("  #%d  %8.3f kcal/mol  %2d 原子  %s"
+              % (entry["rank"], entry["energy_kcal"], entry["atom_count"], entry["xyz"]))
+    print("已写 %s" % written["manifest"])
+    print("已写 %s（每个构象一个隔离 --run-dir；跑完用 `smj ensemble --dir %s --report` 汇总）"
+          % (written["script"], args.dir))
     return EXIT_OK
 
 
@@ -908,6 +1061,8 @@ def _add_overrides(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--te", metavar="PATH", help="TE.dat / tcontrol 输入目录覆盖")
     group.add_argument("--metadata", metavar="PATH", help="电极元数据 JSON 覆盖")
     group.add_argument("--out", metavar="DIR", help="结果输出目录覆盖")
+    group.add_argument("--run-dir", dest="run_dir", metavar="DIR",
+                       help="覆盖 run 目录（构象/对照臂并行跑时各臂互不覆盖产物）")
 
 
 def _add_stage_group(parser: argparse.ArgumentParser) -> None:
@@ -950,6 +1105,105 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--force", action="store_true", help="覆盖已存在的配置")
     init.add_argument("--debug", action="store_true", help="出错时打印完整 traceback")
     init.set_defaults(handler=cmd_init)
+
+    # conformers（分子前端） -------------------------------------------------- #
+    from .conformers import DEFAULT_SEED as _CONF_SEED  # 与库默认值保持单一来源
+
+    conformers = subparsers.add_parser(
+        "conformers",
+        help="SMILES → 构象粗筛 → molecule.xyz",
+        description="ETKDGv3 生成候选 + MMFF94s 排序 + 重原子 RMSD 去重，写 top-k "
+                    "构象与 conformers.json。需要可选依赖 RDKit"
+                    "（pip install rdkit）。MMFF 只作粗筛，不是电子结构判据。")
+    _add_common(conformers, with_config=False)
+    conformers.add_argument("--smiles", required=True, metavar="SMILES",
+                            help="分子 SMILES（写清 E/Z；只处理裸分子，不带金属）")
+    conformers.add_argument("--dir", default=".", metavar="DIR",
+                            help="输出目录（默认当前目录）")
+    conformers.add_argument("--out", default="molecule.xyz", metavar="NAME",
+                            help="rank 1 的文件名（默认 molecule.xyz）")
+    conformers.add_argument("--n", type=int, default=20, metavar="N",
+                            help="ETKDGv3 候选数（默认 20）")
+    conformers.add_argument("--keep", type=int, default=3, metavar="K",
+                            help="去重后保留数（默认 3；刚性分子自然少于 K）")
+    conformers.add_argument("--seed", type=int, default=_CONF_SEED, metavar="SEED",
+                            help="ETKDGv3 种子（默认 %d；0 会生成重复构象，被拒绝）"
+                            % _CONF_SEED)
+    conformers.add_argument("--rmsd-tol", type=float, default=0.25, metavar="A",
+                            help="重原子 RMSD 去重阈值（Å，默认 0.25）")
+    conformers.set_defaults(handler=cmd_conformers)
+
+    # variants（化学态对照臂） ------------------------------------------------ #
+    variants = subparsers.add_parser(
+        "variants",
+        help="分子化学态对照臂（硫醇盐 / 金帽）→ xyz + variants.json",
+        description="把中性分子派生出两条对照臂：thiolate（去 S–H 的 H，电荷 -1/个）"
+                    "与 aucap（S–H 的 H 换成沿原方向的 Au）。只生成输入与清单，"
+                    "判定仍由 molecule_opt → aims_tip_relax 跑出来；气相/裸阴离子的"
+                    "口径边界写进 variants.json 的 caveat。")
+    _add_common(variants, with_config=False)
+    variants.add_argument("--xyz", required=True, metavar="FILE",
+                          help="中性分子几何（molecule.xyz / opt.xyz）")
+    variants.add_argument("--dir", default="variants", metavar="DIR",
+                          help="输出目录（默认 variants/）")
+    variants.add_argument("--kind", default="both",
+                          choices=("thiolate", "aucap", "both"),
+                          help="生成哪条臂（默认 both）")
+    variants.add_argument("--charge", type=int, default=0, metavar="Q",
+                          help="输入分子的总电荷（默认 0）")
+    variants.add_argument("--multiplicity", type=int, default=1, metavar="M",
+                          help="输入分子的多重度（默认 1；电子数不变，两条臂沿用）")
+    variants.add_argument("--anchor", default="S", metavar="ELEM",
+                          help="锚定元素（默认 S；Se 等用逗号分隔）")
+    variants.add_argument("--au-distance", type=float, default=2.40, metavar="A",
+                          help="金帽沿原 S–H 方向的距离（Å，默认 2.40）")
+    variants.set_defaults(handler=cmd_variants)
+
+    # species（基组口径审计） ------------------------------------------------ #
+    species = subparsers.add_parser(
+        "species",
+        help="审计 species 目录（实际档位 / 基组规模 / sha256）",
+        description="molecule.opt_basis 只是配置标签，真正生效的是 species 文件。本命令读"
+                    "目录里的 *_default 文件，报告文件头声明的档位、生效基组行数与"
+                    "最高角动量、逐文件 sha256，并可导出 species.json 作溯源。")
+    _add_common(species, with_config=False)
+    species.add_argument("--dir", required=True, metavar="DIR",
+                         help="species 目录（cluster.species_dir 或 paths.species_defaults）")
+    species.add_argument("--xyz", metavar="FILE",
+                         help="只审计这个分子用到的元素（省掉 --elements）")
+    species.add_argument("--elements", metavar="LIST",
+                         help="逗号分隔的元素（如 S,C,H,Au）")
+    species.add_argument("--label", metavar="TIER",
+                         help="配置里的标签（如 light）；与文件头不符时给警告")
+    species.add_argument("--out", metavar="FILE",
+                         help="把审计结果写成 JSON（建议 species.json）")
+    species.set_defaults(handler=cmd_species)
+
+    # ensemble（构象自动分支） ----------------------------------------------- #
+    ensemble = subparsers.add_parser(
+        "ensemble",
+        help="构象自动分支：k 个构象各一个 run 目录，或汇总散布",
+        description="生成 top-k 构象 + ensemble.json + run_ensemble.sh（每条命令用"
+                    " --run-dir 隔离）；跑完用 `smj ensemble --dir <dir> --report` 汇总"
+                    " gap / 最大力 / 构象能量的极差。MMFF94s 只作粗筛。")
+    _add_common(ensemble)
+    ensemble.add_argument("--dir", default="ensemble", metavar="DIR",
+                          help="工作目录（默认 ensemble/）")
+    ensemble.add_argument("--smiles", metavar="SMILES",
+                          help="分子 SMILES（生成模式必填）")
+    ensemble.add_argument("--n", type=int, default=20, metavar="N",
+                          help="ETKDGv3 候选数（默认 20）")
+    ensemble.add_argument("--keep", type=int, default=3, metavar="K",
+                          help="去重后保留数（默认 3）")
+    ensemble.add_argument("--seed", type=int, default=42, metavar="SEED",
+                          help="ETKDGv3 种子（默认 42；0 会生成重复构象，被拒绝）")
+    ensemble.add_argument("--rmsd-tol", type=float, default=0.25, metavar="A",
+                          help="重原子 RMSD 去重阈值（Å，默认 0.25）")
+    ensemble.add_argument("--run-root", default="run", metavar="SUBDIR",
+                          help="各构象 run 目录的父目录（默认 run/）")
+    ensemble.add_argument("--report", action="store_true",
+                          help="只汇总已有 run 的 results.json（不生成）")
+    ensemble.set_defaults(handler=cmd_ensemble)
 
     # plan ------------------------------------------------------------------ #
     plan = subparsers.add_parser(
