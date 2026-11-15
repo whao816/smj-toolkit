@@ -109,3 +109,28 @@ def test_sme_family_marks_bdt_bands_not_applicable(workdir):
     assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
     assert not {"t_ef_magnitude", "g_in_theory_band",
                 "seebeck_sign"} & set(verdict.get("failed_criteria") or [])
+
+
+def test_alkane_family_registered():
+    """HDT/ODT/DDT（C6/C8/C10 烷烃二硫醇）登记为同一判据标定族。"""
+    from smj._vendor.junction.criteria import system_family
+
+    for key in ("hdt", "HDT", "odt", "ODT", "ddt", "DDT", "c6", "C8", "C10"):
+        assert system_family(key) == "Au-alkane-dithiol-Au"
+
+
+def test_alkane_family_marks_bdt_bands_not_applicable(workdir):
+    """饱和烷链走 σ 隧穿通道，BDT 标定的三条判据必须记"不适用"而非"否证"。"""
+    from smj._vendor.junction.validate import validate_junction_run
+
+    project = workdir / "alkane-family"
+    stage = project / "aitranss_te"
+    stage.mkdir(parents=True, exist_ok=True)
+    (stage / "TE.dat").write_text(TE, encoding="utf-8")
+
+    for system in ("HDT", "ODT", "DDT"):
+        verdict = validate_junction_run(project, system=system)
+        names = {c["name"] for c in verdict["checks"] if c.get("applicable") is False}
+        assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
+        assert not {"t_ef_magnitude", "g_in_theory_band",
+                    "seebeck_sign"} & set(verdict.get("failed_criteria") or [])

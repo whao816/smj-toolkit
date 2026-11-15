@@ -129,6 +129,17 @@ SYSTEM_FAMILIES = {
     # 硫醇盐标定; 硫醚接触的耦合强度与输运通道不同, 对它作闸门会把一次物理上
     # 正常的算例判成"否证 H0"。显式登记族名, 让这三条记"不适用"。
     'SME': 'Au-(1,4-bis(methylthio)benzene)-Au',
+    # 2026-11-15 烷烃二硫醇链长序列(HDT C6 / ODT C8 / DDT C10): 末端硫醇去质子成
+    # 硫醇盐–Au, 输运走饱和 σ 链的隧穿通道, G 随碳数指数衰减(Xu & Tao 2003,
+    # Science 301 1221, β≈1.0/碳)。T(E_F)/G 绿带(0.03–0.40 G0)与 Seebeck 正号都是
+    # Au–BDT–Au 硫醇盐标定域, 对烷链作闸门会把一次物理上正常的算例判成"否证 H0"。
+    # 与既有 C4 同类, 统一到同一族名('C4' 历史键保留其名, 语义等价)。
+    'HDT': 'Au-alkane-dithiol-Au',
+    'ODT': 'Au-alkane-dithiol-Au',
+    'DDT': 'Au-alkane-dithiol-Au',
+    'C6': 'Au-alkane-dithiol-Au',
+    'C8': 'Au-alkane-dithiol-Au',
+    'C10': 'Au-alkane-dithiol-Au',
 }
 
 

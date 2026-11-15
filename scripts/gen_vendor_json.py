@@ -116,6 +116,18 @@ LOCAL_PATCHES = [
                "不登记族名会把一次物理上正常的算例判成「否证 H0」。",
         "tests": ["tests/test_family.py"],
     },
+    {
+        "id": "F-FAMILY-alkane",
+        "commit": "2026-11-15",
+        "files": ["criteria.py"],
+        "what": "SYSTEM_FAMILIES 登记判据族 Au-alkane-dithiol-Au（键 HDT/ODT/DDT/C6/C8/C10），"
+                "让 t_ef_magnitude / g_in_theory_band / seebeck_sign 记「不适用（仅记录）」"
+                "而不是闸门。",
+        "why": "烷烃二硫醇走饱和 σ 链的隧穿通道（Xu & Tao 2003 的链长衰减序列），"
+               "与 Au–BDT–Au 的 π 通道不同族；三条判据带都按 BDT 硫醇盐标定，"
+               "不登记族名会把 C6/C8/C10 正常算例（G 比 BDT 低 2–3 个量级）判成「否证 H0」。",
+        "tests": ["tests/test_family.py"],
+    },
 ]
 
 
