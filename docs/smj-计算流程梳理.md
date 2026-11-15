@@ -42,7 +42,7 @@ molecule.xyz
 |---|------|------|------|------|--------------|------|
 | 0 | 初始化配置 | `smj init` | — | 生成 smj.yaml 全量默认配置 | `mode=dry-run`，`--xyz molecule.xyz` | `smj.yaml` |
 | 1 | 提交前预检 | `smj preflight` | — | 结构/物种/资源/集群/二进制五类检查，error 级阻断提交 | 不触网；SSH 超时 15 s | 终端/`--json` 报告 |
-| 2 | 分子几何优化 | `smj stage molecule_opt` | FHI-aims（默认）或 G16 | 得到单分子平衡几何 | PBE/light，charge 0，multiplicity 1，力阈值 `1.e-2` Ha/Bohr，vdW=Hirshfeld | `opt.xyz` |
+| 2 | 分子几何优化 | `smj stage molecule_opt` | FHI-aims（默认）或 G16 | 得到单分子平衡几何 | PBE/light，charge 0，multiplicity 1，力阈值 `1.e-2` eV/Å，vdW=Hirshfeld | `opt.xyz` |
 | 3 | 加金属 tip 并弛豫 | `smj stage aims_tip_relax` | FHI-aims | 每个锚定原子接一个电极金属 tip（默认 Au），得到 锚–金属 接触几何；锚定原子可以是 S（默认）、N、Se 等 | 放置距离 2.35 Å，`strip_thiol_h=null`（仅 S 锚自动去质子），`pin_contact=false`，全原子自由弛豫；tip 元素 = `electrode.element` | `geometry.in.next_step` |
 | 4 | 构建电极 | `smj stage electrode_build` | 纯 Python（本地） | 按 `source` 选构建方式、按 `element` 选电极金属，把 tip 扩展为完整 fcc(111) 电极团簇，冻结结几何 | 构建方式 `source=library`（默认）/`builtin`；电极类型 `element=Au`、`a_lattice=null` | `geometry.in` + `electrode_metadata.json` |
 | 4.5 | 结构复核 + 连接核对 | `smj review [--approve --who] [--connection-check\|--no-connection-check]` | — | 确认建结几何没被换错：结构闸门 + 连接核对（原 A2，默认自动登记） | `review.connection_check=true`、`connection_check_deviation=0.15`、`auto_connection_check=true`；CLI 可临时覆盖 | `review.json`、`connection_check.json`（+ `connection_check_audit.json`、`connection_check_viz.png`） |
@@ -101,20 +101,62 @@ molecule.xyz
 |--------|------|------|
 | `molecule.opt_engine` | `aims` | `aims`（PBE/light，与 tip/SCF 同栈）或 `gaussian`（B3LYP/6-31G(d)，需 G16 许可） |
 | `molecule.charge` | `0` | |
-| `molecule.multiplicity` | `1` | `>1` 时转成 FHI-aims `spin = multiplicity-1` |
-| `molecule.opt_functional` / `opt_basis` | `pbe` / `light` | `opt_basis` 只记录；实际基组由 species 目录决定 |
-| `molecule.opt_force_threshold` | `1.e-2` | 写进 `relax_geometry bfgs`，单位 Ha/Bohr |
+| `molecule.multiplicity` | `1` | `>1` 时转成 FHI-aims `spin = multiplicity-1`，并写 `fixed_spin_moment = multiplicity-1`（μB）把总自旋在弛豫中固定住 |
+| `molecule.opt_functional` / `opt_basis` | `pbe` / `light` | `opt_basis` 只记录；实际基组由 species 目录决定，`smj species` / prepare 写出的 `species.json` 记录真实档位与逐文件 sha256 |
+| `molecule.opt_force_threshold` | `1.e-2` | 写进 `relax_geometry bfgs`；单位 **eV/Å**，判据是**最大力分量**（日志 `Maximum force component ... eV/A`），不是 Hartree/Bohr；合法范围 `(0, 0.1]` |
 | `electrode.vdw` | `true` | → `vdw_correction_hirshfeld`；只改能量/力（几何），不改固定几何的 T(E) |
 
-- **写出的输入**（aims 分支）：`geometry.in`、`control.in`（`control_relax.in` 模板：`xc pbe`、`spin`、`charge`、`relativistic atomic_zora scalar`、`relax_geometry bfgs 1.e-2`、`aggregated_energy_tolerance 1.0e-1`、`output cube eigenstate HOMO-1/HOMO/LUMO/LUMO+1`、`output dipole`、species 块）、`sub_aims.sh`、`input_summary.json`。
-- **产物**：`opt.xyz`（下游统一契约）、`aims.out`、`geometry.in.next_step`；Gaussian 分支为 `mol.gjf` → `mol.log` → `opt.xyz` + `gaussian_summary.json`。
-- **验收（collect 闸门）**：
-  - aims：`aims.out` 必须含 `Have a nice day`，`geometry.in.next_step` 必须存在，否则 StageError（不把残缺几何交给下游）；
+- **写出的输入**（aims 分支）：`geometry.in`、`control.in`（`control_relax.in` 模板：`xc pbe`、`spin`、`charge`、开壳层另有 `fixed_spin_moment`、`relativistic atomic_zora scalar`、**显式 SCF 精度块**（`occupation_type gaussian 0.01`、`mixer pulay`、`n_max_pulay 10`、`charge_mix_param 0.2`、`sc_accuracy_rho 1E-5`、`sc_accuracy_eev 1E-3`、`sc_accuracy_etot 1E-6`、`sc_accuracy_forces 5E-3`、`sc_iter_limit 1000`）、`relax_geometry bfgs 1.e-2`、`aggregated_energy_tolerance 1.0e-1`、`output cube eigenstate HOMO-1/HOMO/LUMO/LUMO+1`、`output dipole`、species 块）、`sub_aims.sh`、`input_summary.json`。
+- **SCF 精度为什么必须显式写**：旧模板只写几何相关的键，FHI-aims 会打印 `No s.c.f. convergence criteria (sc_accuracy_*) were provided`，自行挑 `sc_accuracy_rho`（实测 `0.300000E-05`，随版本/体系变）并把 `sc_accuracy_forces` 设为 `not_checked`——**BFGS 吃的力没有独立精度保证**。现在与 `control_scf.in` 同源给出，`sc_accuracy_forces 5E-3 eV/Å` 取几何阈值（`1.e-2`）的一半，`sc_iter_limit` 保留 1000（FHI-aims 自带默认，不收紧成 SCF 模板的 500）。这些值同时写进 `input_summary.json` 的 `scf` 段，collect 再从 `control.in` 读回、写进 `results.json`。
+- **产物**：`opt.xyz`（下游统一契约）、`aims.out`、`geometry.in.next_step`（aims 还会写出 4 个 `cube_*_eigenstate_*.cube`）；Gaussian 分支为 `mol.gjf` → `mol.log` → `opt.xyz` + `gaussian_summary.json`。
+- **验收（collect 闸门，fail-closed）**：
+  - aims 收敛：`aims.out` 必须含 `Have a nice day`，**并且**必须出现 `Present geometry is converged`。FHI-aims 达到弛豫步数上限时仍会正常退出（第 1 步的 `Have a nice day` 与 `geometry.in.next_step` 都照写），所以"正常结束"不等于"收敛"，必须显式核对，否则 StageError（消息带最后一步最大力与阈值）。
+  - SCF 收敛（aims）：日志里若出现 "self-consistency cycle … not … converged"，说明那一步的力没有自洽保证，直接 StageError；并核对 `Self-consistency cycle converged.` 的出现次数不少于弛豫步数（demo 实测 106 / 105），不足只记 note（日志可能被截断），不阻断。
+  - 电荷/多重度奇偶校验（prepare 阶段，两种引擎共用）：电子数 = ΣZ − charge；偶数电子必须奇多重度、奇数电子必须偶多重度，否则直接 StageError。写错时 SCF 会为"不存在的电子态"收敛出漂亮结果，链上没有别处能发现。
+  - 几何合理性（两种引擎共用 `smj.checks.check_geometry`）：最近原子对 ≥ 0.7 Å；输入几何 vs 优化后几何的**键图对比**——重原子键消失/原子解离 → StageError，含 H 的键消失（质子迁移）→ note，元素组成变化 → StageError；未知共价半径的元素只做重叠检查。检查在**落盘 `opt.xyz` 之前**，不通过就不产出。
   - gaussian：必须 `Normal termination`，否则先删 `opt.xyz` 再报错；虚频只记 note（需人工确认）。
-  - 结果写 `results.json` 的 `molecule_opt` 段（engine、normal_termination、atom_count）与 `software` 段。
+  - 锚定轨道权重（aims，`smj.cube`）：若阶段目录有 cube，按 `control.in` 的请求顺序（HOMO-1/HOMO/LUMO/LUMO+1）解析，给出**半径 1.6 Å 球内 |ψ|² 占全箱的比例**——权重高 = 该前线轨道在锚定原子上有振幅（有耦合通道），接近 0 = 轨道不经过锚定原子。只算占比，因此不受 FHI-aims "内容单位 1/Å³、体素单位原子单位" 警告影响；文件有负值按带符号 ψ 平方处理，全非负按密度处理。没有 cube（旧 run / gaussian）只记一条 note，不报错。
+  - 结果写 `results.json` 的 `molecule_opt` 段：`engine`、`normal_termination`、`atom_count`、`converged`、`max_force_ev_per_A`、`relax_steps`、`electron_count`、`geometry_check`（problems / warnings / min_distance_A / rmsd_A / lost_bonds / bond_count…）、`frontier_orbitals`（`homo_ev` / `lumo_ev` / `gap_ev`，eV；分数占据时 `fractional_occupation=true`）、`frontier_orbital_weights`（每项 `orbit` / `eigenstate` / `anchor_fraction` / `anchors[]`）、`scf`（从 `control.in` 读回的 `sc_accuracy_*` / `sc_iter_limit`，加 `converged_steps` / `relax_steps`；旧 run 无这些行时不伪造）、`species`（`actual_tier` / 逐元素 `tier` / `basis_functions` / `sha256`；缺 `species.json` 的旧 run 只记 note）；aims 分支另写 `software` 段。
 - **资源默认**：借用 `aims_tip_relax` 线性模型（60 s + 10 s/atom 是 resources 表里的分子项，但实际操作按 tip_relax 标定）；墙钟下限 900 s，`--time = 预期 × 1.9`，`ntasks 1`。
 
-> 备注：FHI-aims 分支**没有虚频检查**（未提供一键 freq），几何质量靠 BFGS 力阈值 + `smj review` 人工确认。Gaussian 分支的虚频只提示、不阻断。
+> 备注：FHI-aims 分支**没有虚频检查**（未提供一键 freq）。几何可靠性现在由四层把关：①`Present geometry is converged`（弛豫收敛，collect 强制）；②SCF 精度显式 + SCF 未收敛拒绝（collect 强制）；③`smj.checks` 几何合理性检查（重叠 / 断键 / 解离，collect 强制）；④`smj review` 人工确认。Gaussian 分支的虚频只提示、不阻断。
+
+- **化学态对照臂（`smj variants`，`smj.variants`）**：器件里的锚定原子是 S–Au 成键的硫醇盐/硫醚，而本阶段优化的是中性分子（硫醇的 S–H 还在，去质子化在 `aims_tip_relax`）。同一条 2CN-656 硫醚在两条 demo 里的 S–Au 接触分别是 2.6877 Å / 141.5°（tip 落在硫醚上）与 2.4267 Å / 111.4°（硫醇盐），差 0.26 Å / 30°——tip 落点对初猜很敏感，只靠 `tip_relax` 局部弛豫未必能回到真实接触几何。因此提供两条**对照臂**做量化：
+
+  ```bash
+  smj variants --xyz molecule.xyz --dir variants/      # 生成 thiolate.xyz / aucap.xyz + variants.json
+  ```
+
+  - `thiolate`：去掉锚定元素上的 H（S–H ≤ 1.70 Å），`charge -= 1/个`，电子数与多重度不变（去的是 H⁺）；
+  - `aucap`：把 S–H 的 H 换成沿原 S→H 方向的 Au（默认 2.40 Å），电荷不变——局部模拟"已与电极成键"的化学态；
+  - `variants.json` 记 `source_sha256`、每条臂的 `atom_count / electron_count / removed_h_indices / note / config_hint`（charge/multiplicity 直接照抄进配置），以及 `caveat`：气相 / 0 K / 无溶剂、裸阴离子在 PBE/light 下 HOMO 可能高于真空能级、单原子 Au 不是真实电极；
+  - 两条臂各跑一遍 `molecule_opt`，比较 C–S 键长、gap 以及 `aims_tip_relax` 后的锚–Au 接触几何；差异就是"质子化态 / 初猜"对结果的影响量级。**只生成输入与清单，不做判定**。
+
+- **species 审计（`smj species`，写进每次 prepare）**：`molecule.opt_basis` 只是配置标签，真正生效的是 `cluster.species_dir` 里的 species 文件。prepare 会逐元素记录**文件头声明的档位**（`Suggested "light" defaults`）、生效基组行数、最高角动量与**逐文件 sha256**，写到阶段目录的 `species.json`；collect 原样搬进 `results.json` 的 `species` 段，标签与实际档位不一致时在 notes 里给警告（"以 species 文件为准"）。这样"这次算的到底是 light 还是 tight"是可核对的，而不是靠配置里的一个词。
+
+  ```bash
+  smj species --dir $SMJ_SPECIES --xyz molecule.xyz --label light --out species.json
+  ```
+
+- **基组敏感性怎么测**（离线也能做，不需要新代码）：
+  1. `smj species --dir light/ --xyz molecule.xyz --label light` 与 `--dir tight/ --label tight`，确认两次的 `sha256` 不同、档位一致；
+  2. 同一分子、同一 `control.in`（除 species 块外一致）各跑一次 `molecule_opt`，`--run-dir` 分开；
+  3. 比较 `results.json` 的 `frontier_orbitals.gap_ev` 与 `opt.xyz` 的 C–S / 锚–锚键长（`smj checks` 的 `anchor_contacts` 也能用）；
+  4. 把差值记成"基组 + 积分网格"的合并不确定度——**注意 tier 换档同时改基组与网格，不能把二者分开归因**，除非另做网格收敛测试。
+
+### 步骤 2.5：构象自动分支（`smj ensemble`，不属于阶段链）
+
+柔性分子（烷烃二硫醇 HDT/ODT/DDT、2CN-656 的甲硫基、azulene 取代基）换一个构象，锚–锚距离可能差 0.3–1 Å，gap 与 T(E) 都会变；只优化"手画的那一个构象"等于把构象误差当成方法误差。
+
+```bash
+smj ensemble --smiles "Sc1cccc(S)c1" --dir ensemble/ --keep 3   # 生成 conf_01..03.xyz + ensemble.json + run_ensemble.sh
+sh ensemble/run_ensemble.sh                                       # 每个构象一个隔离 --run-dir（run/conf_XX）
+smj ensemble --dir ensemble/ --report                             # 汇总 gap / 最大力 / 构象能量的极差
+```
+
+- 生成阶段：ETKDGv3 → MMFF94s → 按能量升序 + 重原子骨架 RMSD 去重（与 `smj conformers` 同一实现）；`run_ensemble.sh` 里路径相对脚本目录，便于整目录拷到集群；`--run-dir` 覆盖 run 目录，各臂的 `run_spec.json` 与产物互不覆盖。
+- 汇总阶段：读各臂 `molecule_opt/results.json`，给 `gap_ev` 与 `max_force_ev_per_A` 的**极差**；`gap` 极差 <0.05 eV 可认为该分子对构象不敏感，>0.1 eV 则必须把构象分布（或至少多个极小）纳入结论。
+- 口径：MMFF94s 只决定"哪些构象值得算"，不是能量判据；构象能量差在 kcal/mol 量级时应给 Boltzmann 权重，而不是只取最低能。
 
 ---
 
@@ -135,7 +177,7 @@ molecule.xyz
 | `electrode.strip_thiol_h` | `null` | 三态：`null` = 仅当锚定原子是 S 才移除 S–H（<1.70 Å，必须恰好 0/2 个），N/Se 锚保留 H；`true` = 强制去（每个锚原子恰好 1 个 H，-NH2 会 fail-closed）；`false` = 不去；去质子前原几何存 `opt_neutral.xyz` |
 | `electrode.vdw` | `true` | Hirshfeld 色散 |
 | `molecule.charge` / `multiplicity` | `0` / `1` | |
-| `opt_force_threshold` | `1.e-2` | 同上（Ha/Bohr） |
+| `opt_force_threshold` | `1.e-2` | 同上（eV/Å） |
 
 - **放置规则**：默认沿「左锚–右锚」连线向外（`add_tip_au` 默认方向 = 本锚减对侧锚），距离 = `au_tip_distance` 或 `anchor_au_s_target`；落盘后**立即回测** 金属–S 距离，偏差 >1e-6 Å 直接 RuntimeError（拒绝悄悄错位）。
 - **产物**：`geometry.in.next_step`（BFGS 最终几何）、`aims.out`、`geometry.in`、`input_summary.json`（含 `tip_element` 与 `anchor_element`）。
@@ -173,6 +215,7 @@ molecule.xyz
 
 - **命令**：`smj review [--approve --who NAME] [--force] [--stage DIR] [--no-figure] [--accept-deviation FRAC] [--connection-check|--no-connection-check]`
 - **目的**：三段式复核，确保错误结构不进入 SCF：① 结构几何闸门（`validate_junction_geometry` 7 项）；② 连接核对（原 A2，默认开启、默认自动登记）；③ 溯源一致性。
+- **锚定接触报告**（只报告、不判定）：结构闸门之外，`review` 还对每个贴着金属的锚定原子（S/N/Se）给出 `M–X` 距离与 `C–X–M` 角，写 `review.json` 的 `structure.anchors` 并打一条 info。硫醇盐在 Au(111) 上通常 ≈2.4–2.5 Å、≈105–115°；明显更长（≳2.6 Å）或接近线形（≳140°）说明锚定轨道与表面耦合弱（2CN-656 的硫醚锚实测 2.69 Å / 141°，与 G/G0=0.00132 一致）。合格区间随锚定化学与位点变化，所以不进闸门，交人工判读。
 - **默认（自动）**：`review.auto_connection_check=true` 时，`electrode_build` collect 完即由管线自动跑一次表面审计并登记 `electrode_build/connection_check.json`（`who="auto"`）；审计不通过则**拒绝登记**，`smj review` 仍会 `blocked`。想恢复"必须人工看图再签"，设 `auto_connection_check: false`。
 - **闸门**：`review.connection_check=true`（默认）→ 没有有效记录（缺文件/指纹与当前 `geometry.in` 不符）时 **blocked**（退出码 1）；`connection_check_deviation=0.15`（表面索引偏差容差）；`--approve --who` 才人工写 `electrode_build/connection_check.json`（绑定 `geometry.in` 的 sha256 与签署人；已有有效记录默认幂等不覆盖，`--force` 重签）。CLI 可临时覆盖：`--no-connection-check` 关闭该项要求（缺记录/指纹失效降为 info/warning），`--connection-check` 强制开启；只作用于本次调用，不写回配置、不进协议哈希。
 - **判定**：`passed | warning | blocked`，`ok = status != "blocked"`；`review.json` 落 run 根目录。
@@ -282,7 +325,7 @@ molecule.xyz
 | `family` | `null` | 判据标定族；`null`/未登记 → 全部判据适用（fail-safe） |
 | `opt_engine` | `aims` | `aims` / `gaussian` |
 | `opt_functional` / `opt_basis` | `pbe` / `light` | |
-| `opt_force_threshold` | `1.e-2` | Ha/Bohr |
+| `opt_force_threshold` | `1.e-2` | eV/Å |
 
 ### 3.3 electrode
 

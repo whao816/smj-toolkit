@@ -13,7 +13,7 @@
 | aitranss | `aitranss.071813.openmp.ifx2025.3.x` |
 | 交换关联 / 基组 | PBE / light（species 目录 `runs/<run>/species`：H、C、N、S、Au） |
 | 电极 | `electrode.source: library`，`fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims`（37 Au/侧，nlayers=3） |
-| 分子优化 | `molecule.opt_engine: aims`，`relax_geometry bfgs`，力阈值 `1.e-2` Hartree/Bohr |
+| 分子优化 | `molecule.opt_engine: aims`，`relax_geometry bfgs`，力阈值 `1.e-2` eV/Å |
 | 结几何 | tip 全原子弛豫 → 库团簇扩展 → 冻结；`pin_contact: false` |
 | SCF | 静态，`KS_method serial`，`output aitranss`（保证 `omat.aims` 布局可被 aitranss 读取） |
 | 输运 | 能量窗 `[-0.22, 0.0002, -0.16]` Ha（301 点），T = 300 K，自能 σ_near 0.05 / σ_far 0.10 Ha |

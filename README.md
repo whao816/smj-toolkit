@@ -47,8 +47,35 @@ molecule.xyz
 `molecule_opt` 的引擎由 `molecule.opt_engine` 选择：默认 `aims`（FHI-aims
 PBE/light，与 tip/SCF 同一软件栈）；`gaussian` 保留旧口径（B3LYP/6-31G(d)，
 需 Gaussian 16 许可）。两种引擎的产物契约相同：`opt.xyz` 供 `aims_tip_relax`
-消费。FHI-aims 分支不做虚频检查（无现成一键 freq），几何可靠性靠
-`relax_geometry bfgs` 的力阈值与人工复核。
+消费。collect 是 fail-closed 的：aims 分支要求日志出现
+`Present geometry is converged`（FHI-aims 弛豫达到步数上限时也会正常退出并写
+`geometry.in.next_step`，所以"有 Have a nice day"不等于收敛）；两种引擎都要过
+`smj.checks` 的几何合理性检查（最近原子对 ≥0.7 Å；重原子键消失、孤立原子拒绝；
+含 H 键消失（质子迁移）只警告），优化后的最大力、HOMO/LUMO/gap 写进
+`results.json`。弛豫的 SCF 精度也显式写进 `control.in`（`sc_accuracy_rho 1E-5`、
+`sc_accuracy_eev 1E-3`、`sc_accuracy_etot 1E-6`、`sc_accuracy_forces 5E-3` eV/Å、
+`sc_iter_limit 1000`）——旧模板靠 FHI-aims 自动默认，力的精度是 `not_checked`；
+开壳层另写 `fixed_spin_moment` 固定总自旋。日志里出现 SCF 未收敛直接拒绝。
+FHI-aims 分支仍不做虚频检查（无现成一键 freq）。
+
+柔性分子先用 `smj conformers --smiles "Sc1ccc(S)cc1"` 做 ETKDGv3 + MMFF94s
+构象粗筛（按能量排序 + 重原子骨架 RMSD 去重），把 top-k 各跑一次下游链再比较；
+MMFF94s 只负责粗筛，不是电子结构判据。
+
+本阶段优化的是中性分子，而器件里锚定原子与 Au 成键。`smj variants --xyz molecule.xyz`
+可派生两条化学态对照臂：`thiolate`（去 S–H 的 H、电荷 −1/个，模拟去质子化）与
+`aucap`（S–H 的 H 换成沿原方向的 Au，模拟已与电极成键），连同
+`variants.json`（含 `config_hint`、`source_sha256` 与口径 caveat）。两条臂各跑一次
+`molecule_opt`，比较 C–S 键长、gap 与 `aims_tip_relax` 后的锚–Au 接触几何——
+同一 2CN-656 硫醚在两条 demo 里 S–Au 分别是 2.69 Å/141° 与 2.43 Å/111°，
+这就是初猜化学态的影响量级。
+
+基组口径现在可核对：`molecule.opt_basis` 只是标签，`smj species --dir <species_dir>`
+会读 species 文件头声明的档位与基组规模、记录逐文件 sha256；每次 `molecule_opt`
+prepare 也把同样的 `species.json` 写进阶段目录，collect 搬进 `results.json.species`，
+标签与实际档位不一致时给警告。柔性分子用 `smj ensemble --smiles ... --dir ensemble/`
+把 top-k 构象排成批处理（每个构象一个隔离 `--run-dir`），跑完
+`smj ensemble --dir ensemble/ --report` 给 gap / 最大力的极差——这就是构象贡献的量级。
 
 ## 0.1 已验证体系（0.2.0）
 

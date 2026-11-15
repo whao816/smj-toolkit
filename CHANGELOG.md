@@ -4,6 +4,103 @@
 
 ## 未发布
 
+### 分子弛豫的 SCF 精度与自旋固定
+
+- `control_relax.in` 之前只写几何相关的键，FHI-aims 会打印
+  `No s.c.f. convergence criteria (sc_accuracy_*) were provided` 并自行挑
+  `sc_accuracy_rho`（实测 `0.300000E-05`，随版本/体系漂移）、`sc_accuracy_forces`
+  置 `not_checked` —— **BFGS 用的力没有独立精度保证**。现在与 `control_scf.in` 同源
+  显式写出 `occupation_type gaussian 0.01`、`mixer pulay`、`n_max_pulay 10`、
+  `charge_mix_param 0.2`、`sc_accuracy_rho 1E-5`、`sc_accuracy_eev 1E-3`、
+  `sc_accuracy_etot 1E-6`、`sc_accuracy_forces 5E-3`（eV/Å，取几何阈值 1.e-2 的一半）、
+  `sc_iter_limit 1000`（保留 FHI-aims 默认，不收紧成 SCF 模板的 500）。
+- 开壳层（`multiplicity > 1`）新增 `fixed_spin_moment = multiplicity-1`（μB），把总自旋
+  固定在弛豫过程中，避免 BFGS 步间自旋态漂移；闭壳层不写该行，行为与旧版一致。
+- `smj.aims_out` 新增 `scf_settings(control_text)`（从 `control.in` 读回实际生效的
+  `sc_accuracy_*`）与 `relax_summary` 的 `scf_converged_steps` / `scf_not_converged`；
+  collect 遇到 "self-consistency cycle … not … converged" 直接 `StageError`，
+  收敛标记次数少于弛豫步数只记 note。`results.json` 的 `molecule_opt` 段新增 `scf`，
+  `input_summary.json` 也记录 SCF 精度与 `spin_moment`。
+
+### 化学态对照臂 `smj variants`
+
+- 本阶段优化的是中性硫醇/硫醚，而器件里锚定 S 与 Au 成键；两个 2CN-656 硫醚 demo 的
+  S–Au 接触分别是 2.6877 Å / 141.5°（tip 落在硫醚）与 2.4267 Å / 111.4°（硫醇盐），
+  差 0.26 Å / 30°，说明 tip 落点对初猜化学态很敏感。新增 `smj.variants` 与
+  `smj variants --xyz molecule.xyz` 派生两条对照臂：`thiolate`（去 S–H 的 H，
+  `charge -= 1/个`，电子数与多重度不变）与 `aucap`（S–H 的 H 换成沿原方向的 Au，
+  默认 2.40 Å，电荷不变），写 `<name>.xyz` + `variants.json`（源文件 sha256、
+  `config_hint`、`removed_h_indices`、`electron_count` 与口径 caveat：气相/0 K/无溶剂、
+  裸阴离子 HOMO 可能高于真空能级、单原子 Au 不是真实电极）。只生成输入与清单，
+  判定仍由下游链给出。
+
+### species 审计与构象分支
+
+- 新增 `smj species --dir <species_dir> [--xyz molecule.xyz] [--label light] [--out species.json]`
+  与 `smj.species`：读 `*_default`（或 `<element>.in`）文件头里的
+  `Suggested "<tier>" defaults`、统计生效基组行数与最高角动量、逐文件 sha256。
+  `molecule_opt` prepare 逐元素写 `species.json`，collect 搬进 `results.json.species`；
+  配置标签 `opt_basis` 与实际档位不一致时 notes 明确警告"以 species 文件为准"——
+  `opt_basis` 从"一个词"变成可核对的口径。文档补了 light/tight 敏感性对照的做法
+  （注意换档同时改基组与积分网格，不能分开归因）。
+- 新增 `smj ensemble --smiles ... --dir ensemble/` 与 `smj.ensemble`：构象从"手动前端"
+  变成批处理——生成 `conf_XX.xyz` + `ensemble.json` + `run_ensemble.sh`（脚本内
+  `cd "$(dirname "$0")"`、路径相对脚本目录，便于整目录拷到集群），每个构象一条
+  `smj stage molecule_opt --run --run-dir run/conf_XX`；`smj ensemble --dir ... --report`
+  读各臂 `results.json` 给出 `gap_ev` 与 `max_force_ev_per_A` 的极差与缺失清单。
+- `smj stage` 新增 `--run-dir DIR` 覆盖 run 目录（`StageRunner(run_dir=...)` 早已支持，
+  现在从 CLI 暴露），构象/对照臂并行跑时各臂的 `run_spec.json` 与产物互不覆盖。
+
+### 分子优化加收敛门与几何合理性闸门
+
+- `molecule_opt` collect 之前只核"进程正常结束 + `geometry.in.next_step` 存在"，而
+  FHI-aims 弛豫达到步数上限时仍会正常退出并写出 next_step —— 未收敛几何会以"已优化"
+  身份进入 `aims_tip_relax`。现在 aims 分支强制要求 `aims.out` 出现
+  `Present geometry is converged`，未收敛直接 `StageError`（消息带最后一步最大力、
+  阈值、步数，并说明超步数也会正常退出的原因）。
+- 新增 `smj.checks.check_geometry`（纯 python，无第三方依赖）：原子重叠（最近对
+  <0.7 Å）、键图对比（重原子键消失 = 断键/解离、孤立原子、元素组成变化 → 拒绝；
+  含 H 键消失 = 质子迁移 → 警告）、平移 RMSD 只报告。两种引擎共用，且**在落盘
+  `opt.xyz` 之前**执行，不通过就不产出（Gaussian 分支会先删中间几何）。
+- 新增 `smj.aims_out`：`relax_summary`（收敛 / 最大力 / 步数）与
+  `frontier_orbitals`（最后一张 Kohn-Sham 特征值表的 HOMO/LUMO/gap，分数占据时报
+  flag）。`results.json` 的 `molecule_opt` 段新增 `converged` / `max_force_ev_per_A`
+  / `relax_steps` / `geometry_check` / `frontier_orbitals`，notes 里的 gap 明确标注
+  "PBE 气相值，只作输运对照，不是器件能隙"。
+- **口径修正**：`molecule.opt_force_threshold` 的单位是 **eV/Å**（FHI-aims
+  `relax_geometry` 的判据是最大力分量），不是 Hartree/Bohr；默认 `1.e-2 eV/Å`
+  ≈ 1.9e-4 Ha/Bohr 已经偏紧，不改默认值。加载配置时校验 `(0, 0.1]`，非数字/超范围
+  直接 `ConfigError`；文档里所有 "Ha/Bohr" 字样同步改为 "eV/Å"。
+- 新增 `smj conformers` 子命令与 `smj.conformers`：SMILES → ETKDGv3 生成候选 →
+  MMFF94s 优化 → 按能量升序 + 重原子骨架 RMSD(0.25 Å) 去重 → top-k 写
+  `conformer_<rank>.xyz` + `conformers.json`（第 1 个同时写 `--out`，可直接交给
+  `smj init --xyz`）。默认 seed 42：RDKit 2026.09.1 里 `randomSeed=0` 会让所有构象
+  用同一初猜（两两 RMS=0），故拒绝 0。MMFF 只作粗筛，manifest 的 `caveat` 写明
+  "top-k 应各跑一次下游链再比较"。
+- 新增锚定轨道权重（`smj.cube`）：解析 `output cube eigenstate` 写出的
+  `cube_<n>_eigenstate_<i>_spin_<s>.cube`，按 `control.in` 的请求顺序标注
+  HOMO-1/HOMO/LUMO/LUMO+1，给出**半径 1.6 Å 球内 |ψ|² 占全箱的比例**，写进
+  `results.json` 的 `frontier_orbital_weights` 并打一条 note。权重高 = 该前线
+  轨道在锚定原子上有振幅（有耦合通道）。只算占比，绕开 FHI-aims "内容单位
+  1/Å³、体素单位原子单位" 的口径坑；有负值按带符号 ψ 平方、全非负按密度处理；
+  没有 cube 只记 note 不报错。
+- 新增电荷/多重度奇偶校验（prepare，两引擎共用）：电子数 = ΣZ − charge，偶数
+  电子必须奇多重度、奇数电子必须偶多重度，否则 `StageError`。写错时 SCF 会为
+  "不存在的电子态"收敛出漂亮结果，链上没有别处能发现；`results.json` 记
+  `electron_count`。
+- 修 `_vendor/junction/molecules.py::molecule_from_smiles` 的多构象 bug：
+  `n_conformers>1` 时所有构象都返回构象 0（循环外只取了一次 `mol.GetConformer()`）。
+- 新增锚定接触报告（只报告、不判定）：`smj.checks.anchor_contacts` 给出每个贴着
+  金属的锚定原子（S/N/Se）的 `M–X` 距离与 `C–X–M` 角，`smj review` 写进
+  `review.json` 的 `structure.anchors` 并打一条 info。硫醇盐在 Au(111) 上通常
+  ≈2.4–2.5 Å / 105–115°；明显更长（≳2.6 Å）或接近线形（≳140°）说明锚定轨道与
+  表面耦合弱（2CN-656 硫醚锚实测 2.69 Å / 141°，与 G/G0=0.00132 一致）。合格区间
+  随锚定化学与位点变化，故不进闸门、交人工判读。
+- 测试：`tests/test_aims_molecule_opt.py` 夹具补收敛横幅/最大力/特征值表，新增
+  未收敛、断键、重叠、缺 `geometry.in` 四条 + config 阈值三条；新增
+  `tests/test_geometry_checks.py` 与 `tests/test_conformers.py`（RDKit 缺失时 skip）。
+- 文档：README 分子优化段、`docs/smj-计算流程梳理.md` 步骤 2 的闸门与单位口径同步。
+
 ### 输运能量窗改 eV 相对费米能级（默认 E_F ±2 eV）
 
 - `transport.energy_window` 的默认语义从 **Ha 绝对能量** 改为 **eV 且相对费米能级**：
