@@ -2,6 +2,117 @@
 
 本项目遵循语义化版本（0.x 阶段：次版本可含不兼容变更；rc 视为发布候选）。
 
+## 未发布
+
+### 输运能量窗改 eV 相对费米能级（默认 E_F ±2 eV）
+
+- `transport.energy_window` 的默认语义从 **Ha 绝对能量** 改为 **eV 且相对费米能级**：
+  默认 `[-2.0, 0.005, 2.0]` = `E − E_F ∈ [−2, +2] eV`、步长 5 meV（801 点）。
+  换金属/换分子后 E_F 移动，相对窗口不跟着漂，不再需要手动按 Au Fermi 估窗口。
+- `aitranss_te.prepare` 现在先读 `aims_scf/aims.out` 的 efermi（`parse_efermi`），
+  把 eV 相对窗口平移到 `tcontrol` 需要的 Ha 绝对 `$ener/$estep/$eend`
+  （`HARTREE_EV = 27.211386245988`）；缺 efermi 直接 `StageBlocked`，不用占位值。
+- 新增 `transport.energy_window_unit`（`eV` 默认 / `Hartree` 旧口径）。旧 yaml 里
+  跨度 ≤0.1 Ha、量级 <2 Ha 的三元组按旧 Hartree 口径识别并给迁移 warning，
+  行为与 0.2.0 逐字节一致；要显式保留旧口径可写 `energy_window_unit: Hartree`。
+- `transport.ener/estep/eend` 仍是 **Ha 绝对能量** 的单分量覆盖（优先级最高）。
+- `protocol_sha256`：eV 口径把用户写的三元组 + unit 入协议；旧 Hartree 口径不再新增
+  key，历史 run_spec 不会仅因本改动被判漂移（无需重建 run）。
+- 新增 `tests/test_energy_window.py`（12 条）：默认相对窗口、efermi 平移、旧 Ha 探测、
+  unit 显式优先、分量覆盖、protocol 指纹形状、`aitranss_te.prepare` 真的把 eV 口径写进
+  tcontrol、缺 efermi 阻断。
+- 文档：README 输运段、`docs/smj-计算流程梳理.md`（总览/步骤 6/§3.4/§8/§10）、
+  demo/azulene README（历史备注）同步；`smj init` 模板改 `[-2.0, 0.005, 2.0]` +
+  `energy_window_unit: eV`。
+
+### 连接核对（原 A2 / 表面核对）更名 + 默认自动登记
+
+- 「A2 审核」→「表面核对」→**连接核对**（connection check）：它核对的是电极与分子之间的
+  连接/表面三元组是否与结构一致，不再用任务卡内部代号。用户可见措辞（CLI help、提示、报告、文档）
+  全部换成「连接核对」；`表面核对` 与 `A2` 都降为旧名兼容。
+- **默认自动登记**：新增 `review.auto_connection_check`（默认 `true`）。`electrode_build` collect 之后，
+  管线自动跑表面审计并写 `electrode_build/connection_check.json`（`who="auto"`）；
+  审计不通过则**拒绝登记**，`smj review` 仍会 blocked。想要「必须人工看图再签」，
+  设 `auto_connection_check: false`，仍可用 `smj review --approve --who NAME`。
+- 配置键更名（旧键仍生效，加载时提示改名）：`review.require_a2` / `review.surface_check` →
+  `review.connection_check`，`review.a2_deviation` / `review.surface_check_deviation` →
+  `review.connection_check_deviation`，`review.auto_surface_check` → `review.auto_connection_check`。
+- 产物文件更名：`a2_confirmation.json` / `surface_check.json` → `connection_check.json`，
+  `a2_surface_audit.json` / `surface_check_audit.json` → `connection_check_audit.json`，
+  `a2_surface_viz.png` / `surface_check_viz.png` → `connection_check_viz.png`；
+  旧文件仍会被读取（签署记录、审计、review 闸门均兼容）。
+- 复核码与 check 名更名：`a2_*` / `surface_check_*` → `connection_check_*`；`validate` 的
+  `junction_a2_confirmation` / `junction_surface_check` → `junction_connection_check`（旧名兼容跳过）。
+- CLI：`smj review --connection-check/--no-connection-check` 取代 `--surface-check` / `--a2`
+  （旧开关保留为隐藏别名，只覆盖本次调用、不写回配置）。
+- 新增 `tests/test_connection_check_approve.py`、`tests/test_cli_connection_check.py`、
+  `tests/test_runner_connection_check.py`，并删除 `tests/test_cli_a2_switch.py`。
+
+### 事后补登记判据族不再阻断复核（`family` 漂移容差）
+
+- 背景：`molecule.family` 只决定判据适用族，但计入 `protocol_sha256`；run 完成后再补登记族
+  （例如给 BPY 标 `family: BPY`）会让 `smj review` 报 `provenance_drift` 并 blocked。
+- 现在复核侧做精确容差：把当前配置的 `family` 改成 run 时值重算 `protocol_sha256`，
+  若与 run_spec 一致 → 记 `warning`（`provenance_family_relabel`），按当前标注重算判据，不阻断；
+  其余任何物理参数差异仍为 `error`（`provenance_drift`）。`run_spec.json` 不重写，审计链不变。
+- `tests/test_review_family_drift.py` 覆盖：仅 family 不同放行、tip 距离变化仍阻断、
+  缺 config 快照 fail-closed。
+
+### 判据族 `BPY`
+
+- `SYSTEM_FAMILIES` 登记 `BPY: "Au-(4,4'-bipyridine)-Au"`（吡啶 N 锚定，非硫醇盐）。
+  `t_ef_magnitude` / `g_in_theory_band` / `seebeck_sign` 的标定域是 Au–BDT–Au，
+  对 BPY 记 **not applicable**（不再 fail-safe 误判「否证 H0」），只作参考对照
+  （实验 1.3±0.1 MΩ ≈ 9.93e-3 G0）。
+- `runs/bpy` 重新生成报告后：工程判定通过、物理判定「支持 H0（passed）」、可进入发布/预测卡。
+- 测试：`tests/test_family.py` 新增族登记与「BDT 带不适用」用例；全套 `pytest` 162 passed。
+
+### 电极构建参数化（`electrode_build` → 「构建电极」）
+
+- 阶段 4 不再写死「本地构建 Au(111) 电极」：**怎么构建**与**构建什么电极**都是本阶段参数。
+  - `electrode.source`：`library`（FHI-aims `electrodes.library` 预定义团簇，默认）/ `builtin`（本地三角岛）。
+  - `electrode.element`：电极金属（fcc(111) 单晶表面），登记 Au / Ag / Cu / Ni / Pt / Pd / Al；
+    **tip 与电极同元素**，`aims_tip_relax` 由该键决定加哪种金属 tip。
+  - `electrode.a_lattice`：fcc 晶格常数（Å），`null` = 用内置登记值（Au 4.07823 … Al 4.04950）；
+    未登记元素必须显式给出（2.0–6.0 Å）。
+- `source: library` 时若库团簇元素与 `electrode.element` 不一致，`electrode_build` **fail-closed**
+  （`StageError`），避免「Ag 电极配 Au 团簇」这类静默错配。
+- `electrode_metadata.json` 新增 `electrode_element` / `electrode_a_lattice`，仅在非 Au 或缺省晶格
+  被显式覆盖时写入；**Au 默认路径的 metadata 仍逐字节不变**，旧 run 缺键时下游按 `Au` 处理
+  （`self.energy.in`、`tcontrol` 表面索引、`smj review` 表面审计、`validate` 表面/锚定/电极范围检查）。
+- 规范检查与报告：`validate` 的表面、锚定、电极范围检查改读 metadata 的电极元素；
+  2.40–2.49 Å 的 S–Au 有源带**只按 Au 标定**，非 Au 电极只报接触距离、不作偏离判定（severity info）。
+  `smj report` 新增「电极构建方式 / 电极元素」行。
+- 兼容性：`electrode.element`/`a_lattice` 进入 `protocol_sha256`，旧 run 的 provenance 对比会
+  报 `provenance_drift`（预期；Au 默认值下重建输入才可复现旧哈希）。
+- 测试：新增 `tests/test_electrode_metals.py`（配置校验、非 Au tip、builtin Ag/自定义晶格装配、
+  library 元素一致性、Au metadata 字节兼容）；全套 `pytest` 162 passed。
+- 文档：README、`docs/smj-计算流程梳理.md`（步骤 3/4 与配置表）、`docs/README.md` 同步改为
+  「构建电极」口径。
+
+### 无硫分子锚定（任意元素 / 去质子三态）
+
+- 锚定原子不再限定硫醇盐的 S：`electrode.left_anchor` / `right_anchor` 可写任意元素符号
+  （结构里恰好出现 2 次）或 1-based 序号，分子里没有 S 也能建结（N/Se/… 锚）。
+  `aims_tip_relax` 不再报「需恰好 2 个 S 锚原子」。
+- `electrode.strip_thiol_h` 改为**三态**：`null`（新默认）= 仅当锚定原子是 S 时才自动移除
+  S–H（旧 S 分子的行为不变）；`true` = 强制去质子；`false` = 不去。非 S 锚默认保留 H。
+- 去质子 fail-closed：每个锚原子必须恰好 0/1 个 H、总计 0/2 个才移除；-NH2 这类一个锚原子
+  带 2 个 H 的情况直接报错（不猜着只去一个）。
+- `aims_tip_relax/input_summary.json` 新增 `anchor_element`（锚定元素），`strip_thiol_h` 记录
+  实际去质子信息（`anchor_element`/`anchor_indices`/`route` 等）；注释与错误信息里的
+  「Au–S」推广为「锚–金属」，tip/锚元素分别来自 `electrode.element` 与结构。
+- `validate` 的 `junction_geom_anchor_aus` 改用 metadata 的 linker 索引识别锚定原子（任意元素）：
+  S 锚保持原有硫醇盐带/硫醚分流逻辑；非 S 锚 severity info，只报告锚–金属接触距离，
+  2.40–2.49 Å 带不适用。（旧 metadata 无 linker 索引时退回按 S 找锚。）
+- 兼容性：`strip_thiol_h` 默认值由 `true` 变为 `null`，进入 `protocol_sha256`，旧 run 的
+  provenance 对比会报 `provenance_drift`（预期；S 分子的实际去质子行为不变）。
+- 测试：新增 `tests/test_no_sulfur_anchor.py`（三态解析、无 S 锚按元素/序号解析、默认保留 H、
+  无 S 结校验给 info、S 分子仍自动去质子、-NH2 强制去质子 fail-closed、CLI prepare 端到端）；
+  全套 `pytest` 147 passed。
+- 文档：README（输入/适用/口径）、`docs/smj-计算流程梳理.md`（步骤 3 参数表、§3.3、判据表、
+  §10 第 17 条）同步说明任意元素锚定与三态去质子。
+
 ## 0.2.0 — 2026-11-15
 
 与 0.2.0rc1 相同的代码；本版补齐发布记录与真实体系验证。

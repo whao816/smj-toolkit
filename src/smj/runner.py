@@ -534,7 +534,39 @@ class StageRunner:
         self._save()
         for note in payload.get("notes") or ():
             self._log("[%s] %s" % (key, note))
+        if key == "electrode_build":
+            self._auto_connection_check(stage_dir)
         return payload
+
+    # -- 连接核对自动登记 --------------------------------------------------- #
+    def _auto_connection_check(self, stage_dir: Path) -> None:
+        """``electrode_build`` 采集后自动登记连接核对（``review.auto_connection_check``）。
+
+        自动登记只做 ``approve_connection_check``：审计/出图不通过时**不**写记录，
+        只记一条日志；真正的拦截在 ``smj review`` 的连接核对闸门（fail-closed）。
+        """
+        cfg = getattr(self.config, "review", None)
+        if not bool(getattr(cfg, "auto_connection_check", True)):
+            return
+        if self.dry_run:
+            return
+        from .a2 import approve_connection_check  # 本地 import：避免循环依赖
+
+        try:
+            result = approve_connection_check(self.run_dir, who="auto", stage=stage_dir)
+            if not result.ok and result.code == "figure_failed":
+                # 无 matplotlib/无显示：退化为只写记录（审计已在上面通过）。
+                result = approve_connection_check(self.run_dir, who="auto",
+                                               stage=stage_dir, no_figure=True)
+        except SmjError as exc:
+            self._log("[electrode_build] 连接核对自动登记失败: %s" % exc)
+            return
+        if result.ok:
+            self._log("[electrode_build] 连接核对: %s（签署人 %s）"
+                      % (result.status, result.who or "auto"))
+        else:
+            self._log("[electrode_build] 连接核对未登记: %s"
+                      % (result.reason or result.code))
 
     # -- run --------------------------------------------------------------- #
     def run_stage(self, name: str, *, force: bool | None = None) -> StageOutcome:

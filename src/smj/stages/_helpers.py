@@ -81,6 +81,7 @@ def resolve_anchor_indices(xyz_path: str | Path, left_anchor: Any, right_anchor:
 
     配置风格是 ``electrode.left_anchor: S``（两个 S 锚原子，按文件出现顺序分左右）；
     也接受 ``11`` 这类显式 1-based 序号，便于只拿到别人输入的阶段独立运行。
+    ``left_anchor`` 可写任意元素符号（N/Se/…），分子里没有 S 时同样适用。
     """
     return resolve_anchor_indices_atoms(
         read_xyz(xyz_path), left_anchor, right_anchor, stage=stage)

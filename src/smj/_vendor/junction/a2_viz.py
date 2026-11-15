@@ -1,10 +1,10 @@
-"""A2 表面三元组审计 + 可视化 + 人工签署登记(AGD-2026-09-22-SMJ P0-4/P0-6 配套)。
+"""连接核对（connection check）三元组审计 + 可视化 + 记录登记(原 A2; AGD-2026-09-22-SMJ P0-4/P0-6 配套)。
 
 为什么需要这个工具(而不是"跑个临时脚本出张图"):
 - 首猜算法 electrode.surface_indices 只在"沿 tip->linker 最远投影层"里任选一个
   非共线三元组; 132 原子 FCC(111) 表面层有 21 个等价三角 -> **具体索引不唯一**,
   人眼要判断的是"这三个原子是否真的构成电极与分子之间的表面平面", 光看索引数字看不出来。
-- 引擎 run 的产物按阶段子目录存放(au60_build/geometry.in), A2 确认必须绑定几何指纹
+- 引擎 run 的产物按阶段子目录存放(au60_build/geometry.in), 连接核对记录必须绑定几何指纹
   (fingerprint.py): 审计、出图、登记三件事绑成一条命令, 才不会出现"图是一份几何、
   签名是另一份几何"的静默错位。
 
@@ -62,12 +62,12 @@ def _axis(atoms, metadata):
     return unit(sub(atoms[rk].coord(), atoms[lk].coord())), atoms[lk].coord(), atoms[rk].coord()
 
 
-def _cluster(atoms, metadata, side, axis, mid):
-    """该侧电极 Au(不含对侧 tip): 用输运轴中点分侧, 不靠索引段猜。"""
+def _cluster(atoms, metadata, side, axis, mid, element='Au'):
+    """该侧电极原子(不含对侧 tip): 用输运轴中点分侧, 不靠索引段猜。"""
     other_tip = int(metadata['right_tip_index' if side == 'left' else 'left_tip_index']) - 1
     out = []
     for i, atom in enumerate(atoms):
-        if atom.element != 'Au' or i == other_tip:
+        if atom.element != element or i == other_tip:
             continue
         s = dot(sub(atom.coord(), mid), axis)      # >0 偏向右侧
         if (side == 'left' and s < 0) or (side == 'right' and s > 0):
@@ -75,7 +75,7 @@ def _cluster(atoms, metadata, side, axis, mid):
     return out
 
 
-def _side_audit(atoms, metadata, side, axis, mid):
+def _side_audit(atoms, metadata, side, axis, mid, element='Au'):
     """单侧审计: 返回 checks/metrics(不抛错, 缺字段按未通过记录)。"""
     tip = int(metadata['%s_tip_index' % side]) - 1
     linker = int(metadata['%s_linker_index' % side]) - 1
@@ -97,7 +97,7 @@ def _side_audit(atoms, metadata, side, axis, mid):
             away = tuple(-x for x in axis) if side == 'left' else tuple(axis)
     else:
         away = tuple(-x for x in axis) if side == 'left' else tuple(axis)
-    cluster = _cluster(atoms, metadata, side, axis, mid)
+    cluster = _cluster(atoms, metadata, side, axis, mid, element=element)
     proj = {i: dot(atoms[i].coord(), away) for i in range(len(atoms))}
     top = max((proj[i] for i in cluster), default=0.0)
     layer = [i for i in cluster if top - proj[i] <= TOL_LAYER]
@@ -110,7 +110,7 @@ def _side_audit(atoms, metadata, side, axis, mid):
     elems = [atoms[i].element for i in in_range]
     add('indices_shape', len(chosen) == 3 and len(in_range) == 3,
         '%s 表面索引 %s: 须恰好 3 个且在 1..%d' % (side, raw, len(atoms)), raw)
-    add('indices_are_au', len(elems) == 3 and all(e == 'Au' for e in elems),
+    add('indices_are_au', len(elems) == 3 and all(e == element for e in elems),
         '%s 表面索引元素: %s' % (side, elems), elems)
     others = set(int(i) for i in (metadata.get('right_surface_indices' if side == 'left'
                                               else 'left_surface_indices') or []))
@@ -121,8 +121,8 @@ def _side_audit(atoms, metadata, side, axis, mid):
     gaps = [top - proj[i] for i in chosen if i in proj]
     same_layer = bool(chosen) and all(g <= TOL_LAYER for g in gaps)
     add('same_surface_layer', same_layer,
-        '%s 三个原子与最远投影层的最大偏差 %.6f A(容差 %g); 该层共 %d 个 Au'
-        % (side, max(gaps, default=float('nan')), TOL_LAYER, len(layer)),
+        '%s 三个原子与最远投影层的最大偏差 %.6f A(容差 %g); 该层共 %d 个 %s'
+        % (side, max(gaps, default=float('nan')), TOL_LAYER, len(layer), element),
         {'layer_size': len(layer), 'layer_indices': [i + 1 for i in layer],
          'max_gap_A': max(gaps, default=None)})
 
@@ -143,7 +143,7 @@ def _side_audit(atoms, metadata, side, axis, mid):
         beyond = [i + 1 for i in cluster if proj[i] - top > TOL_LAYER]
         tip_inside = dot(sub(atoms[tip].coord(), atom_plane), away) < 0
         mol_out = [i + 1 for i, a in enumerate(atoms)
-                   if a.element != 'Au' and dot(sub(a.coord(), atom_plane), away) > 0]
+                   if a.element != element and dot(sub(a.coord(), atom_plane), away) > 0]
         add('plane_is_boundary', not beyond and not mol_out and tip_inside,
             '%s 平面外侧电极原子 %s / 平面外分子原子 %s; tip 在内侧=%s'
             % (side, beyond[:6], mol_out[:6], tip_inside),
@@ -221,7 +221,10 @@ def surface_audit(geometry_path, metadata, tcontrol=None) -> dict:
             raise ValueError('metadata 缺 %s, 无法定向输运轴' % k)
     axis, lpos, rpos = _axis(atoms, metadata)
     mid = tuple((lpos[i] + rpos[i]) / 2.0 for i in range(3))
-    sides = {s: _side_audit(atoms, metadata, s, axis, mid) for s in ('left', 'right')}
+    # 电极金属: append_au60 只在非 Au 时写该键, 缺省 Au(旧行为不变)。
+    element = str(metadata.get('electrode_element') or 'Au')
+    sides = {s: _side_audit(atoms, metadata, s, axis, mid, element=element)
+             for s in ('left', 'right')}
 
     checks = []
     both = [c for s in sides.values() for c in s['checks']]
@@ -271,7 +274,7 @@ def _plane_basis(normal):
 
 def render_figure(geometry_path, metadata, out_png, audit=None, title=None,
                   dpi=150) -> str:
-    """出 A2 可视核对图: 侧视全景 + 左右表面沿轴视图(带索引标注)。
+    """出连接核对图: 侧视全景 + 左右表面沿轴视图(带索引标注)。
 
     matplotlib 是可选依赖(不在 pyproject 必装里): 只在真正出图时导入,
     缺失时抛 RuntimeError 并提示 --no-figure —— 审计与签署不依赖绘图。
@@ -288,9 +291,10 @@ def render_figure(geometry_path, metadata, out_png, audit=None, title=None,
     audit = audit or surface_audit(geometry_path, metadata)
     axis, lpos, rpos = _axis(atoms, metadata)
     mid = tuple((lpos[i] + rpos[i]) / 2.0 for i in range(3))
+    element = str(metadata.get('electrode_element') or 'Au')
     # 侧视的第二个基: 取电极质心相对中点的垂直分量(分子的 V 形张开方向), 退化则退到 z 轴
-    au = [a.coord() for a in atoms if a.element == 'Au']
-    cent = tuple(sum(c[i] for c in au) / len(au) for i in range(3))
+    metal = [a.coord() for a in atoms if a.element == element]
+    cent = tuple(sum(c[i] for c in metal) / len(metal) for i in range(3))
     d = sub(cent, mid)
     v = sub(d, tuple(dot(d, axis) * axis[i] for i in range(3)))
     if norm(v) < 1e-6:
@@ -298,9 +302,12 @@ def render_figure(geometry_path, metadata, out_png, audit=None, title=None,
         v = sub(seed, tuple(dot(seed, axis) * axis[i] for i in range(3)))
     v = unit(v)
 
-    colors = {'Au': '#9a9a9a', 'C': '#333333', 'H': '#c8c8c8', 'S': '#e0b000',
+    colors = {'Au': '#9a9a9a', 'Ag': '#cfcfcf', 'Cu': '#b87333', 'Ni': '#6f9f6f',
+              'Pt': '#8f8fa8', 'Pd': '#a09aa8', 'Al': '#a8b8c8',
+              'C': '#333333', 'H': '#c8c8c8', 'S': '#e0b000',
               'N': '#2e6fd0', 'O': '#d04040', 'F': '#40a040'}
-    sizes = {'Au': 46, 'C': 30, 'H': 14, 'S': 40, 'N': 30, 'O': 30}
+    sizes = {'Au': 46, 'Ag': 46, 'Cu': 46, 'Ni': 46, 'Pt': 46, 'Pd': 46, 'Al': 46,
+             'C': 30, 'H': 14, 'S': 40, 'N': 30, 'O': 30}
     surf_color = {'left': '#d02020', 'right': '#1040d0'}
 
     fig = plt.figure(figsize=(15.0, 9.4), constrained_layout=True)
@@ -357,13 +364,13 @@ def render_figure(geometry_path, metadata, out_png, audit=None, title=None,
         linker = int(metadata['%s_linker_index' % side]) - 1
         away = unit(sub(atoms[tip].coord(), atoms[linker].coord()))
         e1, e2 = _plane_basis(away)
-        cluster = _cluster(atoms, metadata, side, axis, mid)
+        cluster = _cluster(atoms, metadata, side, axis, mid, element=element)
         layer = set(int(i) - 1 for i in meta_layer(audit, side))   # 审计里是 1-based
         chosen = [int(i) - 1 for i in metadata.get('%s_surface_indices' % side) or []]
         px = [dot(atoms[i].coord(), e1) for i in cluster]
         py = [dot(atoms[i].coord(), e2) for i in cluster]
         ax.scatter(px, py, s=26, c='#bbbbbb', edgecolors='#777777', linewidths=0.3,
-                   zorder=1, label='electrode Au')
+                   zorder=1, label='electrode %s' % element)
         if layer:
             lx = [dot(atoms[i].coord(), e1) for i in layer]
             ly = [dot(atoms[i].coord(), e2) for i in layer]
@@ -394,7 +401,7 @@ def render_figure(geometry_path, metadata, out_png, audit=None, title=None,
         ax.grid(alpha=0.25)
         ax.legend(loc='upper left', fontsize=8)
 
-    fig.suptitle(title or ('A2 surface-triple check: %s (n=%d, fingerprint %s)'
+    fig.suptitle(title or ('connection check: %s (n=%d, fingerprint %s)'
                            % (geometry_path.parent.name, audit['atom_count'],
                               audit['fingerprint'][:12])), fontsize=12)
     out_png = Path(out_png)
@@ -411,19 +418,19 @@ def meta_layer(audit, side):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        prog='python -m agenticdft.tools.junction.a2_viz',
-        description='A2 表面三元组: 几何审计 + 出图 + 人工签署登记(绑定几何指纹)')
+        prog='python -m smj._vendor.junction.a2_viz',
+        description='连接核对: 表面三元组几何审计 + 出图 + 记录登记(绑定几何指纹)')
     ap.add_argument('--stage', required=True,
                     help='au60_build/au10_build 阶段目录(含 geometry.in + electrode_metadata.json)')
-    ap.add_argument('--png', default=None, help='输出图(缺省 <stage>/a2_surface_viz.png)')
-    ap.add_argument('--json', default=None, help='输出审计 json(缺省 <stage>/a2_surface_audit.json)')
+    ap.add_argument('--png', default=None, help='输出图(缺省 <stage>/connection_check_viz.png)')
+    ap.add_argument('--json', default=None, help='输出审计 json(缺省 <stage>/connection_check_audit.json)')
     ap.add_argument('--tcontrol', default=None,
                     help='aitranss_te/tcontrol(缺省按 <stage>/../aitranss_te/tcontrol 找)')
     ap.add_argument('--no-figure', action='store_true', help='只审计, 不出图(无 matplotlib 时用)')
     ap.add_argument('--bind-fingerprint', action='store_true',
                     help='把 surface_fingerprint 写进 electrode_metadata.json(不写确认记录)')
     ap.add_argument('--sign-who', default=None,
-                    help='登记 A2 确认(who); 审计未通过时拒绝签署并返回 2')
+                    help='登记连接核对(who); 审计未通过时拒绝并返回 2')
     ap.add_argument('--sign-when', default=None, help='确认时间(缺省 UTC now)')
     args = ap.parse_args(argv)
 
@@ -431,20 +438,20 @@ def main(argv=None) -> int:
     geo = stage / 'geometry.in'
     mp = stage / 'electrode_metadata.json'
     if not geo.is_file():
-        print('[A2] 缺几何: %s' % geo)
+        print('[连接核对] 缺几何: %s' % geo)
         return 1
     if not mp.is_file():
-        print('[A2] 缺 metadata: %s' % mp)
+        print('[连接核对] 缺 metadata: %s' % mp)
         return 1
     metadata = json.loads(mp.read_text(encoding='utf-8'))
     tc = Path(args.tcontrol) if args.tcontrol else (stage.parent / 'aitranss_te' / 'tcontrol')
     audit = surface_audit(geo, metadata, tcontrol=tc if tc.is_file() else None)
 
-    out_json = Path(args.json) if args.json else stage / 'a2_surface_audit.json'
+    out_json = Path(args.json) if args.json else stage / 'connection_check_audit.json'
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding='utf-8')
 
-    print('[A2] %s | n=%d | fingerprint=%s' % (geo, audit['atom_count'],
+    print('[连接核对] %s | n=%d | fingerprint=%s' % (geo, audit['atom_count'],
                                               audit['fingerprint']))
     for side in ('left', 'right'):
         m = audit['sides'][side]['metrics']
@@ -458,34 +465,34 @@ def main(argv=None) -> int:
         if not c['ok']:
             print('  [FAIL] %s: %s' % (c['name'], c['detail']))
     if audit.get('tcontrol'):
-        print('[A2] tcontrol: %s -> %s' % (audit['tcontrol']['path'],
+        print('[连接核对] tcontrol: %s -> %s' % (audit['tcontrol']['path'],
                                            audit['tcontrol']['values']))
-    print('[A2] audit %s -> %s' % ('PASS' if audit['ok'] else 'FAIL', out_json))
+    print('[连接核对] audit %s -> %s' % ('PASS' if audit['ok'] else 'FAIL', out_json))
 
     if args.bind_fingerprint:
-        # 只绑指纹(证据层), 不写 a2_confirmation.json —— 确认记录只能由人工签署产生
+        # 只绑指纹(证据层), 不写 connection_check.json —— 记录由 approve_connection_check 写
         meta2 = attach_fingerprint(stage)
-        print('[A2] 已绑定几何指纹 -> %s (surface_fingerprint=%s, surface_indices=%s)'
+        print('[连接核对] 已绑定几何指纹 -> %s (surface_fingerprint=%s, surface_indices=%s)'
               % (mp, meta2['surface_fingerprint'][:12], meta2['surface_indices']))
 
-    png = Path(args.png) if args.png else stage / 'a2_surface_viz.png'
+    png = Path(args.png) if args.png else stage / 'connection_check_viz.png'
     if not args.no_figure:
         try:
             render_figure(geo, metadata, png, audit=audit,
-                          title='A2 surface-triple check: %s' % stage.parent.name)
-            print('[A2] figure -> %s' % png)
+                          title='connection check (surface triple): %s' % stage.parent.name)
+            print('[连接核对] figure -> %s' % png)
         except RuntimeError as exc:
             if args.sign_who:
-                print('[A2] 拒绝在无图情况下按"人工目视"签署: %s' % exc)
+                print('[连接核对] 拒绝在无图情况下登记: %s' % exc)
                 return 2
-            print('[A2] 未出图: %s' % exc)
+            print('[连接核对] 未出图: %s' % exc)
 
     if args.sign_who:
         if not audit['ok']:
-            print('[A2] 审计未通过, 拒绝签署(须先修正几何/索引或重新建结)')
+            print('[连接核对] 审计未通过, 拒绝登记(须先修正几何/索引或重新建结)')
             return 2
         rec = record_confirmation(stage, who=args.sign_who, when=args.sign_when)
-        print('[A2] 已登记人工确认 -> %s' % (stage / CONFIRM_FILE))
+        print('[连接核对] 已登记 -> %s' % (stage / CONFIRM_FILE))
         print('     who=%s when=%s fingerprint=%s' % (rec['who'], rec['when'],
                                                      rec['fingerprint']))
         print('     indices=%s' % rec['indices'])

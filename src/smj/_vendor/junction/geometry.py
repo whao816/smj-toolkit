@@ -139,7 +139,13 @@ def add_tip_au(
     distance: float,
     left_direction: tuple[float, float, float] | None = None,
     right_direction: tuple[float, float, float] | None = None,
+    element: str = "Au",
 ) -> list[Atom]:
+    """在两个锚定原子外侧各放一个电极金属 tip。
+
+    ``element`` 默认 Au（旧行为不变）；构建 Ag/Cu/… 电极时由调用方给出，
+    tip 元素必须与电极金属一致，否则后续 append_au60 找不到成对的 tip 原子。
+    """
     left = atoms[left_anchor - 1]
     right = atoms[right_anchor - 1]
     if left_direction is None:
@@ -148,36 +154,60 @@ def add_tip_au(
         right_direction = sub(right.coord(), left.coord())
     left_pos = add(left.coord(), scale(unit(left_direction), distance))
     right_pos = add(right.coord(), scale(unit(right_direction), distance))
-    return atoms + [Atom("Au", *left_pos), Atom("Au", *right_pos)]
+    return atoms + [Atom(element, *left_pos), Atom(element, *right_pos)]
 
 
 def strip_thiol_h(atoms: list[Atom], anchors: tuple[int, int] | None = None,
-                  sh_cutoff: float = 1.70) -> tuple[list[Atom], dict]:
-    """移除与 S 成键的 H(S-H < sh_cutoff A) —— 二硫醇锚定结的"中性优化、去质子建结"口径。
+                  sh_cutoff: float = 1.70,
+                  element: str | None = None) -> tuple[list[Atom], dict]:
+    """移除锚定原子上的 H(锚-H < sh_cutoff A) —— "中性优化、去质子建结"口径。
 
-    依据 docs/taskcard-smj-bdt-benchmark.md §1.4.1: Gaussian 优化中性 HS-R-SH, 建结时移除
-    两个 S-H 的 H(硫醇盐), 让两端 S 直接与 Au tip 成键; 保留 S-H 的硫醇结只作敏感性对照。
-    只做"移除"这一件事, 归因清楚: 是否该去由调用方(TaskCard.strip_thiol_h)显式决定;
-    化学歧义一律 fail-closed(不静默挑原子)。
+    历史路径(二硫醇盐, docs/taskcard-smj-bdt-benchmark.md §1.4.1): Gaussian 优化中性
+    HS-R-SH, 建结时移除两个 S-H 的 H, 让两端 S 直接与电极 tip 成键。本函数已推广到
+    任意锚定元素: 分子里没有 S 时(N/Se/…锚定), 由 ``anchors`` 显式给两个 1-based
+    索引(或由 ``element`` 指定元素), 只移除这两个锚原子上的 H。
 
-    anchors=(left, right) 为原始 1-based 索引时, 返回的 info 里给出重映射后的索引
+    只做"移除"这一件事, 归因清楚: 是否该去由调用方(``strip_thiol_h`` 配置)显式决定;
+    化学歧义一律 fail-closed(不静默挑原子) —— 每个锚原子必须恰好 0 或 1 个 H,
+    总共 0 或 2 个才移除; 例如 -NH2 带 2 个 H 会直接报错, 不会猜着只去一个。
+
+    ``anchors=(left, right)`` 为原始 1-based 索引时, 返回的 info 里给出重映射后的索引
 (去 H 后索引前移, 不静默沿用旧索引)。返回 (kept_atoms, info)。
     """
-    s_idx = [i for i, a in enumerate(atoms) if a.element == "S"]
-    if len(s_idx) != 2:
-        raise ValueError("strip_thiol_h 需恰好 2 个 S 锚原子, 实得 %d" % len(s_idx))
+    if anchors and anchors[0] and anchors[1]:
+        left_in, right_in = int(anchors[0]), int(anchors[1])
+        for label, idx in (("left", left_in), ("right", right_in)):
+            if not 1 <= idx <= len(atoms):
+                raise ValueError("strip_thiol_h: %s 锚定索引 %d 越界(分子 %d 原子)"
+                                 % (label, idx, len(atoms)))
+        anchor_idx = [left_in - 1, right_in - 1]
+    elif element is not None:
+        anchor_idx = [i for i, a in enumerate(atoms) if a.element == element]
+        if len(anchor_idx) != 2:
+            raise ValueError("strip_thiol_h 需恰好 2 个 %s 锚原子, 实得 %d"
+                             % (element, len(anchor_idx)))
+    else:
+        anchor_idx = [i for i, a in enumerate(atoms) if a.element == "S"]
+        if len(anchor_idx) != 2:
+            raise ValueError("strip_thiol_h 需恰好 2 个 S 锚原子, 实得 %d(无 S 分子请显式给出 anchors)"
+                             % len(anchor_idx))
+    anchor_element = atoms[anchor_idx[0]].element
+    hydrogen_anchors = [i + 1 for i in anchor_idx if atoms[i].element == "H"]
+    if hydrogen_anchors:
+        raise ValueError("strip_thiol_h: 锚定原子不能是 H(%r)" % hydrogen_anchors)
     removed: list[int] = []
-    for i, a in enumerate(atoms):
-        if a.element != "H":
-            continue
-        for j in s_idx:
-            if math.dist(a.coord(), atoms[j].coord()) < sh_cutoff:
-                removed.append(i)
-                break
+    for j in anchor_idx:
+        hs = [i for i, a in enumerate(atoms)
+              if a.element == "H" and math.dist(a.coord(), atoms[j].coord()) < sh_cutoff]
+        if len(hs) > 1:
+            raise ValueError("strip_thiol_h: %s 锚定原子(第 %d 个)带 %d 个 H, 去质子会改变"
+                             "化学态; 请显式建模或设 strip_thiol_h: false"
+                             % (anchor_element, j + 1, len(hs)))
+        removed.extend(hs)
     if len(removed) not in (0, 2):
-        raise ValueError("strip_thiol_h 期望移除 0 或 2 个 S-H 氢(S-H < %.2f A), "
-                         "实得 %d 个: %r" % (sh_cutoff, len(removed),
-                                            [i + 1 for i in removed]))
+        raise ValueError("strip_thiol_h 期望移除 0 或 2 个 %s-H 氢(%s-H < %.2f A), "
+                         "实得 %d 个: %r" % (anchor_element, anchor_element, sh_cutoff,
+                                            len(removed), [i + 1 for i in removed]))
     drop = set(removed)
     kept = [a for i, a in enumerate(atoms) if i not in drop]
     remap: dict[int, int] = {}
@@ -190,15 +220,14 @@ def strip_thiol_h(atoms: list[Atom], anchors: tuple[int, int] | None = None,
     info = {"removed": len(removed),
             "removed_h_indices": [i + 1 for i in removed],
             "sh_cutoff_A": sh_cutoff,
-            "sulfur_indices": [remap[i + 1] for i in s_idx],
+            "anchor_element": anchor_element,
+            "anchor_indices": [remap[i + 1] for i in anchor_idx],
             "atom_count": len(kept),
-            "route": "thiolate" if removed else "no_thiol_h"}
+            "route": ("thiolate" if anchor_element == "S" else "anchor_h_removed")
+                     if removed else "no_anchor_h"}
+    if anchor_element == "S":
+        info["sulfur_indices"] = [remap[i + 1] for i in anchor_idx]
     if anchors and anchors[0] and anchors[1]:
-        left_in, right_in = int(anchors[0]), int(anchors[1])
-        for label, idx in (("left", left_in), ("right", right_in)):
-            if idx not in remap:
-                raise ValueError("strip_thiol_h: %s 锚定索引 %d 越界(分子 %d 原子)"
-                                 % (label, idx, len(atoms)))
         info["left_anchor_in"] = left_in
         info["right_anchor_in"] = right_in
         info["left_anchor"] = remap[left_in]

@@ -235,12 +235,12 @@ def library_file_sha256(path: str | Path) -> str:
     return hashlib.sha256(Path(path).expanduser().read_bytes()).hexdigest()
 
 
-def validate_electrode_atoms(atoms: Iterable[Atom]) -> None:
-    """装配后的轻量校验：至少 2 个 Au 且分布不重叠（供测试/调用方复用）。"""
+def validate_electrode_atoms(atoms: Iterable[Atom], element: str = "Au") -> None:
+    """装配后的轻量校验：至少 2 个电极元素原子且分布不重叠（供测试/调用方复用）。"""
     items = list(atoms)
-    aus = [a for a in items if a.element == "Au"]
-    if len(aus) < 2:
-        raise SmjError("电极至少需要 2 个 Au，实得 %d" % len(aus))
+    metal = [a for a in items if a.element == element]
+    if len(metal) < 2:
+        raise SmjError("电极至少需要 2 个 %s，实得 %d" % (element, len(metal)))
 
 
 __all__ = [

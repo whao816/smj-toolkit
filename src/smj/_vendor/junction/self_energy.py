@@ -61,18 +61,22 @@ def make_self_energy(
     metadata: str | Path | None = None,
     sigma_near: float = DEFAULT_SIGMA_NEAR,
     sigma_far: float = DEFAULT_SIGMA_FAR,
+    element: str = "Au",
 ) -> dict:
     """由结 geometry.in 生成 self.energy.in。
 
     Args:
-        geometry_in: append_au60 之后的完整结 geometry.in (分子 + Au tip + 电极)。
+        geometry_in: append_au60 之后的完整结 geometry.in (分子 + tip + 电极)。
         output: 写出路径。
-        au_per_electrode: 每侧电极原子数 (含 tip), 默认 10 → 每侧 9 个电极 Au。
+        au_per_electrode: 每侧电极原子数 (含 tip), 默认 10 → 每侧 9 个电极原子。
         metadata: 可选 electrode_metadata.json。提供时以其中的
             left_tip_index/right_tip_index 划分左右 (推荐, 保证与 tcontrol
-            表面索引一致); 缺省时按"距最近非 Au 原子距离"猜测 (仅诊断用)。
+            表面索引一致); 缺省时按"距最近非电极原子距离"猜测 (仅诊断用)。
+            其中的 ``electrode_element`` 也会覆盖 ``element`` 参数。
         sigma_near: 距 tip 最近 3 个电极原子的虚部自能 (Ha), 默认 0.05。
         sigma_far: 其余 6 个电极原子的虚部自能 (Ha), 默认 0.10。
+        element: 电极金属元素(默认 Au, 旧行为逐字节不变); 构建 Ag/Cu/… 电极时
+            由调用方给出, 决定哪些原子算电极、哪些算分子。
 
     `sigma_near/sigma_far` 是 **模型常数**, 不是收敛参数: 生产默认值必须原样使用,
     否则结果不再与本仓冻结的 BDT/C4/2CN 基准可比 (molecular-junction-plan §5.2.6)。
@@ -81,32 +85,35 @@ def make_self_energy(
 
     Returns:
         摘要 dict: {output, atom_count, left_tip, right_tip,
-                    left_electrode, right_electrode}。
+                    left_electrode, right_electrode, electrode_element}。
 
     Raises:
-        ValueError: Au 原子不足 2 个, 或电极数 ≠ 2*(au_per_electrode-1),
+        ValueError: 电极原子不足 2 个, 或电极数 ≠ 2*(au_per_electrode-1),
             或左右划分失败。
     """
     geom = Path(geometry_in)
     out = Path(output)
     atoms = read_aims_geometry(geom)
-    au_indices = [i for i, a in enumerate(atoms) if a.element == "Au"]
+    data: dict | None = None
+    if metadata:
+        data = json.loads(Path(metadata).read_text(encoding="utf-8"))
+        # metadata 是电极类型的真值来源(append_au60 写入); 默认仍为 Au。
+        element = str(data.get("electrode_element") or element)
+    au_indices = [i for i, a in enumerate(atoms) if a.element == element]
     if len(au_indices) < 2:
-        raise ValueError(f"Expected at least two Au atoms, found {len(au_indices)}")
+        raise ValueError(f"Expected at least two {element} atoms, found {len(au_indices)}")
 
     def _d2(i: int, j: int) -> float:
         a, b = atoms[i], atoms[j]
         return (a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2
 
-    data: dict | None = None
-    if metadata:
-        data = json.loads(Path(metadata).read_text(encoding="utf-8"))
+    if data is not None:
         left_tip = int(data["left_tip_index"]) - 1
         right_tip = int(data["right_tip_index"]) - 1
     else:
-        # 诊断回退: tip = 与最近非 Au 原子距离最小的两个 Au (顺序不可靠)。
+        # 诊断回退: tip = 与最近非电极原子距离最小的两个电极原子 (顺序不可靠)。
         def _min_nonau(i: int) -> float:
-            return min(_d2(i, j) for j, b in enumerate(atoms) if b.element != "Au")
+            return min(_d2(i, j) for j, b in enumerate(atoms) if b.element != element)
 
         ranked = sorted(au_indices, key=_min_nonau)
         left_tip, right_tip = ranked[0], ranked[1]
@@ -114,7 +121,7 @@ def make_self_energy(
     electrode = [i for i in au_indices if i not in (left_tip, right_tip)]
     if len(electrode) != 2 * (au_per_electrode - 1):
         raise ValueError(
-            f"Expected {2 * (au_per_electrode - 1)} electrode Au, found {len(electrode)}"
+            f"Expected {2 * (au_per_electrode - 1)} electrode {element}, found {len(electrode)}"
         )
 
     # W0-2: 厚电极的贴装轴随分子倾斜, 远层原子可能离对侧 tip 更近 —— 按距离
@@ -153,7 +160,7 @@ def make_self_energy(
 
     lines = ["$self.energy: imaginary piece per atom"]
     for idx, a in enumerate(atoms, 1):
-        if idx - 1 in (left_tip, right_tip) or a.element != "Au":
+        if idx - 1 in (left_tip, right_tip) or a.element != element:
             region, sigma = "empty", 0.0
         elif idx - 1 in left_sig:
             region, sigma = "left", left_sig[idx - 1]
@@ -179,6 +186,7 @@ def make_self_energy(
         "right_electrode": [i + 1 for i in right],
         "sigma_near": sigma_near,
         "sigma_far": sigma_far,
+        "electrode_element": element,
     }
 
 

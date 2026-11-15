@@ -1,8 +1,9 @@
-"""aims_tip_relax：opt.xyz → 加两个 Au tip → FHI-aims BFGS 弛豫（远端阶段）。
+"""aims_tip_relax：opt.xyz → 加两个电极金属 tip（默认 Au）→ FHI-aims BFGS 弛豫（远端阶段）。
 
-prepare 只写 ``geometry.in``（初始几何 + 两枚 Au tip）、``control.in``、
+prepare 只写 ``geometry.in``（初始几何 + 两枚 tip）、``control.in``、
 ``sub_aims.sh``；BFGS 结束后 FHI-aims 自己写出 ``geometry.in.next_step``。
-collect 量**弛豫后**的 Au–S 键长，避免"目标 2.40 Å"停留在写输入那一刻。
+collect 量**弛豫后**的接触键长，避免"目标 2.40 Å"停留在写输入那一刻。
+tip 元素随 ``electrode.element``（Au/Ag/Cu/…）变化，默认 Au 时逐字节不变。
 """
 
 from __future__ import annotations
@@ -46,20 +47,28 @@ class AimsTipRelaxStage(Stage):
             anchor_au_s_target=electrode.anchor_au_s_target,
             pin_contact=electrode.pin_contact,
             vdw=vdw_mode(electrode.vdw),
+            tip_element=electrode.element,
         )
         summary = written["summary"]
+        element = electrode.element
+        anchor_element = summary.get("anchor_element") or electrode.left_anchor
         notes = [
-            "%d 原子（分子 %d + 2 Au tip），锚定原子 %d/%d（%s）"
-            % (natoms, natoms - 2, summary.get("left_anchor"), summary.get("right_anchor"),
-               electrode.left_anchor),
-            "tip 全原子弛豫（pin_contact=%s），Au–S 初始放置距离 %s Å，species 目录 %s"
-            % (summary.get("contact_pinned"), summary.get("placement_distance_A"), species),
+            "%d 原子（分子 %d + 2 %s tip），锚定原子 %d/%d（%s）"
+            % (natoms, natoms - 2, element, summary.get("left_anchor"),
+               summary.get("right_anchor"), electrode.left_anchor),
+            "tip 全原子弛豫（pin_contact=%s），%s–%s 初始放置距离 %s Å，species 目录 %s"
+            % (summary.get("contact_pinned"), element, anchor_element,
+               summary.get("placement_distance_A"), species),
             "prepare 只写输入与作业脚本，未提交任何远端命令",
         ]
         strip = summary.get("strip_thiol_h") or {}
         removed = int(strip.get("removed") or 0) if isinstance(strip, dict) else 0
         if removed:
-            notes.append("去质子：移除 %d 个 S–H 氢（原几何存档 opt_neutral.xyz）" % removed)
+            notes.append("去质子：移除 %d 个 %s–H 氢（原几何存档 opt_neutral.xyz）"
+                         % (removed, anchor_element))
+        elif electrode.strip_thiol_h is None and anchor_element != "S":
+            notes.append("锚定原子 %s 非 S：strip_thiol_h=null 默认保留 H"
+                         "（确需去质子请设 strip_thiol_h: true）" % anchor_element)
         ctx.log("aims_tip_relax: 已写 geometry.in（%d 原子）" % natoms)
         return self.prepared(
             ctx, stage_dir,
@@ -81,11 +90,14 @@ class AimsTipRelaxStage(Stage):
             geometry = ctx.require_stage_file(self.name, "geometry.in")
             source = "geometry.in"
         left, right = self._anchors(ctx, stage_dir, geometry)
+        summary = self._input_summary(stage_dir)
+        tip_element = summary.get("tip_element") or ctx.config.electrode.element
+        anchor_element = summary.get("anchor_element") or "S"
         try:
             distances = measure_au_s_bonds(geometry, left, right)
         except ValueError as exc:
-            raise StageError("aims_tip_relax 无法量弛豫后的 Au–S 键长: %s" % exc) from exc
-        summary = self._input_summary(stage_dir)
+            raise StageError("aims_tip_relax 无法量弛豫后的 %s–%s 键长: %s"
+                             % (tip_element, anchor_element, exc)) from exc
         target = summary.get("anchor_au_s_target")
         payload = {
             "source": source,
@@ -94,6 +106,8 @@ class AimsTipRelaxStage(Stage):
             "left_anchor": left,
             "right_anchor": right,
             "contact_pinned": summary.get("contact_pinned"),
+            "tip_element": tip_element,
+            "anchor_element": anchor_element,
         }
         notes: list[str] = []
         if target is not None:

@@ -16,6 +16,7 @@ from .._vendor.junction.geometry import read_aims_geometry
 from .._vendor.junction.inputs import make_aitranss_input
 from .._vendor.junction.landauer import read_te
 from .._vendor.junction.self_energy import make_self_energy
+from .._vendor.junction.tcontrol import parse_efermi
 from ..errors import StageBlocked, StageError
 from ..provenance import (
     parse_aitranss_versions,
@@ -56,12 +57,22 @@ class AitranssTeStage(Stage):
         natoms = self.count_aims_atoms(scf_geometry)
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)
-        ener, estep, eend = ctx.config.transport.resolved_window()
+        transport = ctx.config.transport
+        # eV 口径（默认 E_F ±2 eV）必须先拿到 SCF 的 efermi 才能平移到 Ha 绝对值；
+        # Hartree 口径是旧的绝对能量三元组，不需要换算。
+        efermi = None
+        if transport.energy_window_unit == "eV":
+            efermi = self._efermi(scf_dir)
+        try:
+            ener, estep, eend = transport.resolved_window(efermi)
+        except ValueError as exc:
+            raise StageBlocked(self.name, "能量窗无法换算成 Ha 绝对窗口: %s" % exc,
+                               [str(scf_dir)]) from exc
         nlayers = self._resolve_nlayers(ctx.config.electrode.nlayers, metadata)
         try:
             written = make_aitranss_input(
                 scf_dir, stage_dir, metadata=metadata, nlayers=nlayers,
-                ener=ener, estep=estep, eend=eend, env=env,
+                ener=ener, estep=estep, eend=eend, efermi=efermi, env=env,
             )
         except (FileNotFoundError, KeyError, ValueError) as exc:
             raise StageBlocked(
@@ -69,19 +80,35 @@ class AitranssTeStage(Stage):
                 [str(scf_dir)]) from exc
         values = written.get("values") or {}
         # self.energy.in：左右电极划分以 metadata 的 tip 索引为准（不得按距离猜）。
-        au_count = sum(1 for atom in read_aims_geometry(geometry) if atom.element == "Au")
-        if au_count < 4 or au_count % 2:
+        element = self._electrode_element(metadata, ctx)
+        metal_count = sum(
+            1 for atom in read_aims_geometry(geometry) if atom.element == element)
+        if metal_count < 4 or metal_count % 2:
             raise StageBlocked(
-                self.name, "结内 Au 数异常(需两侧对称且 >=4): %d" % au_count, [str(geometry)])
+                self.name, "结内 %s 数异常(需两侧对称且 >=4): %d" % (element, metal_count),
+                [str(geometry)])
         try:
             self_energy = make_self_energy(
                 geometry, stage_dir / "self.energy.in",
-                au_per_electrode=au_count // 2, metadata=metadata,
+                au_per_electrode=metal_count // 2, metadata=metadata, element=element,
             )
         except ValueError as exc:
             raise StageError("aitranss_te 无法生成 self.energy.in: %s" % exc) from exc
-        ctx.log("aitranss_te: 已写 tcontrol + self.energy.in（%d 原子，%d Au）"
-                % (natoms, au_count))
+        ctx.log("aitranss_te: 已写 tcontrol + self.energy.in（%d 原子，%d %s）"
+                % (natoms, metal_count, element))
+        if transport.energy_window_unit == "eV":
+            r_start, r_step, r_end = transport.relative_window()
+            window_note = (
+                "能量窗 E−E_F ∈ [%+.3f, %+.3f] eV（步长 %g eV，%d 点）；efermi=%s Ha "
+                "→ tcontrol ener=%s / estep=%s / eend=%s"
+                % (r_start, r_end, r_step,
+                   int(round((r_end - r_start) / r_step)) + 1, efermi,
+                   values.get("ener", ener), values.get("estep", estep),
+                   values.get("eend", eend)))
+        else:
+            window_note = ("能量窗（Ha 绝对）ener=%s / estep=%s / eend=%s"
+                           % (values.get("ener", ener), values.get("estep", estep),
+                              values.get("eend", eend)))
         return self.prepared(
             ctx, stage_dir,
             inputs=[Path(written["tcontrol"]), stage_dir / "self.energy.in",
@@ -89,15 +116,13 @@ class AitranssTeStage(Stage):
                     scf_geometry, Path(metadata)],
             resources=est_record(estimate),
             notes=[
-                "能量窗 ener=%s / estep=%s / eend=%s，nlayers=%d"
-                % (values.get("ener", ener), values.get("estep", estep),
-                   values.get("eend", eend), values.get("nlayers", nlayers)),
+                "%s，nlayers=%d" % (window_note, values.get("nlayers", nlayers)),
                 "表面索引 l=%s r=%s（来自 %s）"
                 % ([values.get("lsurc"), values.get("lsurx"), values.get("lsury")],
                    [values.get("rsurc"), values.get("rsurx"), values.get("rsury")],
                    Path(metadata).name),
-                "self.energy.in：每侧 %d 个电极 Au（含 tip，tip 记 empty）"
-                % (au_count // 2),
+                "self.energy.in：每侧 %d 个电极 %s（含 tip，tip 记 empty）"
+                % (metal_count // 2, element),
                 "prepare 只写输入与作业脚本，未提交任何远端命令",
             ],
             commands=submit_command(self.script),
@@ -199,6 +224,37 @@ class AitranssTeStage(Stage):
             "self.energy.in 需要左右 tip 索引）",
             [str(candidate)],
         )
+
+    @classmethod
+    def _efermi(cls, scf_dir: Path) -> float:
+        """SCF 的费米能级（Ha）：eV 相对口径换算成 Ha 绝对窗口的锚点。
+
+        缺了 fail-closed，不用占位值——否则整个透射窗会平移到错误位置。
+        """
+        try:
+            return parse_efermi([scf_dir / "aims.out", scf_dir / "scf.out",
+                                 scf_dir / "out"])
+        except ValueError as exc:
+            raise StageBlocked(
+                cls.name,
+                "缺 efermi：transport.energy_window 为 eV 相对口径（默认 E_F ±2 eV），"
+                "必须用 SCF 的费米能级换算成 Ha 绝对窗口（aims_scf/aims.out 未收敛或"
+                "未写费米能级？）",
+                [str(scf_dir)]) from exc
+
+    @staticmethod
+    def _electrode_element(metadata: Path, ctx) -> str:
+        """电极金属：以 electrode_metadata.json 的 electrode_element 为准，缺省 Au。
+
+        旧 run 的 metadata 没有该键（0.2.0 之前只支持 Au），按 "Au" 处理；
+        配置里的 electrode.element 只作为读不到 metadata 时的兜底。
+        """
+        try:
+            data = json.loads(Path(metadata).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        element = data.get("electrode_element") if isinstance(data, dict) else None
+        return str(element or ctx.config.electrode.element)
 
     @staticmethod
     def _resolve_nlayers(configured: int | None, metadata: Path) -> int:

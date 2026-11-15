@@ -1,22 +1,27 @@
-"""结构 / 结果复核门（review）：A2 确认、可接受偏差与 review.json。
+"""结构 / 结果复核门（review）：连接核对、可接受偏差与 review.json。
 
 复核分两层，**不混在一起**：
 
 1. **结构几何** —— 有 ``electrode_build/geometry.in`` 时调 vendored
    ``validate_junction_geometry``（表面索引/输运轴/接触重叠/Au-S 锚定），
    error 级问题直接阻断；
-2. **A2 人工确认** —— 读 ``electrode_build/a2_confirmation.json``（vendored
-   ``fingerprint.record_confirmation`` 的格式）与当前几何指纹：
+2. **连接核对（connection check；2026-11-15 前叫 A2 人工确认）** —— 读
+   ``electrode_build/connection_check.json``（旧 run 读 ``a2_confirmation.json``，
+   vendored ``fingerprint.record_confirmation`` 的格式）与当前几何指纹：
 
-   - ``ReviewConfig.require_a2=True`` 且**无 A2 数据** -> ``blocked``；
+   - ``ReviewConfig.connection_check=True`` 且**无核对记录** -> ``blocked``；
    - 确认有效（指纹一致）-> 通过；
    - 指纹失效（几何已变）时比较**表面索引偏差**
      ``1 - 交集 / 较大集合``（0..1，未匹配表面原子占比）：
-     ``<= a2_deviation`` 视为可接受偏差；
+     ``<= connection_check_deviation`` 视为可接受偏差；
      否则若显式给 ``accept_deviation`` 且 ``<= accept_deviation``，记为
      ``warning`` 并 ``accepted=True``（报告须标注）；再超 -> ``blocked``。
-   - ``require_a2=False`` 时 A2 只是加分证据：缺失/失效记 info/warning，
+   - ``connection_check=False`` 时连接核对只是加分证据：缺失/失效记 info/warning，
      不阻断（但结构几何 error 仍然阻断）。
+
+``ReviewConfig.auto_connection_check``（默认 True）让 ``smj review`` 在复核前
+自动登记核对记录（审计通过才签；出图不可用时退化为只记指纹），
+``runner`` 也在 electrode_build 采集后自动登记，所以默认路径不需要手工签署。
 
 ``review.json`` 是派生结果，默认覆盖（``force=False`` 才跳过）；与
 ``report.py`` 不覆盖外部 run 文件的策略不同，原因写在函数 docstring。
@@ -29,7 +34,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -40,13 +45,26 @@ from .state import RunLayout, normalize_stage, now_iso
 
 REVIEW_SCHEMA = "smj.review.v1"
 
-#: A2 相关文件（与 vendored fingerprint/a2_viz 同名）。
-CONFIRM_FILE = "a2_confirmation.json"
-AUDIT_FILE = "a2_surface_audit.json"
+#: 连接核对相关文件（与 vendored fingerprint/a2_viz 同名；2026-11-15 更名）。
+CONFIRM_FILE = "connection_check.json"
+AUDIT_FILE = "connection_check_audit.json"
+#: 更名前的兼容名（旧 run 目录只读）：先「表面核对」时代，再更早的 A2 时代。
+LEGACY_CONFIRM_FILES = ("surface_check.json", "a2_confirmation.json")
+LEGACY_AUDIT_FILES = ("surface_check_audit.json", "a2_surface_audit.json")
+LEGACY_CONFIRM_FILE = LEGACY_CONFIRM_FILES[-1]
+LEGACY_AUDIT_FILE = LEGACY_AUDIT_FILES[-1]
 METADATA_FILE = "electrode_metadata.json"
 GEOMETRY_FILE = "geometry.in"
 
 SIDES = ("left", "right")
+
+
+def _first_existing(directory: Path, names: tuple[str, ...]) -> Path | None:
+    for name in names:
+        candidate = directory / name
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -56,7 +74,7 @@ SIDES = ("left", "right")
 class ReviewResult(Mapping):
     status: str = "passed"
     issues: list[dict] = field(default_factory=list)
-    a2: dict | None = None
+    connection_check: dict | None = None
     structure: dict | None = None
     run_id: str | None = None
     accepted: bool = False
@@ -90,15 +108,16 @@ class ReviewResult(Mapping):
     def finalize(self) -> "ReviewResult":
         """汇总状态：error 必阻断；结构几何的**方向性告警**只记录、不降级。
 
-        A2 门的 warning（缺确认但未要求、显式接受偏差、审计异常）才把整体状态
-        降为 ``warning``；``geometry_missing`` 这类"复核无法执行"也算 warning。
+        连接核对门的 warning（缺记录但未要求、显式接受偏差、审计异常）才把整体
+        状态降为 ``warning``；``geometry_missing`` 这类"复核无法执行"也算 warning。
         """
         if any(i["severity"] == "error" for i in self.issues):
             self.status = "blocked"
             return self
         gate_warning = any(
             i["severity"] == "warning" and (
-                str(i.get("code", "")).startswith("a2_")
+                str(i.get("code", "")).startswith("connection_check_")
+                or str(i.get("code", "")).startswith("a2_")
                 or str(i.get("code", "")).startswith("provenance_")
                 or i.get("code") in ("geometry_missing", "geometry_metadata_missing",
                                      "geometry_metadata_unreadable", "geometry_check_failed"))
@@ -107,6 +126,8 @@ class ReviewResult(Mapping):
         return self
 
     def to_dict(self, config: ReviewConfig | None = None) -> dict:
+        if config is None:
+            config = getattr(self, "config_used", None)
         return {
             "schema": REVIEW_SCHEMA,
             "generated_at": now_iso(),
@@ -115,14 +136,15 @@ class ReviewResult(Mapping):
             "ok": self.ok,
             "accepted": self.accepted,
             "config": {
-                "require_a2": getattr(config, "require_a2", None),
-                "a2_deviation": getattr(config, "a2_deviation", None),
+                "connection_check": getattr(config, "connection_check", None),
+                "connection_check_deviation": getattr(config, "connection_check_deviation", None),
+                "auto_connection_check": getattr(config, "auto_connection_check", None),
                 "accept_deviation": getattr(config, "accept_deviation", None),
             },
             "issues": list(self.issues),
             "errors": self.errors,
             "warnings": self.warnings,
-            "a2": self.a2,
+            "connection_check": self.connection_check,
             "structure": self.structure,
             "review_path": self.review_path,
             "written": self.written,
@@ -161,10 +183,15 @@ def _run_dir_of(target: Any) -> tuple[Path, Any]:
     return Path(target), None
 
 
-def find_build_dir(run_dir: str | Path) -> Path | None:
-    """定位 A2 确认的对象：``electrode_build``（旧名 ``au60_build`` / ``auN_build``）。
+def _has_confirmation(path: Path) -> bool:
+    """该目录是否有连接核对记录（新名或更名前的旧名）。"""
+    return _first_existing(path, (CONFIRM_FILE,) + LEGACY_CONFIRM_FILES) is not None
 
-    2026-11-13 起 ``au_relax`` 已从主链路移除，A2 的对象就是贴装后的建结几何；
+
+def find_build_dir(run_dir: str | Path) -> Path | None:
+    """定位连接核对的对象：``electrode_build``（旧名 ``au60_build`` / ``auN_build``）。
+
+    2026-11-13 起 ``au_relax`` 已从主链路移除，核对的对象就是贴装后的建结几何；
     旧 run（只有 ``au_relax`` 而没有 build 目录）作为兼容回退。
     """
     root = Path(run_dir)
@@ -173,10 +200,9 @@ def find_build_dir(run_dir: str | Path) -> Path | None:
     preferred = RunLayout(root).stage_dir("electrode_build")
     legacy = root / "au_relax"
     if preferred.is_dir():
-        # 旧 run 的 A2 签在 au_relax 几何上；若新口径的 electrode_build 还没有签署，
-        # 仍以旧签署对象为准，避免显式兼容旧 run 时误报 a2_missing。
-        if ((legacy / "a2_confirmation.json").is_file()
-                and not (preferred / "a2_confirmation.json").is_file()):
+        # 旧 run 的核对记录签在 au_relax 几何上；若新口径的 electrode_build 还没有记录，
+        # 仍以旧对象为准，避免显式兼容旧 run 时误报 connection_check_missing。
+        if _has_confirmation(legacy) and not _has_confirmation(preferred):
             return legacy
         return preferred
     for child in sorted(root.iterdir()):
@@ -271,8 +297,9 @@ def _structure_review(result: ReviewResult, build_dir: Path | None,
         return
     checks = []
     for check in verdict.get("checks", []):
-        # A2 由本模块单独复核（避免同一事实两条结论）。
-        if check.get("name") == "junction_a2_confirmation":
+        # 连接核对由本模块单独复核（避免同一事实两条结论）。
+        if check.get("name") in ("junction_connection_check", "junction_surface_check",
+                                 "junction_a2_confirmation"):
             continue
         checks.append(check)
         if check.get("passed"):
@@ -293,17 +320,21 @@ def _structure_review(result: ReviewResult, build_dir: Path | None,
 
 
 # --------------------------------------------------------------------------- #
-# A2 复核
+# 连接核对（connection check；2026-11-15 前叫 A2 人工确认）
 # --------------------------------------------------------------------------- #
-def _a2_state(build_dir: Path | None) -> dict:
+def _connection_check_state(build_dir: Path | None) -> dict:
     state: dict[str, Any] = {"present": False, "valid": False, "confirmation": None,
                              "audit": None, "recorded": None, "current": None,
                              "deviation": None, "reason": None}
     if build_dir is None:
         state["reason"] = "无 electrode_build 阶段目录"
         return state
-    confirm_path = build_dir / CONFIRM_FILE
-    audit_path = build_dir / AUDIT_FILE
+    confirm_path = _first_existing(build_dir, (CONFIRM_FILE,) + LEGACY_CONFIRM_FILES)
+    if confirm_path is None:
+        confirm_path = build_dir / CONFIRM_FILE
+    audit_path = _first_existing(build_dir, (AUDIT_FILE,) + LEGACY_AUDIT_FILES)
+    if audit_path is None:
+        audit_path = build_dir / AUDIT_FILE
     metadata, _meta_error = _load_json(build_dir / METADATA_FILE)
     state["current_indices"] = _indices(metadata) if metadata else None
     if audit_path.is_file():
@@ -316,13 +347,13 @@ def _a2_state(build_dir: Path | None) -> dict:
                           "ok": bool((audit or {}).get("ok")),
                           "checks": (audit or {}).get("checks")}
     if not confirm_path.is_file():
-        state["reason"] = "尚无 A2 确认记录（%s）" % confirm_path
+        state["reason"] = "尚无连接核对记录（%s）" % confirm_path
         return state
     state["present"] = True
     confirmation, error = _load_json(confirm_path)
     state["confirmation"] = str(confirm_path)
     if error or confirmation is None:
-        state["reason"] = "A2 确认记录不可解析: %s" % (error or "非对象")
+        state["reason"] = "连接核对记录不可解析: %s" % (error or "非对象")
         return state
     state["recorded"] = {key: confirmation.get(key) for key in
                          ("fingerprint", "who", "when", "indices")}
@@ -332,7 +363,7 @@ def _a2_state(build_dir: Path | None) -> dict:
         from smj._vendor.junction.fingerprint import check_confirmation  # lazy: vendored
         checked = check_confirmation(build_dir)
     except Exception as exc:  # noqa: BLE001
-        state["reason"] = "A2 指纹检查失败: %s" % exc
+        state["reason"] = "连接核对指纹检查失败: %s" % exc
         return state
     state["valid"] = bool(checked.get("valid"))
     state["present"] = bool(checked.get("present"))
@@ -342,58 +373,99 @@ def _a2_state(build_dir: Path | None) -> dict:
     return state
 
 
-def _a2_review(result: ReviewResult, build_dir: Path | None,
-               config: ReviewConfig) -> None:
-    a2 = _a2_state(build_dir)
-    result.a2 = a2
-    if not a2["present"]:
-        if config.require_a2:
-            result.add("error", "a2_missing",
-                       "ReviewConfig.require_a2=True，但缺 A2 人工确认记录（%s）："
-                       "须确认表面原子并把指纹写入 %s 后重新复核"
-                       % (CONFIRM_FILE, CONFIRM_FILE))
-        else:
-            result.add("info", "a2_not_required",
-                       "A2 未要求（ReviewConfig.require_a2=False）；%s"
-                       % (a2.get("reason") or "无确认记录"))
+def _auto_connection_check(result: ReviewResult, run_dir: Path,
+                        build_dir: Path | None, config: ReviewConfig,
+                        *, force: bool = False) -> None:
+    """默认自动登记连接核对（``ReviewConfig.auto_connection_check``）。
+
+    审计通过才签；无 matplotlib 时退化为"只记指纹不出图"（图只是证据留存，
+    自动模式本来就没有人工看图这一步）。拒绝时只记 warning —— 若闸门开着，
+    随后的 connection-check 复核会把它升级为 error，保持 fail-closed。
+    """
+    if build_dir is None:
         return
-    if a2.get("audit") and not a2["audit"]["ok"]:
-        severity = "error" if config.require_a2 else "warning"
-        result.add(severity, "a2_audit_failed",
-                   "A2 表面审计未通过（%s）：表面三元组/与 tcontrol 一致性有问题"
-                   % a2["audit"]["path"])
-    if a2["valid"]:
-        result.add("info", "a2_confirmed",
-                   "A2 确认有效（指纹 %s）"
-                   % str(a2.get("fingerprint_current") or "")[:12])
+    current = _connection_check_state(build_dir)
+    if current["valid"] and not force:
+        return
+    try:
+        from .a2 import approve_connection_check
+    except Exception as exc:  # noqa: BLE001
+        result.add("warning", "connection_check_auto_failed",
+                   "自动连接核对不可用: %s" % exc)
+        return
+    try:
+        approval = approve_connection_check(run_dir, who="auto", stage=build_dir,
+                                         force=force)
+        if not approval.ok and approval.code == "figure_failed":
+            approval = approve_connection_check(run_dir, who="auto", stage=build_dir,
+                                             no_figure=True, force=force)
+    except Exception as exc:  # noqa: BLE001
+        result.add("warning", "connection_check_auto_failed",
+                   "自动连接核对失败: %s" % exc)
+        return
+    if approval.ok:
+        result.add("info", "connection_check_auto_signed",
+                   "已自动登记连接核对（指纹 %s）"
+                   % str(approval.fingerprint or "")[:12])
+    else:
+        result.add("warning", "connection_check_auto_refused",
+                   "自动连接核对未登记（%s）：%s" % (approval.code, approval.reason),
+                   code_detail=approval.code)
+
+
+def _connection_check_review(result: ReviewResult, build_dir: Path | None,
+                          config: ReviewConfig) -> None:
+    check = _connection_check_state(build_dir)
+    result.connection_check = check
+    if not check["present"]:
+        if config.connection_check:
+            result.add("error", "connection_check_missing",
+                       "报错：缺连接核对记录（%s）；connection_check=true 要求先核对表面原子"
+                       "（默认自动登记，可重跑 review 或设 review.auto_connection_check: true）"
+                       % CONFIRM_FILE)
+        else:
+            result.add("info", "connection_check_disabled",
+                       "连接核对未作为闸门（review.connection_check=false）；%s"
+                       % (check.get("reason") or "无核对记录"))
+        return
+    if check.get("audit") and not check["audit"]["ok"]:
+        severity = "error" if config.connection_check else "warning"
+        result.add(severity, "connection_check_audit_failed",
+                   "表面审计未通过（%s）：表面三元组/与 tcontrol 一致性有问题"
+                   % check["audit"]["path"])
+    if check["valid"]:
+        result.add("info", "connection_check_confirmed",
+                   "连接核对有效（指纹 %s）"
+                   % str(check.get("fingerprint_current") or "")[:12])
         return
 
-    deviation = a2.get("deviation")
-    tolerance = float(config.a2_deviation)
+    deviation = check.get("deviation")
+    tolerance = float(config.connection_check_deviation)
     accept = (float(config.accept_deviation)
               if config.accept_deviation is not None else None)
     if deviation is None:
-        severity = "error" if config.require_a2 else "warning"
-        result.add(severity, "a2_stale_unquantified",
-                   "A2 确认已失效，且表面索引缺失、无法量化偏差：%s"
-                   % (a2.get("reason") or "指纹不符"))
+        severity = "error" if config.connection_check else "warning"
+        result.add(severity, "connection_check_stale_unquantified",
+                   "连接核对记录已失效，且表面索引缺失、无法量化偏差：%s"
+                   % (check.get("reason") or "指纹不符"))
         return
     if deviation <= tolerance:
-        result.add("info", "a2_deviation_within",
-                   "A2 指纹不符，但表面索引偏差 %.3f ≤ a2_deviation %.3f，按可接受偏差继续"
-                   % (deviation, tolerance), deviation=deviation)
+        result.add("info", "connection_check_deviation_within",
+                   "连接核对指纹不符，但表面索引偏差 %.3f ≤ connection_check_deviation %.3f，"
+                   "按可接受偏差继续" % (deviation, tolerance), deviation=deviation)
         return
     if accept is not None and deviation <= accept:
         result.accepted = True
-        result.add("warning", "a2_deviation_accepted",
-                   "表面索引偏差 %.3f 超过 a2_deviation %.3f，但 ≤ accept_deviation %.3f："
-                   "已显式接受（报告必须标注这是人工豁免，不是 A2 有效）"
-                   % (deviation, tolerance, accept), deviation=deviation)
+        result.add("warning", "connection_check_deviation_accepted",
+                   "表面索引偏差 %.3f 超过 connection_check_deviation %.3f，但 ≤ "
+                   "accept_deviation %.3f：已显式接受（报告必须标注这是人工豁免，"
+                   "不是连接核对有效）" % (deviation, tolerance, accept),
+                   deviation=deviation)
         return
-    severity = "error" if config.require_a2 else "warning"
-    result.add(severity, "a2_deviation_exceeded",
-               "表面索引偏差 %.3f > a2_deviation %.3f（accept_deviation=%s）——"
-               " 几何/表面索引已变，须按新几何重新做 A2 确认"
+    severity = "error" if config.connection_check else "warning"
+    result.add(severity, "connection_check_deviation_exceeded",
+               "表面索引偏差 %.3f > connection_check_deviation %.3f（accept_deviation=%s）——"
+               " 几何/表面索引已变，须按新几何重新核对"
                % (deviation, tolerance, "未设" if accept is None else "%.3f" % accept),
                deviation=deviation)
 
@@ -401,6 +473,37 @@ def _a2_review(result: ReviewResult, build_dir: Path | None,
 # --------------------------------------------------------------------------- #
 # 运行参数溯源（P0-1）
 # --------------------------------------------------------------------------- #
+_NOT_FAMILY_ONLY = object()
+
+
+def _family_drift(config: Any, spec: Mapping[str, Any]) -> Any:
+    """协议漂移是否只来自 ``molecule.family``；是则返回 ``(run 时, 当前)``。
+
+    ``family`` 只是判据标定标注（决定哪些判据适用），不进入任何物理计算，
+    事后补登记（如把 ``null`` 改成 ``BPY``）不应把整条 run 判成"参数变了"。
+    验证方式：把 run_spec 快照里的 family 塞回当前配置重算协议指纹，若与
+    run 开始时记录的一致，就说明除 family 外的物理参数逐个相同。
+
+    任何异常（配置不是 dataclass、快照缺 config、哈希算不出）都返回哨兵，
+    按"不是只有 family 漂移"处理 —— fail-closed。
+    """
+    run_family: Any = None
+    cfg = spec.get("config")
+    if isinstance(cfg, Mapping):
+        molecule = cfg.get("molecule")
+        if isinstance(molecule, Mapping):
+            run_family = molecule.get("family")
+    stored = spec.get("protocol_sha256")
+    try:
+        patched = replace(
+            config, molecule=replace(config.molecule, family=run_family))
+        if stored and protocol_sha256(patched) == stored:
+            return run_family, getattr(config.molecule, "family", None)
+    except Exception:  # noqa: BLE001 - 非 dataclass / 缺字段一律 fail-closed
+        return _NOT_FAMILY_ONLY
+    return _NOT_FAMILY_ONLY
+
+
 def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     """检查 ``run_spec.json``：缺失/重建只告警，协议漂移是阻断项。"""
     spec = load_run_spec(run_dir)
@@ -422,12 +525,25 @@ def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None
                        "无法计算当前配置的协议指纹: %s" % exc)
             return
         if stored and current != stored:
-            result.add(
-                "error", "provenance_drift",
-                "run_spec.protocol_sha256=%s，当前配置=%s；配置在 run 开始后发生"
-                "物理相关变化，本次结果不能按原参数解读（需重建 run 或显式豁免）"
-                % (str(stored)[:12], current[:12]),
-                run_spec_protocol=stored, current_protocol=current)
+            drift = _family_drift(config, spec)
+            if drift is not _NOT_FAMILY_ONLY:
+                family_run, family_now = drift
+                result.add(
+                    "warning", "provenance_family_relabel",
+                    "run_spec.protocol_sha256=%s，当前配置=%s；两者差异仅在 "
+                    "molecule.family（run 时 %r → 当前 %r）。family 只决定判据"
+                    "适用族、不改变物理协议（几何/电极/输运参数一致），本次复核"
+                    "按当前标注重算判据"
+                    % (str(stored)[:12], current[:12], family_run, family_now),
+                    run_spec_protocol=stored, current_protocol=current,
+                    family_run=family_run, family_current=family_now)
+            else:
+                result.add(
+                    "error", "provenance_drift",
+                    "run_spec.protocol_sha256=%s，当前配置=%s；配置在 run 开始后发生"
+                    "物理相关变化，本次结果不能按原参数解读（需重建 run 或显式豁免）"
+                    % (str(stored)[:12], current[:12]),
+                    run_spec_protocol=stored, current_protocol=current)
 
 
 # --------------------------------------------------------------------------- #
@@ -474,8 +590,9 @@ def review_run(target: Any, *, force: bool = True,
             review_cfg = review_config
     review_cfg = review_cfg or ReviewConfig()
     if accept_deviation is not None:
-        review_cfg = ReviewConfig(require_a2=review_cfg.require_a2,
-                                  a2_deviation=review_cfg.a2_deviation,
+        review_cfg = ReviewConfig(connection_check=review_cfg.connection_check,
+                                  connection_check_deviation=review_cfg.connection_check_deviation,
+                                  auto_connection_check=review_cfg.auto_connection_check,
                                   accept_deviation=float(accept_deviation))
 
     result = ReviewResult(run_id=getattr(cfg, "name", None) or run_dir.name)
@@ -498,10 +615,14 @@ def review_run(target: Any, *, force: bool = True,
                     build_dir = fallback
     if build_dir is None:
         build_dir = find_build_dir(run_dir)
+    if review_cfg.auto_connection_check:
+        _auto_connection_check(result, run_dir, build_dir, review_cfg)
     _structure_review(result, build_dir, geometry=geometry, metadata=metadata)
-    _a2_review(result, build_dir, review_cfg)
+    _connection_check_review(result, build_dir, review_cfg)
     _provenance_review(result, run_dir, cfg)
     result.finalize()
+    # 供 Mapping 接口（CLI 的 _as_mapping 走 dict(result)）拿到本次实际配置。
+    result.config_used = review_cfg
 
     target_path = Path(output) if output else (run_dir / "review.json")
     result.review_path = str(target_path)

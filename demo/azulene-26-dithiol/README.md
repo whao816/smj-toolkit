@@ -16,8 +16,10 @@
 | 电子结构 | FHI-aims PBE，`KS_method serial`（aitranss 只认 serial 的 `omat.aims`） |
 | 输运窗 | `[-0.2075, 0.0002, -0.1695]` **Ha 绝对能量**（E_F≈−0.18845 Ha，即 E−E_F ∈ [−0.52, +0.52] eV，193 点） |
 
-> 注：`transport.energy_window` 的单位是 Hartree 绝对能量，不是 eV；这是本次 demo 踩到
-> 的第一个坑（见 §5）。
+> 注（历史）：本 demo 跑在 0.2.0 时代，当时 `transport.energy_window` 是 Hartree 绝对
+> 能量，不是 eV——这是本次 demo 踩到的第一个坑（见 §5）。2026-11-15 起默认口径改为
+> **eV 且相对 E_F**（`[-2.0, 0.005, 2.0]` = E_F ±2 eV）；上面这组 Ha 三元组仍可读，
+> 新写配置请用 eV 相对口径。
 
 ## 2. 复现步骤
 
@@ -31,7 +33,8 @@
 # 3) 库电极建结（92 原子）
 ../../.venv/Scripts/smj.cmd stage au60_build --run -c smj.yaml
 
-# 4) A2 表面确认（审计 + 出图；审计不过/无图会拒绝，退出码 2）
+# 4) 连接核对（原 A2；审计 + 出图；审计不过/无图会拒绝，退出码 2）
+#    0.2.1 起默认由管线自动登记（auto_connection_check=true），这里保留手动签署路径
 ../../.venv/Scripts/smj.cmd review --approve --who "<签署人>" -c smj.yaml
 
 # 5) 背层固定弛豫（Au 全冻结，只让分子弛豫；71 min）
@@ -106,7 +109,9 @@ aims_scf 会 OOM，降到 4 rank 才通过。
 5. **`energy_window` 单位文档错误**：README/config 模板写 "(eV)"，但 `tcontrol` 直接写
    `$ener/$estep/$eend`，aitranss 按 **Hartree** 解释。按 eV 填 ±1.0 会得到 ±27 eV 的
    扫描，E_F 处只有 1 个采样点、Landauer 积分完全失真（第一次分析 L0=7.4e-4、
-   S=−594 µV/K）。已改文档并给出 Ha 示例。
+   S=−594 µV/K）。已改文档并给出 Ha 示例。2026-11-15 起 `energy_window` 默认就是
+   eV 相对 E_F（`[-2.0, 0.005, 2.0]`），由 `aitranss_te` 按 efermi 自动换算成 Ha
+   绝对值——这个坑从此不会再踩。
 6. **判据族无法从 CLI 指定**：criteria 里已登记 `AZ = Au-(2,6-azulenedithiol)-Au`，
    但没人把 system 传进去，导致 BDT 绿带给薁作闸门、判 failed。新增
    `molecule.family: AZ`，判定变为"不适用"。（本 commit）

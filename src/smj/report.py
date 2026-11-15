@@ -268,6 +268,8 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
         geometry = build / "geometry.in"
         inputs["electrode"] = {
             "stage": "electrode_build",
+            "source": meta.get("electrode_source") or "builtin",
+            "element": meta.get("electrode_element") or "Au",
             "geometry": str(geometry) if geometry.is_file() else None,
             "atom_count": _atom_count(geometry) if geometry.is_file() else None,
             "au_per_electrode": meta.get("au_per_electrode"),
@@ -616,7 +618,9 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     electrode = inputs.get("electrode") or {}
     lines.append("| 建结阶段 | %s |" % _cell(electrode.get("stage")))
     lines.append("| 结原子数 | %s |" % _cell(electrode.get("atom_count")))
-    lines.append("| 每侧电极 Au | %s |" % _cell(electrode.get("au_per_electrode")))
+    lines.append("| 电极构建方式 | %s |" % _cell(electrode.get("source")))
+    lines.append("| 电极元素 | %s |" % _cell(electrode.get("element")))
+    lines.append("| 每侧电极原子数 | %s |" % _cell(electrode.get("au_per_electrode")))
     lines.append("| 输运温度 (K) | %s |" % _cell(inputs.get("temperature_K")))
     te = inputs.get("te") or {}
     lines.append("| TE.dat | %s |" % _cell(te.get("source")))

@@ -207,9 +207,17 @@ def _protocol_config(config: Any) -> dict[str, Any]:
     electrode["library_file_sha256"] = _electrode_library_info(config).get("sha256")
 
     transport = _jsonable(config.transport)
+    # 口径标记：eV 相对口径把"用户写的三元组"入协议（不随 SCF 的 efermi 变）；
+    # 旧 Hartree 绝对口径保持 0.2.x 的哈希形状（不新增键），避免历史 run_spec
+    # 仅仅因为新增了 unit 字段就集体判为漂移。
+    unit = transport.pop("energy_window_unit", "eV")
     try:
-        transport["energy_window"] = list(config.transport.resolved_window())
-    except Exception:  # noqa: BLE001
+        if unit == "eV":
+            transport["energy_window"] = list(config.transport.relative_window())
+            transport["energy_window_unit"] = "eV"
+        else:
+            transport["energy_window"] = list(config.transport.resolved_window())
+    except Exception:  # noqa: BLE001 - 兼容手写/旧配置对象
         pass
     transport.pop("ener", None)
     transport.pop("estep", None)

@@ -47,7 +47,8 @@ CRITERIA = [
     {'name': 'au_s_bond', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
      'band': [2.40, 2.49], 'source': dict(THY, locator='p.12'),
      'note': '另有实验锚点 ' + JAC['doi'] + ' S-Au=2.42+-0.02; 仅方向性(两锚点均为表面/金字塔配位); '
-             '仅适用于去质子硫醇盐；-SCH3 等硫醚的 S–Au 是配位接触，2.40–2.49 Å 不适用'},
+             '仅适用于 S 为锚的去质子硫醇盐；-SCH3 等硫醚的 S–Au 是配位接触，'
+             'N/Se 等非 S 锚只报接触距离，2.40–2.49 Å 均不适用'},
 
     {'name': 't_ef_magnitude', 'kind': 'physical', 'gate': 'error', 'implemented': True,
      'band': [0.03, 0.4], 'source': dict(THY, locator='p.13'),
@@ -116,6 +117,12 @@ SYSTEM_FAMILIES = {
     # 两个键: 'azulene' 是任务文本首 token(material 由此而来), 'AZ' 是简写。
     'AZ': 'Au-(2,6-azulenedithiol)-Au',
     'AZULENE': 'Au-(2,6-azulenedithiol)-Au',
+    # 2026-11-15 4,4'-联吡啶(BPY): 锚定原子是吡啶 N(非 S), 结为
+    # Au-N-(pyridine)2-N-Au, 无硫醇盐接触。T(E_F)/G 绿带(0.03–0.40 G0)与
+    # Seebeck 正号都是 Au-BDT-Au 硫醇盐标定域, 对 BPY 作闸门只会把一次物理上
+    # 正常的算例判成"否证 H0"。显式登记族名, 让这三条记"不适用"。
+    # 实验参照: 1.3±0.1 MΩ ≈ 9.93e-3 G0(benchmark 指南), 仅作对照, 不作闸门。
+    'BPY': "Au-(4,4'-bipyridine)-Au",
 }
 
 

@@ -53,7 +53,7 @@ LOCAL_PATCHES = [
         "what": "pending_message 不再提示主仓的 `agenticdft smj-review`，改为说明独立包"
                 "的真实入口 `smj review --approve --who <名字>`。",
         "why": "该提示指向独立包里不存在的命令（且该检查点模块本身未接线）。",
-        "tests": ["tests/test_a2_approve.py"],
+        "tests": ["tests/test_connection_check_approve.py"],
     },
     {
         "id": "F-LIB-library-electrode",
@@ -72,10 +72,37 @@ LOCAL_PATCHES = [
         "commit": "00294d9",
         "files": ["artifacts.py", "review.py"],
         "what": "artifacts 登记 au_relax 的回取清单；review.find_build_dir 优先 "
-                "run_dir/au_relax（A2 审计对象改为真正送 SCF 的弛豫后几何）。",
+                "run_dir/au_relax（连接核对（原 A2/表面核对）审计对象改为真正送 SCF 的弛豫后几何）。",
         "why": "0.1.2 新增 au_relax 阶段；不登记会被 download 视为 unknown，"
-               "A2 也会继续审计未弛豫的 au60_build 几何。",
-        "tests": ["tests/test_library_au_relax.py", "tests/test_a2_approve.py"],
+               "连接核对也会继续审计未弛豫的 au60_build 几何。",
+        "tests": ["tests/test_library_au_relax.py", "tests/test_connection_check_approve.py"],
+    },
+    {
+        "id": "F-ELEC-element-lattice",
+        "commit": "2026-11-15",
+        "files": ["electrode.py", "geometry.py", "inputs.py", "self_energy.py",
+                  "validate.py", "a2_viz.py"],
+        "what": "电极金属可参数化：add_tip_au(element=…)、make_tip_relax_input(tip_element=…)、"
+                "append_au60(element=, a_lattice=) 在非 Au 时写 electrode_element/"
+                "electrode_a_lattice、make_self_energy(element=…)、validate/a2_viz 从 metadata "
+                "读电极元素。",
+        "why": "阶段 4「构建电极」要求 source/library 与电极类型（Au/Ag/Cu/Ni/Pt/Pd/Al 或显式 "
+               "a_lattice）都是参数；原实现只认 Au，tip/自能/校验全硬编码。",
+        "tests": ["tests/test_electrode_metals.py", "tests/test_no_sulfur_anchor.py"],
+    },
+    {
+        "id": "F-CCHECK-rename",
+        "commit": "2026-11-15",
+        "files": ["validate.py", "a2_viz.py", "fingerprint.py", "criteria.py", "review.py"],
+        "what": "「A2 人工确认」→「表面核对」→「连接核对」更名：check 名 "
+                "junction_connection_check；a2_viz 文案与默认文件名改 connection_check_*"
+                "（保留数据键 area_A2）；fingerprint 写 connection_check.json、仍读旧 "
+                "surface_check.json / a2_confirmation.json；criteria 登记判据族 BPY。",
+        "why": "用户可理解的命名 + 默认自动登记（auto_connection_check）+ BPY 不再被 "
+               "Au–BDT–Au 标定的判据带 fail-safe 误判。",
+        "tests": ["tests/test_connection_check_approve.py", "tests/test_cli_connection_check.py",
+                  "tests/test_runner_connection_check.py", "tests/test_review_family_drift.py",
+                  "tests/test_family.py"],
     },
 ]
 

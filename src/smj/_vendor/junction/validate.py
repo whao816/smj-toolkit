@@ -171,7 +171,8 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
 #     只报告延伸量(info), 不设硬阈值 —— 不臆造判据。
 # ---------------------------------------------------------------------------
 COVALENT_RADII = {'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66,
-                  'S': 1.05, 'Au': 1.36, 'Ag': 1.45, 'Cu': 1.32, 'Ni': 1.24}
+                  'S': 1.05, 'Au': 1.36, 'Ag': 1.45, 'Cu': 1.32, 'Ni': 1.24,
+                  'Pt': 1.36, 'Pd': 1.39, 'Al': 1.21}
 MIN_BOND_FACTOR = 0.7        # d < 0.7*(r_i+r_j) 判为重叠
 AU_S_BAND = (2.40, 2.49)     # 有源带: Thygesen 2005 p.12 dAu-S=2.40; Jackson 2009 2.42+-0.02
 #: 硫醚/硫醇等非硫醇盐锚定的 Au–S 接触上限。取 Au(1.66)+S(1.80) 的 vdW 和
@@ -235,7 +236,8 @@ def _anchor_chemistry(atoms, elems, s_idx):
 
 def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
     """建结几何硬闸门: ①表面索引合法/左右不相交 ②索引在输运轴正确一侧
-    ③接触重叠(元素对+键长下限) ④锚定 S-Au 有源带; 另报告电极延伸量(info)。
+    ③接触重叠(元素对+键长下限) ④锚定原子-电极金属接触/硫醇盐有源带(按锚定化学分流,
+    任意锚定元素)；另报告电极延伸量(info)。
 
     geometry/metadata: 显式给出产物路径(引擎提交 aims_scf 等下游阶段时, 结几何与
     electrode_metadata.json 都落在上游 au60_build 目录, 当前阶段目录里没有);
@@ -257,9 +259,11 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
     atoms = read_geometry_in(geo_p)['atoms']
     n = len(atoms)
     elems = [a[3] for a in atoms]
+    # 电极金属：append_au60 只在非 Au 时写 electrode_element；旧 metadata 无该键 => Au。
+    element = str((metadata or {}).get('electrode_element') or 'Au')
     checks = []
 
-    # ① 表面索引: 非空 / 在范围 / 左右不相交 / 均为 Au
+    # ① 表面索引: 非空 / 在范围 / 左右不相交 / 均为电极金属
     L = list(metadata.get('left_surface_indices') or [])
     R = list(metadata.get('right_surface_indices') or [])
     bad = []
@@ -271,9 +275,9 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
     inter = sorted(set(L) & set(R))
     if inter:
         bad.append('左右表面索引相交: %s' % inter)
-    nonau = [i for i in L + R if 1 <= int(i) <= n and elems[int(i) - 1] != 'Au']
+    nonau = [i for i in L + R if 1 <= int(i) <= n and elems[int(i) - 1] != element]
     if nonau:
-        bad.append('表面原子非 Au: %s' % nonau)
+        bad.append('表面原子非 %s: %s' % (element, nonau))
     if bad:
         checks.append(_err('junction_geom_surface_valid', {'left': L, 'right': R},
                            '; '.join(bad) + ' —— aitranss 会因此报 '
@@ -331,19 +335,35 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
         checks.append(_ok('junction_geom_contacts', None,
                           '%d 原子无重叠(元素对下限 + 3 A 预筛; C-H 1.09 合法、Au-H 1.16 属重叠)' % n))
 
-    # ④ 锚定几何: 先判锚定化学，再决定能否套 2.40–2.49 Å 的硫醇盐有源带。
-    #    硫醚(-SCH3 等)的 S–Au 是配位接触，不是硫醇盐的 Au–S 共价键；
-    #    把硫醇盐带套到硫醚上会把正常的 2.6–2.7 Å 误判成偏离（2026-11-13 验收）。
-    sulf = [i for i, e in enumerate(elems) if e == 'S']
-    aus = [i for i, e in enumerate(elems) if e == 'Au']
-    if sulf and aus:
-        best = min(((_dist(atoms[s][:3], atoms[a][:3]), s + 1, a + 1)
-                    for s in sulf for a in aus), key=lambda t: t[0])
+    # ④ 锚定几何: 锚定原子取自 metadata 的 linker 索引（append_au60 记录的"离 tip 最近的
+    #    非 H 原子"），任意元素通用（S 硫醇盐/硫醚、N 胺/吡啶、Se …）。
+    #    先判锚定化学，再决定能否套 2.40–2.49 Å 的硫醇盐有源带：该带有源只对 S/Au 标定，
+    #    硫醚(-SCH3)的 S–金属 是配位接触；非 S 锚只报告接触距离，不套任何键长带（不臆造数值）。
+    anchor_indices = [int(i) for i in (lk, rk) if i and 1 <= int(i) <= n]
+    if not anchor_indices:      # 旧 metadata 没有 linker 索引时退回按 S 找锚（历史行为）
+        anchor_indices = [i + 1 for i, e in enumerate(elems) if e == 'S']
+    metal = [i for i, e in enumerate(elems) if e == element]
+    if anchor_indices and metal:
+        best = min(((_dist(atoms[s - 1][:3], atoms[a][:3]), s, a + 1)
+                    for s in anchor_indices for a in metal), key=lambda t: t[0])
         dmin, si, ai = best
-        chemistry = _anchor_chemistry(atoms, elems, si - 1)
-        value = {'distance_A': round(dmin, 4), 'chemistry': chemistry}
+        anchor_el = elems[si - 1]
+        chemistry = _anchor_chemistry(atoms, elems, si - 1) if anchor_el == 'S' else 'non_sulfur'
+        value = {'distance_A': round(dmin, 4), 'chemistry': chemistry,
+                 'electrode_element': element, 'anchor_element': anchor_el,
+                 'anchor_indices': anchor_indices}
         lo, hi = AU_S_BAND
-        if chemistry == 'thiolate':
+        if anchor_el != 'S':
+            checks.append(_ok('junction_geom_anchor_aus', value,
+                              '%s%d-%s%d = %.4f A；锚定原子为 %s（非 S），2.40–2.49 A 硫醇盐'
+                              '有源带不适用（仅对 S 标定），本体系只报告接触距离、不作偏离判定'
+                              % (anchor_el, si, element, ai, dmin, anchor_el)))
+        elif element != 'Au':
+            checks.append(_ok('junction_geom_anchor_aus', value,
+                              'S%d-%s%d = %.4f A；电极金属为 %s，2.40–2.49 A 硫醇盐有源带'
+                              '仅按 Au 标定，本体系只报告接触距离、不作偏离判定'
+                              % (si, element, ai, dmin, element)))
+        elif chemistry == 'thiolate':
             if lo <= dmin <= hi:
                 checks.append(_ok('junction_geom_anchor_aus', value,
                                   'S%d-Au%d = %.4f A 落在有源带 %.2f-%.2f A (Thygesen 2005 p.12; '
@@ -369,30 +389,32 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
                               'S%d-Au%d = %.4f A；锚定化学未识别，未套用 2.40–2.49 A 硫醇盐带'
                               % (si, ai, dmin)))
     else:
-        checks.append(_warn('junction_geom_anchor_aus', None, '缺 S 或 Au, 无法判锚定几何'))
+        checks.append(_warn('junction_geom_anchor_aus', None,
+                            '无法识别锚定原子（metadata 缺 linker 索引且结构里没有 S）或电极金属 %s'
+                            % element))
 
     # 附: 电极沿输运轴延伸量(info; 下限 N 待定, 见 v0.4 §6, 不设硬阈值)
     if lk and rk and 1 <= int(lk) <= n and 1 <= int(rk) <= n:
         tips = {metadata.get('left_tip_index'), metadata.get('right_tip_index')}
         ext = {}
         for name, sel in (('left', [i + 1 for i, e in enumerate(elems)
-                                    if e == 'Au' and (i + 1) not in tips and side(i + 1) < 0]),
+                                    if e == element and (i + 1) not in tips and side(i + 1) < 0]),
                           ('right', [i + 1 for i, e in enumerate(elems)
-                                     if e == 'Au' and (i + 1) not in tips and side(i + 1) > 0])):
+                                     if e == element and (i + 1) not in tips and side(i + 1) > 0])):
             ext[name] = round(max((abs(side(i)) for i in sel), default=0.0), 3)
         checks.append(_ok('junction_geom_electrode_extent', ext,
                           '电极沿输运轴(%s)延伸: 左 %.2f A / 右 %.2f A(仅报告; 下限 N 无源待定)'
                           % (axis_name, ext['left'], ext['right'])))
 
-    # ⑤ P0-6: A2 人工确认与几何指纹绑定 —— 无记录 warn, 指纹不符 error(须重新确认)
+    # ⑤ P0-6: 连接核对（原 A2 人工确认）与几何指纹绑定 —— 无记录 warn, 指纹不符 error(须重新确认)
     from .fingerprint import check_confirmation
     conf = check_confirmation(run_dir)
     if conf.get('valid'):
-        checks.append(_ok('junction_a2_confirmation', conf.get('current'), conf['reason']))
+        checks.append(_ok('junction_connection_check', conf.get('current'), conf['reason']))
     elif conf.get('present'):
-        checks.append(_err('junction_a2_confirmation', conf.get('current'), conf['reason']))
+        checks.append(_err('junction_connection_check', conf.get('current'), conf['reason']))
     else:
-        checks.append(_warn('junction_a2_confirmation', conf.get('current'), conf['reason']))
+        checks.append(_warn('junction_connection_check', conf.get('current'), conf['reason']))
 
     errs = sum(1 for c in checks if c['severity'] == 'error' and not c['passed'])
     warns = sum(1 for c in checks if c['severity'] == 'warn' and not c['passed'])

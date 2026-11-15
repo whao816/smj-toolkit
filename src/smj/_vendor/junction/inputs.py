@@ -224,10 +224,13 @@ def _render_aims_sub(e: dict, ntasks: int) -> str:
 
 def measure_au_s_bonds(geometry_path: str | Path, left_anchor: int, right_anchor: int,
                        au_tip_count: int = 2) -> dict:
-    """量 geometry.in 里两条锚定-S ↔ Au tip 键长(A)。tip 约定为**文件末尾** `au_tip_count` 个原子
-    (add_tip_au 的写入顺序: 分子原子在前, 左 tip、右 tip 依次追加)。
+    """量 geometry.in 里两条锚定原子 ↔ 电极 tip 的键长(A)。tip 约定为**文件末尾**
+    `au_tip_count` 个原子(add_tip_au 的写入顺序: 分子原子在前, 左 tip、右 tip 依次追加)。
 
-    用于两处: ① 建结时自校验"落盘的距离就是目标距离"; ② 弛豫后量**实际**Au–S,
+    名字沿用历史上的 Au–S 口径, 但实际只量"锚定原子到 tip"的距离, 对任意锚定元素
+    (N/Se/…)与任意电极金属同样适用; 返回值以 left/right 为键。
+
+    用于两处: ① 建结时自校验"落盘的距离就是目标距离"; ② 弛豫后量**实际**锚–金属,
     不让"目标 2.45 Å"停留在写输入那一刻(H1 归因要的是弛豫后的真实值)。
     """
     atoms = read_aims_geometry(geometry_path)
@@ -250,17 +253,22 @@ def make_tip_relax_input(xyz_path: str | Path, outdir: str | Path,
                          species_dir: str | Path | None = None,
                          xc: str = 'pbe', spin: str = 'none', charge: float = 0.0,
                          env: dict | None = None,
-                         strip_thiol_h: bool = False,
+                         strip_thiol_h: bool | None = False,
                          anchor_au_s_target: float | None = None,
                          pin_contact: bool = True,
-                         vdw: str | None = None) -> dict:
-    """消费 opt.xyz, 加 2 Au tip(锚定原子/距离/方向), 写 geometry.in +
+                         vdw: str | None = None,
+                         tip_element: str = 'Au') -> dict:
+    """消费 opt.xyz, 加 2 个电极金属 tip(锚定原子/距离/方向), 写 geometry.in +
     control_relax.in(bfgs) + sub_aims.sh。species blocks 只来自用户提供目录。
 
-    strip_thiol_h=True 时先移除与 S 成键的 H(二硫醇盐, TaskCard §1.4.1 路线), 锚定
-    索引随之重映射; 去质子前几何另存 opt_neutral.xyz 供复核。缺省 False = 原样保留。
+    ``tip_element`` 缺省 Au(旧行为逐字节不变); 构建 Ag/Cu/… 电极时由调用方传入,
+    必须与电极金属一致 —— tip 与后续 append_au60 的元素检查绑定。
 
-    W0-1(anchor_au_s_target): 给定目标 Au–S 键长(埃)时, tip 直接放到该距离;
+    ``strip_thiol_h`` 三态: None = 自动(仅当锚定原子是 S 时移除 S-H, 其它元素保留 H);
+    True = 强制移除锚定原子上的 H(每个锚原子恰好 1 个, 0 或 2 个总计);
+    False(缺省) = 原样保留。去质子前几何另存 opt_neutral.xyz 供复核。
+
+    W0-1(anchor_au_s_target): 给定目标 锚–金属 键长(埃)时, tip 直接放到该距离;
     `pin_contact=True`(缺省)再把两侧锚定原子与两个 tip 一起冻结
     (`constrain_relaxation .true.`), 使 bfgs 无法把接触压短 —— 这正是"距离扫描结"的
     口径(分子刚性 + 电极间距可设)。`pin_contact=False` 则只改初始距离、仍全自由弛豫,
@@ -274,8 +282,8 @@ def make_tip_relax_input(xyz_path: str | Path, outdir: str | Path,
     if anchor_au_s_target is not None:
         target = float(anchor_au_s_target)
         if not 1.5 <= target <= 3.5:
-            raise ValueError('anchor_au_s_target 需在 1.5–3.5 A 之间(实得 %.3f): Au–S 键长约 '
-                             '2.3–2.5 A, 超出即 fail-closed, 不静默照建' % target)
+            raise ValueError('anchor_au_s_target 需在 1.5–3.5 A 之间(实得 %.3f): 锚–金属接触'
+                             '键长约 2.3–2.5 A(Au–S), 超出即 fail-closed, 不静默照建' % target)
         distance = target
     elif au_tip_distance is None:
         raise ValueError('aims_tip_relax 需 au_tip_distance 或 anchor_au_s_target(二选一)')
@@ -283,14 +291,21 @@ def make_tip_relax_input(xyz_path: str | Path, outdir: str | Path,
         distance = float(au_tip_distance)
     atoms = read_xyz(xyz_path)
     raw_atoms = atoms
+    for label, idx in (('left', left_anchor), ('right', right_anchor)):
+        if not 1 <= int(idx) <= len(atoms):
+            raise ValueError('锚定原子序号 %s=%r 越界(分子 %d 原子)'
+                             % (label, idx, len(atoms)))
+    anchor_element = atoms[int(left_anchor) - 1].element
+    do_strip = strip_thiol_h is True or (strip_thiol_h is None and anchor_element == 'S')
     strip_info = None
-    if strip_thiol_h:
+    if do_strip:
         # 去 H 后原子索引前移 -> 锚定索引必须同步重映射(不静默沿用旧索引)
         atoms, strip_info = _strip_thiol_h(atoms, anchors=(left_anchor, right_anchor))
         left_anchor = strip_info['left_anchor']
         right_anchor = strip_info['right_anchor']
+        anchor_element = strip_info.get('anchor_element', anchor_element)
     junction = add_tip_au(atoms, left_anchor, right_anchor, distance,
-                          left_direction, right_direction)
+                          left_direction, right_direction, element=tip_element)
     n_mol = len(atoms)
     constrained: tuple[int, ...] = ()
     if target is not None and pin_contact:
@@ -303,12 +318,13 @@ def make_tip_relax_input(xyz_path: str | Path, outdir: str | Path,
     if target is not None:
         for side in ('left', 'right'):
             if abs(placed[side] - target) > 1e-6:
-                raise RuntimeError('Au–S 落盘距离与目标不符(%s: %.6f vs %.6f A): 建结逻辑有 bug, '
-                                   '拒绝把这个几何交给 aims 弛豫' % (side, placed[side], target))
+                raise RuntimeError('%s–%s 落盘距离与目标不符(%s: %.6f vs %.6f A): 建结逻辑有 bug, '
+                                   '拒绝把这个几何交给 aims 弛豫'
+                                   % (tip_element, anchor_element, side, placed[side], target))
     if strip_info is not None:
         neutral = out / 'opt_neutral.xyz'
         write_xyz(neutral, raw_atoms,
-                  comment='Gaussian opt 原样(含 S-H), 去质子前存档')
+                  comment='Gaussian opt 原样(含锚-H), 去质子前存档')
         strip_info['opt_neutral_xyz'] = str(neutral)
     make_control(geom, out / 'control.in', 'relax', species_dir,
                  xc=xc, spin=spin, charge=charge, vdw=vdw)
@@ -326,6 +342,8 @@ def make_tip_relax_input(xyz_path: str | Path, outdir: str | Path,
                'ntasks': e['ntasks'], 'partition': e['partition'],
                'aims_gpus': str(e.get('aims_gpus') or '').strip() or 'cpu',
                'atom_count': len(junction), 'au_tip_count': 2,
+               'tip_element': tip_element,
+               'anchor_element': anchor_element,
                'vdw': str(vdw or ''),
                'strip_thiol_h': strip_info}
 

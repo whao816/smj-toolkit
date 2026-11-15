@@ -3,15 +3,15 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
-  "repo_commit": "8a6e52d152421bcaaf1aa1eaf7957e55e14f36b2",
+  "repo_commit": "dfff4b861eb441c2af55c8be1460c5390394cbc7",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
       "bytes": 380
     },
     "a2_viz.py": {
-      "sha256": "285feb9747df1b880033e738700280310fa23c9c7f241a81f2f5f7aa3b00d172",
-      "bytes": 26481
+      "sha256": "28c8823c9fb2f7a9e87c5dd0f4eda89ddae155a7ebc2459692c96ce6c4dba169",
+      "bytes": 27164
     },
     "artifacts.py": {
       "sha256": "c778d75a706c46bcf4ad031b4fc9cc307621364d5cda3af497221bad4cd255bc",
@@ -30,36 +30,36 @@
       "bytes": 2262
     },
     "criteria.py": {
-      "sha256": "bc0c514cc3b46951a8faadef3bb213db28cb1a6667f17eced25a5fa82ed6dea6",
-      "bytes": 20166
+      "sha256": "599cdf72ad93f527b0db1d990a3208828c6041a167df9c2269b42fa01950db01",
+      "bytes": 20722
     },
     "demo.py": {
       "sha256": "501fb09f251c197206664e996a10f018f9cc8a61edeb597ce2e464169043e97e",
       "bytes": 3452
     },
     "electrode.py": {
-      "sha256": "c5614f18894b658a54d6b1acea9602f77b31efe44e326187cb9e4782ddddd492",
-      "bytes": 16657
+      "sha256": "ac0f489fd9af759a4056531fa136b729f6699a9f74c1c60d6ed2e515f0e4a2b1",
+      "bytes": 17140
     },
     "fingerprint.py": {
-      "sha256": "7b16cb19a13d89f0a4dbb65b58c3c9846560c1c6da2de78170283c455492b5fd",
-      "bytes": 5051
+      "sha256": "a070464631e03bb7cfdcd86d76a7071a2bd27b5cd11c1fd65ab7d5dd334eaf61",
+      "bytes": 5808
     },
     "fixtures.py": {
       "sha256": "ff07b9e137a85b0fb79fcbe8403c6d60f0af4071aa493195cc52f2700687a040",
       "bytes": 7207
     },
     "geometry.py": {
-      "sha256": "91d0088fb3388fd84150ac01f5b260c23691c3270b810ad989b15c7d85a2d47b",
-      "bytes": 8275
+      "sha256": "2bef5b4d7f1f9869458f12e4bb7f8ebc62b5a8aba55cb7809a754f252c97a921",
+      "bytes": 10168
     },
     "independent_check.py": {
       "sha256": "76dac0d97a8c5f5ae8bebc9cb091afd2da3d2158b8324ed266ff4b91bfe772b4",
       "bytes": 7952
     },
     "inputs.py": {
-      "sha256": "341546ee184a52c990ab629fff7d234662ea6a4a8291a38e05656ce4f0bcc9dd",
-      "bytes": 25235
+      "sha256": "04adde1374cd5b91480e24ffa0b328be901f197367e85734128cd389dc3312cc",
+      "bytes": 26463
     },
     "jobwait.py": {
       "sha256": "ae8b6b4a48cbd6e6b169768f00b51ded4e82f8e16178706cc386c3ada5f96997",
@@ -90,12 +90,12 @@
       "bytes": 22349
     },
     "review.py": {
-      "sha256": "5494099a72e290cda251ea9cd9fabeef10ab21ebcd67cb47b1ce208c0db7b794",
-      "bytes": 12554
+      "sha256": "b16a152022da61d54e5bb989d84f796395397014a9e42cb3d4d5d36871bd7079",
+      "bytes": 12608
     },
     "self_energy.py": {
-      "sha256": "8d1ca379bd72da9ca6f4afe021b149572ada57975b87fcd2fd4bea3da4a1f134",
-      "bytes": 8013
+      "sha256": "dd05b486c90c4a3bc4af72d5f2d5d963d32e889ec398ff559b46853097dd2f3e",
+      "bytes": 8574
     },
     "spectra.py": {
       "sha256": "65888c0552386bf817119bff1bdf835a143c781f4361eb64d055fb62dc93653a",
@@ -146,8 +146,8 @@
       "bytes": 566
     },
     "validate.py": {
-      "sha256": "daad379a237f9d94a1aa04a9332d52e4afd330045ba7506bb608acf65e1c6d96",
-      "bytes": 21933
+      "sha256": "bbdacf659b7a40a8c2c4d4ad3c1328b9bc8f65f87100043c63bb48832c473c43",
+      "bytes": 23784
     }
   },
   "local_patches": [
@@ -185,7 +185,7 @@
       "what": "pending_message 不再提示主仓的 `agenticdft smj-review`，改为说明独立包的真实入口 `smj review --approve --who <名字>`。",
       "why": "该提示指向独立包里不存在的命令（且该检查点模块本身未接线）。",
       "tests": [
-        "tests/test_a2_approve.py"
+        "tests/test_connection_check_approve.py"
       ]
     },
     {
@@ -208,11 +208,49 @@
         "artifacts.py",
         "review.py"
       ],
-      "what": "artifacts 登记 au_relax 的回取清单；review.find_build_dir 优先 run_dir/au_relax（A2 审计对象改为真正送 SCF 的弛豫后几何）。",
-      "why": "0.1.2 新增 au_relax 阶段；不登记会被 download 视为 unknown，A2 也会继续审计未弛豫的 au60_build 几何。",
+      "what": "artifacts 登记 au_relax 的回取清单；review.find_build_dir 优先 run_dir/au_relax（连接核对（原 A2/表面核对）审计对象改为真正送 SCF 的弛豫后几何）。",
+      "why": "0.1.2 新增 au_relax 阶段；不登记会被 download 视为 unknown，连接核对也会继续审计未弛豫的 au60_build 几何。",
       "tests": [
         "tests/test_library_au_relax.py",
-        "tests/test_a2_approve.py"
+        "tests/test_connection_check_approve.py"
+      ]
+    },
+    {
+      "id": "F-ELEC-element-lattice",
+      "commit": "2026-11-15",
+      "files": [
+        "electrode.py",
+        "geometry.py",
+        "inputs.py",
+        "self_energy.py",
+        "validate.py",
+        "a2_viz.py"
+      ],
+      "what": "电极金属可参数化：add_tip_au(element=…)、make_tip_relax_input(tip_element=…)、append_au60(element=, a_lattice=) 在非 Au 时写 electrode_element/electrode_a_lattice、make_self_energy(element=…)、validate/a2_viz 从 metadata 读电极元素。",
+      "why": "阶段 4「构建电极」要求 source/library 与电极类型（Au/Ag/Cu/Ni/Pt/Pd/Al 或显式 a_lattice）都是参数；原实现只认 Au，tip/自能/校验全硬编码。",
+      "tests": [
+        "tests/test_electrode_metals.py",
+        "tests/test_no_sulfur_anchor.py"
+      ]
+    },
+    {
+      "id": "F-CCHECK-rename",
+      "commit": "2026-11-15",
+      "files": [
+        "validate.py",
+        "a2_viz.py",
+        "fingerprint.py",
+        "criteria.py",
+        "review.py"
+      ],
+      "what": "「A2 人工确认」→「表面核对」→「连接核对」更名：check 名 junction_connection_check；a2_viz 文案与默认文件名改 connection_check_*（保留数据键 area_A2）；fingerprint 写 connection_check.json、仍读旧 surface_check.json / a2_confirmation.json；criteria 登记判据族 BPY。",
+      "why": "用户可理解的命名 + 默认自动登记（auto_connection_check）+ BPY 不再被 Au–BDT–Au 标定的判据带 fail-safe 误判。",
+      "tests": [
+        "tests/test_connection_check_approve.py",
+        "tests/test_cli_connection_check.py",
+        "tests/test_runner_connection_check.py",
+        "tests/test_review_family_drift.py",
+        "tests/test_family.py"
       ]
     }
   ],

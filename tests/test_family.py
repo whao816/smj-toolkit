@@ -63,3 +63,26 @@ def test_family_marks_bdt_bands_not_applicable(workdir, capsys):
     unknown = validate_junction_run(project, system="NOPE")
     assert all(c.get("applicable") is not False for c in unknown["checks"]
                if c["name"] in ("t_ef_magnitude", "g_in_theory_band"))
+
+
+def test_bpy_family_registered():
+    from smj._vendor.junction.criteria import system_family
+
+    assert system_family("bpy") == "Au-(4,4'-bipyridine)-Au"
+    assert system_family("BPY") == "Au-(4,4'-bipyridine)-Au"
+
+
+def test_bpy_family_marks_bdt_bands_not_applicable(workdir):
+    """BPY 是吡啶 N 锚定、非硫醇盐体系，BDT 标定的三条判据必须记"不适用"。"""
+    from smj._vendor.junction.validate import validate_junction_run
+
+    project = workdir / "bpy-family"
+    stage = project / "aitranss_te"
+    stage.mkdir(parents=True, exist_ok=True)
+    (stage / "TE.dat").write_text(TE, encoding="utf-8")
+
+    verdict = validate_junction_run(project, system="BPY")
+    names = {c["name"] for c in verdict["checks"] if c.get("applicable") is False}
+    assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
+    assert not {"t_ef_magnitude", "g_in_theory_band",
+                "seebeck_sign"} & set(verdict.get("failed_criteria") or [])

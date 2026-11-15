@@ -20,10 +20,12 @@ import yaml
 
 from .errors import ConfigError
 from .electrode_library import DEFAULT_CLUSTER
+from ._vendor.junction.electrode import FCC_LATTICE_A
 
 DEFAULT_CONFIG_NAME = "smj.yaml"
 MODES = ("dry-run", "local", "slurm-ssh")
 _RUN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_ELEMENT_RE = re.compile(r"^[A-Za-z]{1,3}$")
 
 
 # --------------------------------------------------------------------------- #
@@ -144,19 +146,27 @@ class ElectrodeConfig:
     left_anchor: str = "S"
     right_anchor: str = "S"
     au_tip_distance: float = 2.35
-    #: tip 放置目标（Å）。None = 只用 au_tip_distance 放初始几何，不做任何 Au–S
-    #: 目标约束；最终键长/角度完全由 aims_tip_relax 的全原子弛豫决定。
-    #: 2.40 Å 只对**去质子硫醇盐**有参考意义；-SCH3 等硫醚不应把它当目标键长。
+    #: tip 放置目标（Å）。None = 只用 au_tip_distance 放初始几何，不做任何锚–金属
+    #: 距离约束；最终键长/角度完全由 aims_tip_relax 的全原子弛豫决定。
+    #: 2.40 Å 只对**去质子硫醇盐**有参考意义；-SCH3 硫醚或 N/Se 锚不应把它当目标键长。
     anchor_au_s_target: float | None = None
     #: True = 把两个锚定原子和两个 tip 一起冻结（旧 W0-1 距离扫描口径）；
     #: 默认 False = 全原子自由弛豫，tip 可以动。
     pin_contact: bool = False
-    strip_thiol_h: bool = True
+    #: 去质子口径：None = 仅当锚定原子是 S 时自动移除 S–H（N/Se 等其它锚默认保留 H）；
+    #: True = 强制移除锚定原子上的 H（每个锚原子恰好 1 个）；False = 完全保留。
+    strip_thiol_h: bool | None = None
     vdw: bool = True
     nlayers: int | None = None            # Aitranss 中心区层数；None = 按库文件头部建议
     source: str = "library"               # library = FHI-aims 预定义团簇；builtin = 原三角岛
     library_dir: str | None = None        # electrodes.library 目录；None = 常见路径/远端探测
     library_cluster: str = DEFAULT_CLUSTER
+    #: 电极金属元素（fcc(111) 单晶表面）。tip 也用该元素；builtin 直接按它生成三角岛，
+    #: library 模式下必须与库团簇元素一致（否则 electrode_build 拒绝装配）。
+    element: str = "Au"
+    #: fcc 晶格常数（Å）。None = 用 FCC_LATTICE_A 的登记值（Au 4.07823、Ag 4.08530 …）；
+    #: 未登记元素必须显式给出。
+    a_lattice: float | None = None
     #: 旧口径兼容：仅为显式重跑 legacy ``au_relax`` 阶段保留。主链路在
     #: ``electrode_build`` 后即冻结几何，不再消费此字段。
     relax: bool = False
@@ -165,30 +175,74 @@ class ElectrodeConfig:
     relax_freeze: str = "backplane"
 
 
+#: 1 Ha = 27.211386245988 eV（CODATA 2018）。
+HARTREE_EV = 27.211386245988
+
+#: ``transport.energy_window_unit`` 的合法取值。
+WINDOW_UNITS = ("eV", "Hartree")
+
+
 @dataclass
 class TransportConfig:
-    """透射谱 / Landauer 分析参数。"""
+    """透射谱 / Landauer 分析参数。
+
+    ``energy_window`` 默认是 **相对费米能级的 eV**（``E − E_F``，默认 ±2 eV）；
+    旧配置里的 Ha 绝对能量三元组仍可读（``energy_window_unit: Hartree`` 或按量级
+    自动判定），两种口径最终都在 ``aitranss_te`` 里化成 aitranss 需要的 Ha 绝对值。
+    """
 
     temperature: float = 300.0
-    #: (ener, estep, eend)，单位 Ha 绝对能量。默认围绕 Au Fermi（≈ −0.19 Ha）取
-    #: ±0.02 Ha；实际体系应在 aims_scf 后按 E_F 调整（生产窗口别用 5 Ha 全窗）。
-    energy_window: tuple[float, float, float] = (-0.21, 0.0002, -0.17)
-    ener: float | None = None             # 显式覆盖 energy_window 的分量
+    #: [起点, 步长, 终点]，单位见 ``energy_window_unit``。默认 eV 且以 E_F 为参考：
+    #: E − E_F ∈ [−2, +2] eV、步长 5 meV（801 点）。换金属后 E_F 会移动，但相对
+    #: 窗口不跟着漂；只算电导可收窄，想看峰再放宽。
+    energy_window: tuple[float, float, float] = (-2.0, 0.005, 2.0)
+    #: "eV"（默认）= 相对 E_F 的 eV；"Hartree" = 旧口径，Ha 绝对能量。
+    energy_window_unit: str = "eV"
+    #: 显式覆盖：分量按 **Ha 绝对能量** 解释（优先级最高，可单独给一个）。
+    ener: float | None = None
     estep: float | None = None
     eend: float | None = None
     #: collect 时是否要求 aitranss 主输出 ``te.out`` 存在（结果可复核的一部分）。
     #: 仅外部/历史 run 才应显式设为 false 豁免；不改变物理结果，故不进 protocol。
     require_te_out: bool = True
 
-    def resolved_window(self) -> tuple[float, float, float]:
-        ener, estep, eend = self.energy_window
+    def relative_window(self) -> tuple[float, float, float]:
+        """相对 E_F 的 eV 三元组（仅 ``energy_window_unit: eV`` 口径）。"""
+        if self.energy_window_unit != "eV":
+            raise ValueError(
+                "energy_window_unit=%r 是 Ha 绝对口径，没有相对 E_F 的三元组"
+                % (self.energy_window_unit,))
+        return (float(self.energy_window[0]), float(self.energy_window[1]),
+                float(self.energy_window[2]))
+
+    def resolved_window(self, efermi_hartree: float | None = None
+                        ) -> tuple[float, float, float]:
+        """实际写进 tcontrol 的 Ha 绝对窗口 ``(ener, estep, eend)``。
+
+        eV 口径（默认）需要 SCF 的 ``efermi`` 才能把相对能量平移到 Ha 绝对坐标；
+        缺 ``efermi`` 时**不猜**，直接报错。``ener/estep/eend`` 显式覆盖恒按 Ha
+        绝对能量解释，逐分量替换。
+        """
+        ener, estep, eend = (float(v) for v in self.energy_window)
+        if self.energy_window_unit == "eV":
+            estep = estep / HARTREE_EV
+            if self.ener is None or self.eend is None:
+                if efermi_hartree is None:
+                    raise ValueError(
+                        "energy_window 为 eV 相对口径（默认 E_F ±2 eV），需要 SCF 的 "
+                        "efermi(Ha) 才能换成 aitranss 的 Ha 绝对窗口；"
+                        "请先跑 aims_scf，或显式给 transport.ener/eend（Ha 绝对）")
+                if self.ener is None:
+                    ener = float(efermi_hartree) + ener / HARTREE_EV
+                if self.eend is None:
+                    eend = float(efermi_hartree) + eend / HARTREE_EV
         if self.ener is not None:
-            ener = self.ener
+            ener = float(self.ener)
         if self.estep is not None:
-            estep = self.estep
+            estep = float(self.estep)
         if self.eend is not None:
-            eend = self.eend
-        return float(ener), float(estep), float(eend)
+            eend = float(self.eend)
+        return ener, estep, eend
 
 
 @dataclass
@@ -239,11 +293,64 @@ class PathsConfig:
 
 @dataclass
 class ReviewConfig:
-    """结构复核 / 报告（附带功能）的开关。"""
+    """结构复核 / 报告（附带功能）的开关。
 
-    require_a2: bool = True               # 默认强制 A2 表面确认（本地补丁 F4：红线默认生效）
-    a2_deviation: float = 0.15            # A2 对比的相对偏差门槛
-    accept_deviation: float | None = None # 覆盖 A2 默认门槛
+    2026-11-15 更名：原「A2 人工确认」→「表面核对」→「连接核对」（connection check）
+    ——核对每侧三个表面原子与 tcontrol/输运轴是否一致，并把几何指纹绑进记录。
+    默认**自动登记**（``auto_connection_check``）：electrode_build 采集后自动审计
+    并写记录，不再需要手工 ``smj review --approve --who``。
+
+    旧键 ``surface_check`` / ``surface_check_deviation`` / ``auto_surface_check`` 与更早的
+    ``require_a2`` / ``a2_deviation`` 仍接受（等价新键）；旧 run 目录里的
+    ``surface_check.json`` / ``a2_confirmation.json`` 也仍被读取（见 :mod:`smj.review`）。
+    """
+
+    connection_check: bool = True            # 连接核对是否作为复核闸门（默认开）
+    connection_check_deviation: float = 0.15 # 表面索引偏差（1-交集/较大集）的门槛
+    auto_connection_check: bool = True       # 默认自动登记连接核对（无需人工签署）
+    accept_deviation: float | None = None # 显式人工豁免的放宽门槛
+
+    # -- 旧名兼容（先叫 A2，后叫「表面核对」） ------------------------------ #
+    @property
+    def surface_check(self) -> bool:
+        return self.connection_check
+
+    @surface_check.setter
+    def surface_check(self, value: bool) -> None:
+        self.connection_check = bool(value)
+
+    @property
+    def surface_check_deviation(self) -> float:
+        return self.connection_check_deviation
+
+    @surface_check_deviation.setter
+    def surface_check_deviation(self, value: float) -> None:
+        self.connection_check_deviation = float(value)
+
+    @property
+    def auto_surface_check(self) -> bool:
+        return self.auto_connection_check
+
+    @auto_surface_check.setter
+    def auto_surface_check(self, value: bool) -> None:
+        self.auto_connection_check = bool(value)
+
+    # -- 旧名兼容（更名前叫 A2） ------------------------------------------- #
+    @property
+    def require_a2(self) -> bool:
+        return self.connection_check
+
+    @require_a2.setter
+    def require_a2(self, value: bool) -> None:
+        self.connection_check = bool(value)
+
+    @property
+    def a2_deviation(self) -> float:
+        return self.connection_check_deviation
+
+    @a2_deviation.setter
+    def a2_deviation(self, value: float) -> None:
+        self.connection_check_deviation = float(value)
 
 
 @dataclass
@@ -310,18 +417,23 @@ _MOLECULE_KEYS = {
 _ELECTRODE_KEYS = {
     "au_per_electrode", "left_anchor", "right_anchor", "au_tip_distance",
     "anchor_au_s_target", "pin_contact", "strip_thiol_h", "vdw", "nlayers",
-    "source", "library_dir", "library_cluster", "relax", "relax_force_threshold",
-    "relax_freeze",
+    "source", "library_dir", "library_cluster", "element", "a_lattice",
+    "relax", "relax_force_threshold", "relax_freeze",
 }
-_TRANSPORT_KEYS = {"temperature", "energy_window", "ener", "estep", "eend",
-                   "require_te_out"}
+_TRANSPORT_KEYS = {"temperature", "energy_window", "energy_window_unit",
+                   "ener", "estep", "eend", "require_te_out"}
 _CLUSTER_KEYS = {
     "host", "user", "port", "key", "remote_root", "partition", "ntasks", "gres",
     "account", "qos", "species_dir", "poll_seconds", "timeout_hours", "env",
     "time_limit", "mem",
 }
 _PATHS_KEYS = {"templates", "species_defaults"}
-_REVIEW_KEYS = {"require_a2", "a2_deviation", "accept_deviation"}
+_REVIEW_KEYS = {"connection_check", "connection_check_deviation", "auto_connection_check",
+                "accept_deviation",
+                # 2026-11-15 更名前的旧键（仍接受，等价于 connection_check*）
+                "surface_check", "surface_check_deviation", "auto_surface_check",
+                # 更早的 A2 时代旧键
+                "require_a2", "a2_deviation"}
 
 
 def _parse_run(data: Mapping[str, Any], warnings: list[str]) -> RunInfo:
@@ -399,6 +511,20 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
     cluster_rel = _as_str(data.get("library_cluster") or DEFAULT_CLUSTER, "electrode.library_cluster")
     if not cluster_rel.strip():
         raise ConfigError("electrode.library_cluster 不能为空（应为 library_dir 下的相对路径）")
+    element = _as_str(data.get("element") or "Au", "electrode.element")
+    if not _ELEMENT_RE.match(element):
+        raise ConfigError(
+            "electrode.element 应为元素符号（如 Au/Ag/Cu/Pt），实际是 %r" % element)
+    element = element[0].upper() + element[1:].lower()
+    a_lattice_raw = data.get("a_lattice", None)
+    a_lattice = None if a_lattice_raw is None else _as_float(
+        a_lattice_raw, "electrode.a_lattice")
+    if a_lattice is not None and not (2.0 <= a_lattice <= 6.0):
+        raise ConfigError("electrode.a_lattice 应在 2.0–6.0 Å，实际是 %s" % a_lattice)
+    if a_lattice is None and element not in FCC_LATTICE_A:
+        raise ConfigError(
+            "electrode.element %r 没有内置 fcc 晶格常数：请显式给出 electrode.a_lattice"
+            "（已登记: %s）" % (element, "/".join(sorted(FCC_LATTICE_A))))
     threshold = _as_str(data.get("relax_force_threshold") or "1.e-2", "electrode.relax_force_threshold")
     freeze = _as_str(data.get("relax_freeze") or "backplane", "electrode.relax_freeze")
     if freeze not in ("backplane", "electrodes"):
@@ -411,12 +537,15 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
         au_tip_distance=_as_float(data.get("au_tip_distance", 2.35), "electrode.au_tip_distance"),
         anchor_au_s_target=target,
         pin_contact=_as_bool(data.get("pin_contact", False), "electrode.pin_contact"),
-        strip_thiol_h=_as_bool(data.get("strip_thiol_h", True), "electrode.strip_thiol_h"),
+        strip_thiol_h=(None if data.get("strip_thiol_h") is None
+                       else _as_bool(data.get("strip_thiol_h"), "electrode.strip_thiol_h")),
         vdw=_as_bool(data.get("vdw", True), "electrode.vdw"),
         nlayers=nlayers,
         source=source,
         library_dir=library_dir,
         library_cluster=cluster_rel,
+        element=element,
+        a_lattice=a_lattice,
         relax=_as_bool(data.get("relax", False), "electrode.relax"),
         relax_force_threshold=threshold,
         relax_freeze=freeze,
@@ -428,17 +557,23 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
 
 def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportConfig:
     _warn_unknown("transport", data, _TRANSPORT_KEYS, warnings)
-    window = data.get("energy_window", [-0.21, 0.0002, -0.17])
+    window = data.get("energy_window", [-2.0, 0.005, 2.0])
     if not isinstance(window, (list, tuple)) or len(window) != 3:
-        raise ConfigError("transport.energy_window 应为 [ener, estep, eend] 三个数，实际是 %r" % (window,))
+        raise ConfigError("transport.energy_window 应为 [起点, 步长, 终点] 三个数，实际是 %r" % (window,))
     ener = _as_float(window[0], "transport.energy_window[0]")
     estep = _as_float(window[1], "transport.energy_window[1]")
     eend = _as_float(window[2], "transport.energy_window[2]")
     if estep <= 0 or eend <= ener:
-        raise ConfigError("transport.energy_window 要求 estep > 0 且 eend > ener（当前 %r）" % (window,))
+        raise ConfigError("transport.energy_window 要求 步长 > 0 且 终点 > 起点（当前 %r）" % (window,))
+    unit = _parse_window_unit(data.get("energy_window_unit"), ener, eend, warnings)
+    if unit == "eV" and (eend - ener) > 20.0:
+        warnings.append(
+            "transport.energy_window 跨度 %.1f eV 偏大（默认 ±2 eV）；太宽会让 aitranss "
+            "点数暴涨且远离 E_F 的透射没有意义" % (eend - ener))
     cfg = TransportConfig(
         temperature=_as_float(data.get("temperature", 300.0), "transport.temperature"),
         energy_window=(ener, estep, eend),
+        energy_window_unit=unit,
         ener=_as_float(data["ener"], "transport.ener") if data.get("ener") is not None else None,
         estep=_as_float(data["estep"], "transport.estep") if data.get("estep") is not None else None,
         eend=_as_float(data["eend"], "transport.eend") if data.get("eend") is not None else None,
@@ -448,6 +583,29 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
     if cfg.temperature <= 0:
         raise ConfigError("transport.temperature 应 > 0 K，实际是 %s" % cfg.temperature)
     return cfg
+
+
+def _parse_window_unit(raw: Any, ener: float, eend: float,
+                       warnings: list[str]) -> str:
+    """能量窗单位：显式键优先；缺省时按量级识别 0.2.x 的 Ha 绝对口径。"""
+    if raw is not None:
+        text = _as_str(raw, "transport.energy_window_unit")
+        normalized = {"ev": "eV", "hartree": "Hartree", "ha": "Hartree"}.get(text.strip().lower())
+        if normalized is None:
+            raise ConfigError(
+                "transport.energy_window_unit 只能是 eV（相对 E_F）或 Hartree（Ha 绝对），"
+                "实际是 %r" % (text,))
+        return normalized
+    # 旧口径探测：0.2.x 模板写 Ha 绝对三元组，跨度 ≤0.1 Ha（≈2.7 eV）、量级 <2 Ha。
+    # 新口径默认跨度 4 eV；窄到 0.1 eV 以下的 eV 窗极少见，且显式 unit 可覆盖。
+    span = abs(eend - ener)
+    if span <= 0.1 and max(abs(ener), abs(eend)) < 2.0:
+        warnings.append(
+            "transport.energy_window=%s 形如旧口径（Ha 绝对能量，跨度 %.3g ≤ 0.1）：按 "
+            "Hartree 解释。新口径是 eV 且相对费米能级（默认 E_F ±2 eV），"
+            "建议写 energy_window_unit: eV 显式声明" % ([ener, eend], span))
+        return "Hartree"
+    return "eV"
 
 
 def _parse_cluster(data: Mapping[str, Any], warnings: list[str]) -> ClusterConfig:
@@ -494,9 +652,26 @@ def _parse_paths(data: Mapping[str, Any], warnings: list[str]) -> PathsConfig:
 def _parse_review(data: Mapping[str, Any], warnings: list[str]) -> ReviewConfig:
     _warn_unknown("review", data, _REVIEW_KEYS, warnings)
     accept = data.get("accept_deviation")
+    if data.get("surface_check") is not None and data.get("connection_check") is None:
+        warnings.append("review.surface_check 已更名为 review.connection_check（旧键仍生效）")
+    if data.get("surface_check_deviation") is not None and data.get("connection_check_deviation") is None:
+        warnings.append("review.surface_check_deviation 已更名为 review.connection_check_deviation（旧键仍生效）")
+    if data.get("auto_surface_check") is not None and data.get("auto_connection_check") is None:
+        warnings.append("review.auto_surface_check 已更名为 review.auto_connection_check（旧键仍生效）")
+    if data.get("require_a2") is not None and data.get("connection_check") is None:
+        warnings.append("review.require_a2 已更名为 review.connection_check（旧键仍生效）")
+    if data.get("a2_deviation") is not None and data.get("connection_check_deviation") is None:
+        warnings.append("review.a2_deviation 已更名为 review.connection_check_deviation（旧键仍生效）")
+    check = data.get("connection_check", data.get("surface_check", data.get("require_a2", True)))
+    deviation = data.get(
+        "connection_check_deviation",
+        data.get("surface_check_deviation", data.get("a2_deviation", 0.15)),
+    )
+    auto = data.get("auto_connection_check", data.get("auto_surface_check", True))
     return ReviewConfig(
-        require_a2=_as_bool(data.get("require_a2", True), "review.require_a2"),
-        a2_deviation=_as_float(data.get("a2_deviation", 0.15), "review.a2_deviation"),
+        connection_check=_as_bool(check, "review.connection_check"),
+        connection_check_deviation=_as_float(deviation, "review.connection_check_deviation"),
+        auto_connection_check=_as_bool(auto, "review.auto_connection_check"),
         accept_deviation=_as_float(accept, "review.accept_deviation") if accept is not None else None,
     )
 
@@ -586,25 +761,28 @@ molecule:
   family: null              # 判据标定族（AZ/BDT/…）；未登记体系按"全部判据适用"处理
 
 electrode:
-  source: library           # library = FHI-aims electrodes.library 预定义团簇；builtin = 自建三角岛
+  source: library           # 构建方式：library = FHI-aims electrodes.library 预定义团簇；builtin = 本地三角岛
+  element: Au               # 电极金属（fcc(111) 单晶表面）：Au / Ag / Cu / Ni / Pt / Pd / Al；tip 同元素
+  a_lattice: null           # fcc 晶格常数(Å)；null = 用内置登记值，未登记元素必须显式给出
   library_dir: null         # electrodes.library 目录；null = 本机常见路径 / slurm-ssh 远端探测
   library_cluster: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims
-  # au_per_electrode: 30    # 仅 builtin：每侧 Au 原子数（null = 完整 60/侧）；library 模式忽略该键；按需取消注释
+  # au_per_electrode: 30    # 仅 builtin：每侧电极金属原子数（null = 完整 60/侧）；library 模式忽略该键；按需取消注释
   left_anchor: S
   right_anchor: S
   au_tip_distance: 2.35
-  anchor_au_s_target: null  # null = 只按 au_tip_distance 放置，Au–S 由全原子弛豫决定
+  anchor_au_s_target: null  # null = 只按 au_tip_distance 放置，锚–金属距离由全原子弛豫决定
   pin_contact: false        # false = aims_tip_relax 全原子自由弛豫（推荐）；true 仅用于距离扫描
-  strip_thiol_h: true
+  strip_thiol_h: null       # null = 仅当锚定原子为 S 时自动去质子（其它锚保留 H）；true = 强制去；false = 不去
   vdw: true
   relax: false              # false = 电极扩展后几何冻结，SCF/输运不再弛豫（推荐）
   relax_force_threshold: 1.e-2
-  relax_freeze: backplane   # 仅 relax: true 时生效；backplane = 冻背层，electrodes = 冻全部 Au
+  relax_freeze: backplane   # 仅 relax: true 时生效；backplane = 冻背层，electrodes = 冻全部电极金属
   nlayers: null             # Aitranss 中心区层数；null = 按库文件头部 -nlayers 建议
 
 transport:
   temperature: 300.0
-  energy_window: [-0.21, 0.0002, -0.17]  # [ener, estep, eend] (Ha 绝对能量，围绕 Fermi)
+  energy_window: [-2.0, 0.005, 2.0]  # [起点, 步长, 终点] eV，相对 E_F（默认 E_F ±2 eV，步长 5 meV = 801 点）
+  energy_window_unit: eV    # eV（默认）= 相对费米能级；Hartree = 旧口径（Ha 绝对能量三元组）
   require_te_out: true      # false = 允许缺 te.out 的外部/历史 run（显式豁免，不建议）
 
 cluster:
@@ -633,8 +811,9 @@ paths:
   species_defaults: null
 
 review:
-  require_a2: true
-  a2_deviation: 0.15
+  connection_check: true          # 连接核对（核对每侧三个表面原子与 tcontrol 是否一致）
+  connection_check_deviation: 0.15
+  auto_connection_check: true     # 默认自动登记（electrode_build 采集后自动审计并写记录）
 """
 
 

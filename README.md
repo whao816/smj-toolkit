@@ -1,7 +1,7 @@
 # smj — 单分子结输运计算链（独立包）
 
 > 从**分子结构**到**透射谱**的端到端自动化：FHI-aims 分子优化 → FHI-aims 加针尖/弛豫 →
-> 本地构建 Au(111) 电极 → FHI-aims 静态 SCF → aitranss 透射 → Landauer 分析。
+> 构建电极（本地三角岛或 FHI-aims 电极库；默认 Au(111)）→ FHI-aims 静态 SCF → aitranss 透射 → Landauer 分析。
 > 整链可一把跑完，也可**逐阶段独立运行**；每个阶段的输入/产物都落在
 > `<run.dir>/<run.name>/<stage>/`，状态机在 `state.json` 里可查、可恢复。
 >
@@ -14,9 +14,9 @@
 
 | | |
 |---|---|
-| 输入 | 分子 `.xyz`（默认硫醇 -SH 锚定；也支持 `-SCH3` 等硫醚，锚定 S 且 `strip_thiol_h: false`）+ 电极/锚点/输运窗口参数（`smj.yaml`） |
+| 输入 | 分子 `.xyz`（锚定原子默认硫醇 -SH 的 S，也支持 `-SCH3` 等硫醚，或 N/Se 等任意元素符号 / 1-based 序号指定锚）+ 电极/锚点/输运窗口参数（`smj.yaml`） |
 | 输出 | `TE.dat`（透射谱）、`results.json`（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`）；`smj report` 另生成 `manifest.json`、`report.md` 与判定（`manifest.verdict`） |
-| 适用 | 单分子结 / 分子电子学：Au(111) 电极间硫醇锚定分子的电输运与热电 |
+| 适用 | 单分子结 / 分子电子学：fcc(111) 电极（默认且已完整验证 Au(111)）间硫醇/硫醚及杂原子（N/Se 等）锚定分子的电输运与热电 |
 | 不承诺 | 自带 Gaussian/FHI-aims/aitranss；自动替人选方法/基组/锚点；替代人工结构确认；把 20 Au/侧与 Au60 口径混比 |
 
 六阶段链（顺序固定，但可单独执行任意阶段）：
@@ -24,8 +24,8 @@
 ```text
 molecule.xyz
   └─ molecule_opt      FHI-aims PBE/light 分子优化      → opt.xyz
-      └─ aims_tip_relax  FHI-aims 加 Au tip + 全原子弛豫  → geometry.in.next_step
-          └─ electrode_build  把每个 tip 扩展为完整 Au(111) 金字塔团簇 → geometry.in + electrode_metadata.json
+      └─ aims_tip_relax  加电极金属 tip（默认 Au）+ 全原子弛豫 → geometry.in.next_step
+          └─ electrode_build  构建电极：把每个 tip 扩展为完整 fcc(111) 团簇（默认 Au(111)）→ geometry.in + electrode_metadata.json
               └─ aims_scf     FHI-aims 静态 SCF      → aims.out / mos.aims
                   └─ aitranss_te  aitranss 透射      → TE.dat
                       └─ junction_analyze  Landauer  → results.json
@@ -61,7 +61,7 @@ PBE/light，与 tip/SCF 同一软件栈）；`gaussian` 保留旧口径（B3LYP/
 | azulene-2,6-dithiol (AZ) | 硫醇盐 | 92 | 37 | 0.381 | inconclusive（E_F 附近有峰） |
 | 2CN-656-4-thiomethylphenyl | 硫醚 | 128 | 37 | 0.00132 | inconclusive（E_F 附近有峰） |
 
-三套的**工程判定均通过**（SCF 收敛、TE 数据完整、阶段哈希闭环、A2 已签署）；
+三套的**工程判定均通过**（SCF 收敛、TE 数据完整、阶段哈希闭环、连接核对有效）；
 物理判据的 `inconclusive` 是 `t_ef_no_peak_near_ef`（E_F 1 eV 内有透射峰），
 不代表管线失败。BDT 族判据只对标定族生效，AZ/2CN 不做该族比对。
 
@@ -82,7 +82,7 @@ python -m pip install dist/smj_toolkit-0.2.0-py3-none-any.whl
 可选依赖：
 
 ```bash
-python -m pip install -e ".[plot]"   # matplotlib，用于 T(E) 出图与 A2 核对图
+python -m pip install -e ".[plot]"   # matplotlib，用于 T(E) 出图与连接核对图
 python -m pip install -e ".[dev]"    # pytest，跑本包测试
 python -m pip install -e ".[plot,dev]"    # plot + dev
 ```
@@ -146,7 +146,7 @@ smj run --from aims_scf --to aitranss_te
 |---|---|---|---|---|
 | `molecule_opt` | `molecule.xyz`（或 `--xyz`） | 默认（aims）：`geometry.in`、`control.in`、`sub_aims.sh`、`input_summary.json`，collect 后 `aims.out`、`opt.xyz`；gaussian 引擎：`mol.gjf`、`sub_g16.sh`，collect 后 `mol.log`、`opt.xyz`、`gaussian_summary.json` | 是（FHI-aims 或 Gaussian） | `smj stage molecule_opt --run --xyz molecule.xyz` |
 | `aims_tip_relax` | `molecule_opt/opt.xyz`（或 `--geometry`） | `geometry.in`、`control.in`、`sub_aims.sh`；collect 后 `geometry.in.next_step` | 是（FHI-aims） | `smj stage aims_tip_relax --run --geometry molecule_opt/opt.xyz` |
-| `electrode_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json`（含背层索引与库团簇来源）；tip 被扩展为完整团簇，S–Au 距离/角度沿用弛豫结果 | **否**（本地） | `smj stage electrode_build --run --geometry aims_tip_relax/geometry.in.next_step` |
+| `electrode_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json`（含电极元素/构建方式/背层索引与库团簇来源）；tip 被扩展为完整电极团簇，S–金属距离/角度沿用弛豫结果 | **否**（本地） | `smj stage electrode_build --run --geometry aims_tip_relax/geometry.in.next_step` |
 | `aims_scf` | `electrode_build/geometry.in`（或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run` |
 | `aitranss_te` | `aims_scf/`（或 `--scf-dir`） | `tcontrol`、`sub_te.sh`；collect 后 `TE.dat`、`te.out` | 是（aitranss） | `smj stage aitranss_te --run --scf-dir /path/to/scf` |
 | `junction_analyze` | `aitranss_te/TE.dat`（或 `--te`） | `results.json` | **否**（本地） | `smj stage junction_analyze --run --te TE.dat` |
@@ -160,26 +160,44 @@ FHI-aims 阶段（`aims_tip_relax`/`aims_scf`）还需要 `cluster.species_dir` 
 `electrode_build/electrode_metadata.json`（六个表面索引与左右 tip 索引），可用
 `--metadata` 覆盖。
 
-`electrode_build` 默认用 FHI-aims 自带的 `electrodes.library` 预定义团簇贴装电极（手册
-§5.3.1 的要求），由 `electrode.source`、`electrode.library_dir`、`electrode.library_cluster`
-控制（默认 `fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims`）；库文件不进
-wheel，只在 metadata 里记 `sha256` 与相对路径。`electrode.nlayers: null` 表示取库文件头部
-建议的层数。`electrode.source: builtin` 回到旧的自建三角岛。
+`electrode_build` 是**「构建电极」**阶段：**怎么构建**与**构建什么电极**都是本阶段参数。
+
+- **构建方式** `electrode.source`：`library`（默认）用 FHI-aims 自带的 `electrodes.library`
+  预定义团簇贴装电极（手册 §5.3.1 的要求），由 `electrode.library_dir`、
+  `electrode.library_cluster` 控制（默认
+  `fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims`）；库文件不进 wheel，只在
+  metadata 里记 `sha256` 与相对路径。`electrode.nlayers: null` 表示取库文件头部建议的层数。
+  `builtin` 用纯 Python 在本地构建 fcc(111) 三角岛（旧自建路径，`Electrode111`，非 Au 走
+  `ElectrodeFCC`）。
+- **电极类型** `electrode.element`（默认 `Au`）+ `electrode.a_lattice`（默认 `null`）：
+  fcc(111) 单晶面金属。已登记晶格常数 Au / Ag / Cu / Ni / Pt / Pd / Al；其它元素必须显式
+  给出 `a_lattice`（2.0–6.0 Å）。`aims_tip_relax` 生成的 2 个 tip 也用同一元素，因此 tip–S
+  距离/角度记录的是该金属的真实接触。
+- **一致性**：`source: library` 时库团簇的元素必须与 `electrode.element` 一致，否则阶段
+  fail-closed（提示改 `library_cluster` 或 `element`）；`builtin` 时每侧原子数仍由
+  `electrode.au_per_electrode` 控制（`library` 模式忽略该键）。
+- **产物**：metadata 里非 Au 电极会写 `electrode_element` / `electrode_a_lattice`
+  （默认 Au 保持旧 metadata 逐字节不变；下游与旧 run 缺该键按 `Au` 处理），SCF/透射/自能/
+  校验/连接核对出图都从 metadata 读取电极元素。
 
 默认协议是 **tip 全原子弛豫 → 扩展成完整团簇 → 几何冻结**：`electrode.pin_contact: false`
-（默认）让 `aims_tip_relax` 的 56 原子（分子 + 2 Au tip）全部自由弛豫，不用
-`anchor_au_s_target` 限制 Au–S，这一步给出的就是可靠的 Au–S 键长与连接角度；
-`electrode_build` 只沿弛豫后的 tip→linker 方向把每个 tip 扩展为完整团簇，不改 S–Au
+（默认）让 `aims_tip_relax` 的全部原子（分子 + 2 个电极金属 tip，Au 体系即 56 原子）自由
+弛豫，不用 `anchor_au_s_target` 限制金属–S，这一步给出的就是可靠的金属–S 键长与连接角度；
+`electrode_build` 只沿弛豫后的 tip→linker 方向把每个 tip 扩展为完整团簇，不改 S–金属
 距离/角度。扩展完成后结几何完全冻结，`aims_scf`/`aitranss_te` 不再做任何结构弛豫。
 
 `electrode.relax` / `relax_freeze` 字段仅为旧 run 或显式重跑 `au_relax` 保留；
 主链路已不消费它们。
 默认 `relax: false` 时这个开关不生效。
 
-`transport.energy_window: [ener, estep, eend]` 的单位是 **Hartree（绝对能量）**，与
-`tcontrol` 的 `$ener/$estep/$eend` 一致，要围绕 `aims_scf/aims.out` 的 Fermi 能级取值
-（Au 体系约 −0.19 Ha 附近取 ±0.02 Ha）。**默认 `[-0.21, 0.0002, -0.17]` Ha**（201 点，
-步长约 5.4 meV，与 `smj init` 模板一致）；生产仍应在 SCF 后按实际 E_F 调整窗口。
+`transport.energy_window: [起点, 步长, 终点]` 默认是 **eV 且相对费米能级**：
+默认 `[-2.0, 0.005, 2.0]` 就是 `E − E_F ∈ [−2, +2] eV`、步长 5 meV（801 点）。
+`aitranss_te` 在 prepare 时读 `aims_scf/aims.out` 的 efermi，把它平移成 `tcontrol`
+需要的 Ha 绝对 `$ener/$estep/$eend`；缺 efermi 直接 `StageBlocked`，不猜。
+换金属/换分子后 E_F 会移动，但相对窗口不跟着漂——这就是 0.2.x 起默认 ±2 eV 的理由。
+旧配置的 Ha 绝对三元组（如 `[-0.21, 0.0002, -0.17]`）仍可读：跨度 ≤0.1 Ha 且量级 <2 Ha
+时按旧口径解释并给迁移提示，也可显式写 `energy_window_unit: Hartree`；
+`transport.ener/estep/eend` 仍是 **Ha 绝对**的单分量覆盖（优先级最高）。
 `TE.dat` 第一列是绝对 Hartree，第二列才是
 `E−E_F`（eV）。`transport.require_te_out`（默认 `true`）要求 `aitranss_te/te.out`
 也在场——它是 aitranss 主输出，缺了就无法复核这次透射计算；外部/历史 run 才显式设
@@ -354,27 +372,37 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj status` | 读 `state.json`，打印阶段/状态/job id/远端目录/耗时/备注 | 终端表格（`--json` 机器可读） |
 | `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（7 节：概览/判定/阶段状态/输入摘要/资源/输运/失败原因/产物清单）；缺 `TE.dat` 时物理判定为「无法判定」而不是通过 | 报告文件；默认跳过已存在文件，`--force` 重写，`--no-checks` 不算判定 |
 | `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；出图与参考值比较用 Python API（`smj.analysis.analyze_run(..., plot=True, reference=...)`，需 `[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
-| `smj review` | 结构复核门：建结几何 + A2 人工确认（指纹/表面索引偏差）；`--approve --who <名字>` 登记 A2 确认（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用，`--a2/--no-a2` 临时覆盖 `review.require_a2` | `review.json`、`electrode_build/a2_confirmation.json`；`blocked` 时退出 1 |
+| `smj review` | 结构复核门：建结几何 + 连接核对（原 A2：指纹/表面索引偏差）。默认由管线在 `electrode_build` 之后自动登记（`who=auto`，审计不过则拒绝登记并阻断）；也可人工签 `--approve --who <名字>`（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用，`--connection-check/--no-connection-check` 临时覆盖 `review.connection_check` | `review.json`、`electrode_build/connection_check.json`（旧 `a2_confirmation.json` / `surface_check.json` 仍可读）；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
 | `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
 
 退出码：`0` 成功/作业已结束；`1` 失败或配置/输入错误；`2` 未完成（`--wait` 超时、
-作业可能仍在跑，或 `run` 有阶段停在 `waiting`），以及 **A2 签署被拒绝**
+作业可能仍在跑，或 `run` 有阶段停在 `waiting`），以及 **连接核对签署被拒绝**
 （审计不过 / 出图失败 / 缺 metadata）。argparse 用法错误也返回 2。
 
-### 7.1 判定与 A2 红线
+### 7.1 判定与连接核对
 
 - `smj report` 默认算物理判据并写进 `manifest.verdict`；缺 `TE.dat` 时登记
   `te_present`（engineering/error）且结论是 `inconclusive`（**证据缺失 ≠ 通过，
   也不等于否证 H0**），`report.md` 的「## 0.1 判定」会列出未过/未评估的判据。
-- `review.require_a2` 默认 `true`：没有 `a2_confirmation.json` 或指纹与当前
-  `geometry.in` 不一致时，`smj review` 直接 `blocked`。签署用
-  `smj review --approve --who <名字>`（A2 核对图落在 `electrode_build/a2_surface_viz.png`，
-  审计结果落在 `electrode_build/a2_surface_audit.json`）。
-- **命令行临时开关**：`smj review --no-a2` 让本次复核不要求 A2（缺记录/指纹失效只降为
-  info/warning），`--a2` 在 yaml 写 `false` 时强制开启；缺省沿用
-  `review.require_a2`。开关只作用于当次调用，不写回配置，也不进 `run_spec` 的协议哈希。
+- **默认自动**：`review.auto_connection_check: true`（默认）时，`electrode_build`
+  收集完成即由管线自动跑一次表面审计并登记（`who="auto"`），不会因为"没人看图"
+  把整条链卡住；审计不通过时**拒绝登记**，`smj review` 仍会 `blocked`。
+- **闸门**：`review.connection_check: true`（默认）→ 没有有效记录（缺文件或指纹与当前
+  `geometry.in` 不一致）时 `smj review` 直接 `blocked`。人工复看后可用
+  `smj review --approve --who <名字>` 覆盖（图落在 `electrode_build/connection_check_viz.png`，
+  审计结果落在 `electrode_build/connection_check_audit.json`）；`--no-figure` 表示已在
+  别处看过图。想恢复"必须人工签"：设 `auto_connection_check: false`。
+- **命令行临时开关**：`smj review --no-connection-check` 让本次复核不要求连接核对
+  （缺记录/指纹失效只降为 info/warning），`--connection-check` 在 yaml 写 `false` 时
+  强制开启；缺省沿用 `review.connection_check`。开关只作用于当次调用，不写回配置，
+  也不进 `run_spec` 的协议哈希。
+- **旧名兼容**：`review.require_a2` / `review.a2_deviation` / `review.surface_check` /
+  `review.surface_check_deviation` / `review.auto_surface_check` 仍被接受（加载时提示改名），
+  旧 run 目录里的 `a2_confirmation.json` / `a2_surface_audit.json` / `surface_check.json` /
+  `surface_check_audit.json` 仍被读取；
+  配置模板已改用 `connection_check` / `connection_check_deviation` / `auto_connection_check`。
 
 ### 7.2 运行溯源（run_spec / 哈希闭环）
 
@@ -393,6 +421,9 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `run_spec.json` 时允许用当前配置重建，但标记 `reconstructed: true` 并告警。
 - **复核门**：`smj review` 对缺 run_spec/重建只告警，对协议漂移记
   `provenance_drift` 并 `blocked`——结果不能按原参数解读时不会静默放行。
+  唯一例外是**只差 `molecule.family`**（判据标定族，不参与物理计算）：记
+  `provenance_family_relabel` warning 而不阻断——run 做完再补登记族（如
+  `null → BPY`）不必重建 run，判据按当前标注重算。
 
 ## 8. 与主仓的关系
 
@@ -413,20 +444,31 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 - **Windows 本机执行需要 bash**：`run.mode: local` 依赖 `bash`；`slurm-ssh` 还需要可用的
   `ssh`/`scp`（Git-Bash 自带 OpenSSH）与目标集群免密登录。沙箱内网络受限时，请在宿主
   shell 里执行真跑。
-- **结构确认是人的责任**：`electrode_build` 之后的 A2 表面确认是红线，管线不会自动放行。
-  签署是 `smj review --approve --who <名字>`：审计不过或出图失败直接拒绝（退出 2），
-  签名绑定当前 `geometry.in` 的 sha256，几何一改旧签名即失效；`review.require_a2`
-  默认 `true`，没有有效签名时 `smj review` 为 `blocked`。
+- **结构确认默认自动、但可退回人工**：`electrode_build` 之后的连接核对默认由管线
+  自动登记（`auto_connection_check: true`，`who=auto`）：审计（表面三元组/输运轴/接触）
+  不通过时拒绝登记，`smj review` 仍 `blocked`；想强制人工看图再签，设
+  `auto_connection_check: false`，再用 `smj review --approve --who <名字>` 签。签名绑定
+  当前 `geometry.in` 的 sha256，几何一改旧签名即失效；`review.connection_check` 默认
+  `true`，没有有效签名时 `smj review` 为 `blocked`。
 - **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
   （未测晶格热导就不下总 ZT 结论）。
 - **电极厚度口径**：`electrode.au_per_electrode` 只在 `source: builtin` 生效
   （`null` = 完整 60 Au/侧；整数按完整原子层截断，30 → 35/侧；上限 30）。默认
   `source: library` 时该键被完全忽略，团簇大小由 `electrodes.library` 文件决定。
-- **锚定化学不可混**：`2.40–2.49 Å` 是去质子**硫醇盐**的 Au–S 有源带。`-SCH3` 等
-  **硫醚**的 S–Au 是配位接触（2.6–2.7 Å 也可能正常），`smj review` 按 S 的成键环境
-  （S–C 数 / S–H）分流，不把该带套到硫醚上。默认 `anchor_au_s_target: null`、
-  `pin_contact: false`：只用 `au_tip_distance` 放初始几何，最终 Au–S 键长/角度由
-  `aims_tip_relax` 的全原子弛豫决定；不要把 2.40 Å 当作目标键长或约束。
+- **电极元素口径**：`electrode.element` 改变的是电极金属（tip 同元素），不只是标签；
+  已登记 fcc 晶格常数的金属可直接换（Au/Ag/Cu/Ni/Pt/Pd/Al），其它元素必须显式
+  `a_lattice`。`aims_scf`/`aitranss_te`/`self_energy`/`validate`/连接核对出图都从
+  `electrode_metadata.json` 的 `electrode_element` 取元素（缺键按 Au），
+  不要再用「Au」当所有体系的默认假设。
+- **锚定化学不可混**：`2.40–2.49 Å` 是去质子**硫醇盐**的 Au–S 有源带，且只按 Au 标定；
+  非 Au 电极只报告接触距离、不做该带有源判定。`-SCH3` 等**硫醚**的 S–Au 是配位接触
+  （2.6–2.7 Å 也可能正常），`smj review` 按 S 的成键环境（S–C 数 / S–H）分流，不把该带
+  套到硫醚上。**分子里没有 S 也可以建结**：`left_anchor`/`right_anchor` 写 N/Se 等任意
+  元素符号或 1-based 序号；`strip_thiol_h: null`（默认）只对 S 锚自动去质子，其它锚保留 H
+  （`true` = 强制去、`false` = 不去）。非 S 锚只报告锚–金属接触距离，不套任何键长带。
+  默认 `anchor_au_s_target: null`、`pin_contact: false`：只用
+  `au_tip_distance` 放初始几何，最终锚–金属键长/角度由 `aims_tip_relax` 的全原子弛豫决定；
+  不要把 2.40 Å 当作目标键长或约束。
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。
 - **资源估算是申请下限**：132 原子锚点外推，体系明显偏离时应按实测回填，不要当保证值。

@@ -30,14 +30,31 @@ def _project(workdir: Path, *, electrode: list[str] | None = None,
 
 def test_energy_window_default_around_fermi(workdir):
     config = load_config(_project(workdir))
-    assert config.transport.energy_window == (-0.21, 0.0002, -0.17)
-    assert config.transport.resolved_window() == (-0.21, 0.0002, -0.17)
+    # 默认：eV 且相对 E_F（E_F ±2 eV），步长 5 meV。
+    assert config.transport.energy_window == (-2.0, 0.005, 2.0)
+    assert config.transport.energy_window_unit == "eV"
+    assert config.transport.relative_window() == (-2.0, 0.005, 2.0)
+    # 换算成 aitranss 的 Ha 绝对值必须显式给 efermi（不猜）。
+    try:
+        config.transport.resolved_window()
+    except ValueError as exc:
+        assert "efermi" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("eV 口径缺 efermi 时应报错")
+    efermi = -0.180814064867
+    ener, estep, eend = config.transport.resolved_window(efermi)
+    assert abs(ener - (efermi - 2.0 / 27.211386245988)) < 1e-12
+    assert abs(eend - (efermi + 2.0 / 27.211386245988)) < 1e-12
+    assert abs(estep - 0.005 / 27.211386245988) < 1e-15
 
 
 def test_energy_window_explicit_override_kept(workdir):
+    # 旧口径（Ha 绝对）三元组：按量级识别并原样生效，附迁移 warning。
     config = load_config(_project(
         workdir, transport=["energy_window: [-0.22, 0.0001, -0.16]"]))
+    assert config.transport.energy_window_unit == "Hartree"
     assert config.transport.resolved_window() == (-0.22, 0.0001, -0.16)
+    assert any("旧口径" in w for w in config.warnings)
 
 
 def test_library_ignores_au_per_electrode(workdir):

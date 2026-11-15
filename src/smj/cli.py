@@ -653,21 +653,21 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 def cmd_review(args: argparse.Namespace) -> int:
     config = _load_config(args)
 
-    # 2026-11-11 F4：--approve 先把 A2 人工确认登记下来（fail-closed），
-    # 再走常规复核，让用户在同一条命令里看到"签了之后门过没过"。
+    # 2026-11-15：A2 人工确认更名为「连接核对」（connection check），默认自动登记。
+    # --approve 是手工补签/重签路径（fail-closed），签完在同一条命令里看门过没过。
     if getattr(args, "approve", False):
         if not (args.who or "").strip():
-            print("错误: --approve 需要 --who <签署人>（A2 确认必须记录是谁看的）")
+            print("错误: --approve 需要 --who <签署人>（连接核对必须记录是谁看的）")
             return 2
-        from .a2 import approve_a2  # 本地模块，非可选依赖
+        from .a2 import approve_connection_check  # 本地模块，非可选依赖
 
-        approval = approve_a2(
+        approval = approve_connection_check(
             config, who=args.who, stage=args.stage, no_figure=args.no_figure,
             png=args.png, tcontrol=args.tcontrol, force=args.force)
         if args.json:
             _emit_json(approval.to_dict())
         else:
-            print("A2 签署: %s" % approval.status)
+            print("连接核对: %s" % approval.status)
             print("  %s" % approval.reason)
             for key in ("build_dir", "who", "when", "fingerprint",
                         "audit_path", "png_path"):
@@ -684,13 +684,19 @@ def cmd_review(args: argparse.Namespace) -> int:
     kwargs: dict[str, Any] = {"force": args.force}
     if args.accept_deviation is not None:
         kwargs["accept_deviation"] = args.accept_deviation
-    if getattr(args, "require_a2", None) is not None:
+    connection_check = getattr(args, "connection_check", None)
+    if connection_check is None:
+        # 旧 --surface-check/--no-surface-check、--a2/--no-a2 别名（隐藏，仍可用）
+        connection_check = getattr(args, "legacy_surface_check", None)
+    if connection_check is None:
+        connection_check = getattr(args, "legacy_a2", None)
+    if connection_check is not None:
         # 命令行开关只作用于本次 review 调用（不写回 smj.yaml、不进 run_spec）：
-        # --no-a2 等价 require_a2=false，--a2 强制开启。
+        # --no-connection-check 等价 connection_check=false，缺记录/指纹失效只降为提示。
         review_cfg = getattr(config, "review", None)
         if review_cfg is not None:
             kwargs["review_config"] = dataclasses.replace(
-                review_cfg, require_a2=bool(args.require_a2))
+                review_cfg, connection_check=bool(connection_check))
     result = _invoke(func, config, **kwargs)
     data = _as_mapping(result)
     ok = _truthy_ok(data)
@@ -897,7 +903,7 @@ def _add_common(parser: argparse.ArgumentParser, *, with_config: bool = True) ->
 def _add_overrides(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("输入覆盖")
     group.add_argument("--xyz", metavar="PATH", help="分子结构 xyz（覆盖 molecule.xyz）")
-    group.add_argument("--geometry", metavar="PATH", help="Au60 结几何文件（覆盖 electrode_build 输入）")
+    group.add_argument("--geometry", metavar="PATH", help="电极结几何文件（覆盖 electrode_build 输入）")
     group.add_argument("--scf-dir", dest="scf_dir", metavar="DIR", help="aims_scf 输出目录覆盖")
     group.add_argument("--te", metavar="PATH", help="TE.dat / tcontrol 输入目录覆盖")
     group.add_argument("--metadata", metavar="PATH", help="电极元数据 JSON 覆盖")
@@ -1018,32 +1024,41 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.set_defaults(handler=cmd_analyze)
 
     review = subparsers.add_parser(
-        "review", help="结构复核（A2 偏差图等）",
+        "review", help="结构复核（含连接核对）",
         description="调用 smj.review；不通过时退出码为 1。"
-                    "加 --approve --who <名字> 先登记 A2 人工确认（审计/出图"
+                    "连接核对默认自动登记（review.auto_connection_check）；"
+                    "手工补签用 --approve --who <名字>（审计/出图"
                     "不通过时退出码为 2）。")
     _add_common(review)
     review.add_argument("--force", action="store_true", help="覆盖已有复核结果")
     review.add_argument("--approve", action="store_true",
-                        help="登记 A2 人工确认（须配合 --who；审计不通过则拒绝签署）")
+                        help="手工（重新）登记连接核对（须配合 --who；审计不通过则拒绝）")
     review.add_argument("--who", default=None, metavar="NAME",
-                        help="A2 签署人（写进 a2_confirmation.json）")
+                        help="连接核对签署人（写进 connection_check.json）")
     review.add_argument("--stage", default=None, metavar="DIR",
                         help="electrode_build 目录（缺省自动定位 run 下的 electrode_build）")
     review.add_argument("--png", default=None, metavar="PATH",
-                        help="A2 核对图输出路径（缺省 <electrode_build>/a2_surface_viz.png）")
+                        help="连接核对图输出路径（缺省 <electrode_build>/connection_check_viz.png）")
     review.add_argument("--tcontrol", default=None, metavar="PATH",
                         help="aitranss_te/tcontrol（用于核对表面索引一致性）")
     review.add_argument("--no-figure", action="store_true",
-                        help="不出图直接签署（显式声明已看过图；无 matplotlib 时用）")
+                        help="不出图直接登记（显式声明已看过图；无 matplotlib 时用）")
     review.add_argument("--accept-deviation", type=float, metavar="FRAC",
-                        help="放宽 A2 相对偏差门槛（如 0.2）")
+                        help="放宽连接核对相对偏差门槛（如 0.2）")
     review.add_argument(
-        "--a2", dest="require_a2", action=argparse.BooleanOptionalAction,
-        default=None,
-        help="本次复核的 A2 表面确认开关：--no-a2 关闭（等价 "
-             "review.require_a2: false，缺记录/指纹失效只降为提示），"
-             "--a2 强制开启；缺省沿用 smj.yaml 的 review.require_a2")
+        "--connection-check", dest="connection_check",
+        action=argparse.BooleanOptionalAction, default=None,
+        help="本次复核的连接核对开关：--no-connection-check 关闭（等价 "
+             "review.connection_check: false，缺记录/指纹失效只降为提示），"
+             "--connection-check 强制开启；缺省沿用 smj.yaml")
+    # 更名前的旧开关（隐藏，仍可用）：先叫「表面核对」，更早叫 A2。
+    review.add_argument("--surface-check", dest="legacy_surface_check",
+                        action=argparse.BooleanOptionalAction, default=None,
+                        help=argparse.SUPPRESS)
+    review.add_argument("--a2", dest="legacy_a2", action="store_true",
+                        default=None, help=argparse.SUPPRESS)
+    review.add_argument("--no-a2", dest="legacy_a2", action="store_false",
+                        default=None, help=argparse.SUPPRESS)
     review.set_defaults(handler=cmd_review)
 
     # audit / verify -------------------------------------------------------- #

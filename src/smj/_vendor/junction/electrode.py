@@ -270,6 +270,7 @@ def append_au60(input_path: str | Path, output_path: str | Path,
     if extras is not None:
         thick["extras"] = extras
     # P2-1: element='Au' 且未显式给晶格常数 -> 走 Electrode111 原路径(默认逐字节不变)
+    eff_lattice: float | None = None
     if cluster is not None:
         builder = getattr(cluster, "to_electrode", None)
         if callable(builder):
@@ -287,6 +288,7 @@ def append_au60(input_path: str | Path, output_path: str | Path,
         if _a is None:
             raise ValueError('未知金属: %r(请显式给出 a_lattice; 已登记: %s)'
                              % (element, sorted(FCC_LATTICE_A)))
+        eff_lattice = _a
         constructor = ElectrodeFCC(element=element, a_lattice=_a,
                                    au_per_electrode=au_per_electrode, **thick)
     original_count = len(atoms)
@@ -340,6 +342,13 @@ def append_au60(input_path: str | Path, output_path: str | Path,
     if cluster is not None:
         metadata["electrode_source"] = "library"
         metadata["library_cluster"] = dict(provenance or {})
+    # 2026-11-15: 电极金属/晶格常数只在**非 Au 默认**时写入, 保证既有 Au 流程的
+    # metadata 逐字节不变; 下游缺该键按 "Au" 处理。
+    _constructed_element = getattr(constructor, "element", element)
+    if _constructed_element != "Au":
+        metadata["electrode_element"] = _constructed_element
+    if eff_lattice is not None:
+        metadata["electrode_a_lattice"] = eff_lattice
     if thick:
         # 仅在显式加厚时写入(既有调用方 metadata 逐字节不变)
         metadata["electrode_layers"] = getattr(constructor, "layers", None)

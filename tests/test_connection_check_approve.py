@@ -1,16 +1,16 @@
-"""F4 回归：A2 人工确认的独立入口（``smj review --approve``），fail-closed。
+"""F4 回归：连接核对（connection check；原 A2 人工确认）的独立登记入口，fail-closed。
 
-背景（2026-11-11 本地补丁 F4）：独立包此前**没有任何签署命令**。``smj review`` 只读
-``a2_confirmation.json``，真正的登记路径是 vendored 的
-``python -m smj._vendor.junction.a2_viz --sign-who``，而 review 的提示指向主仓的
-``agenticdft smj-review``（独立包里不存在）。本组测试锁住新入口的几条底线：
+背景（2026-11-11 补丁 F4；2026-11-15 更名并默认自动登记）：独立包此前没有任何
+签署命令，``smj review`` 只读 ``a2_confirmation.json``。本组测试锁住登记入口的
+几条底线：
 
-* 没有建结目录 / 没有 metadata / 审计不过 / 出图失败 -> 拒绝签署，且**不写**
-  ``a2_confirmation.json``；
-* 审计不过时把 ``a2_surface_audit.json`` 落盘，便于人看是哪三项不过；
+* 没有建结目录 / 没有 metadata / 审计不过 / 出图失败 -> 拒绝登记，且**不写**
+  ``connection_check.json``（旧名 ``a2_confirmation.json`` 仅用于读旧 run）；
+* 审计不过时把 ``connection_check_audit.json`` 落盘，便于人看是哪几项不过；
 * 几何不可解析时返回 refused 而不是抛异常；
 * ``--no-figure`` 是显式逃生口，签出来的记录绑定当前 geometry.in 的 sha256；
-* 二次签署幂等（already_signed），``force`` 才覆盖。
+* 二次登记幂等（already_signed），``force`` 才覆盖；
+* 旧公开名 ``approve_a2`` 仍可用（别名）。
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from smj.a2 import EXIT_REFUSED, approve_a2
+from smj.a2 import EXIT_REFUSED, approve_a2, approve_connection_check
 from smj.cli import main
 from smj.errors import SmjError
 
@@ -94,7 +94,7 @@ def _fingerprint(build: Path) -> str:
 # 拒绝路径
 # --------------------------------------------------------------------------- #
 def test_refuses_without_build_dir(workdir: Path):
-    result = approve_a2(workdir / "run", who="tester")
+    result = approve_connection_check(workdir / "run", who="tester")
     assert result.status == "refused"
     assert result.code == "no_build_dir"
     assert result.exit_code == EXIT_REFUSED
@@ -103,23 +103,23 @@ def test_refuses_without_build_dir(workdir: Path):
 
 def test_refuses_without_metadata(workdir: Path):
     run_dir, build = _case(workdir, with_metadata=False)
-    result = approve_a2(run_dir, who="tester")
+    result = approve_connection_check(run_dir, who="tester")
     assert result.code == "no_metadata"
     assert result.exit_code == EXIT_REFUSED
-    assert not (build / "a2_confirmation.json").exists()
+    assert not (build / "connection_check.json").exists()
 
 
 def test_refuses_when_audit_not_ok(workdir: Path):
     # 内层 11,12,13 不是最外层 -> same_surface_layer 等检查必不过
     run_dir, build = _case(workdir, metadata=_metadata(
         left_surface_indices=[11, 12, 13], right_surface_indices=[11, 12, 13]))
-    result = approve_a2(run_dir, who="tester", no_figure=True)
+    result = approve_connection_check(run_dir, who="tester", no_figure=True)
     assert result.status == "refused"
     assert result.code == "audit_not_ok"
     assert result.exit_code == EXIT_REFUSED
     assert result.checks_failed, "拒绝时必须列出未通过的检查项"
-    assert (build / "a2_surface_audit.json").is_file()
-    assert not (build / "a2_confirmation.json").exists()
+    assert (build / "connection_check_audit.json").is_file()
+    assert not (build / "connection_check.json").exists()
 
 
 def test_refuses_when_figure_fails(workdir: Path, monkeypatch):
@@ -130,25 +130,25 @@ def test_refuses_when_figure_fails(workdir: Path, monkeypatch):
 
     monkeypatch.setattr(a2_viz, "render_figure", boom)
     run_dir, build = _case(workdir)
-    result = approve_a2(run_dir, who="tester")          # 默认要求出图
+    result = approve_connection_check(run_dir, who="tester")          # 默认要求出图
     assert result.code == "figure_failed"
     assert result.exit_code == EXIT_REFUSED
-    assert not (build / "a2_confirmation.json").exists()
+    assert not (build / "connection_check.json").exists()
 
 
 def test_unparsable_geometry_is_refused_not_crash(workdir: Path):
     run_dir, build = _case(workdir, geometry_text="this is not an aims geometry\n")
-    result = approve_a2(run_dir, who="tester", no_figure=True)
+    result = approve_connection_check(run_dir, who="tester", no_figure=True)
     assert result.status == "refused"
     assert result.code == "audit_failed"
     assert result.exit_code == EXIT_REFUSED
-    assert not (build / "a2_confirmation.json").exists()
+    assert not (build / "connection_check.json").exists()
 
 
 def test_empty_who_raises(workdir: Path):
     run_dir, _build = _case(workdir)
     with pytest.raises(SmjError, match="签署人"):
-        approve_a2(run_dir, who="   ")
+        approve_connection_check(run_dir, who="   ")
 
 
 # --------------------------------------------------------------------------- #
@@ -156,36 +156,36 @@ def test_empty_who_raises(workdir: Path):
 # --------------------------------------------------------------------------- #
 def test_signs_with_no_figure(workdir: Path):
     run_dir, build = _case(workdir)
-    result = approve_a2(run_dir, who="王昊", no_figure=True)
+    result = approve_connection_check(run_dir, who="王昊", no_figure=True)
     assert result.ok, result.reason
     assert result.status == "signed"
     assert result.exit_code == 0
-    confirm = json.loads((build / "a2_confirmation.json").read_text(encoding="utf-8"))
+    confirm = json.loads((build / "connection_check.json").read_text(encoding="utf-8"))
     assert confirm["who"] == "王昊"
     assert confirm["fingerprint"] == _fingerprint(build)
-    assert (build / "a2_surface_audit.json").is_file()
+    assert (build / "connection_check_audit.json").is_file()
 
 
 def test_second_approval_is_idempotent(workdir: Path):
     run_dir, build = _case(workdir)
-    first = approve_a2(run_dir, who="tester", no_figure=True)
+    first = approve_connection_check(run_dir, who="tester", no_figure=True)
     assert first.ok
-    recorded = json.loads((build / "a2_confirmation.json").read_text(encoding="utf-8"))
+    recorded = json.loads((build / "connection_check.json").read_text(encoding="utf-8"))
 
-    again = approve_a2(run_dir, who="other", no_figure=True)
+    again = approve_connection_check(run_dir, who="other", no_figure=True)
     assert again.status == "already_signed"
     assert again.ok and again.exit_code == 0
     # 未加 force：记录必须原样不动
-    assert json.loads((build / "a2_confirmation.json").read_text(
+    assert json.loads((build / "connection_check.json").read_text(
         encoding="utf-8"))["who"] == recorded["who"]
 
 
 def test_force_resigns(workdir: Path):
     run_dir, build = _case(workdir)
-    assert approve_a2(run_dir, who="tester", no_figure=True).ok
-    again = approve_a2(run_dir, who="王昊", no_figure=True, force=True)
+    assert approve_connection_check(run_dir, who="tester", no_figure=True).ok
+    again = approve_connection_check(run_dir, who="王昊", no_figure=True, force=True)
     assert again.status == "signed"
-    assert json.loads((build / "a2_confirmation.json").read_text(
+    assert json.loads((build / "connection_check.json").read_text(
         encoding="utf-8"))["who"] == "王昊"
 
 
@@ -194,7 +194,7 @@ def test_signature_follows_geometry(workdir: Path):
     from smj._vendor.junction.fingerprint import check_confirmation
 
     run_dir, build = _case(workdir)
-    assert approve_a2(run_dir, who="tester", no_figure=True).ok
+    assert approve_connection_check(run_dir, who="tester", no_figure=True).ok
     assert check_confirmation(build)["valid"] is True
 
     atoms = _atoms()
@@ -202,7 +202,7 @@ def test_signature_follows_geometry(workdir: Path):
     (build / "geometry.in").write_text(_geometry_text(atoms), encoding="utf-8")
     assert check_confirmation(build)["valid"] is False
 
-    assert approve_a2(run_dir, who="tester", no_figure=True, force=True).ok
+    assert approve_connection_check(run_dir, who="tester", no_figure=True, force=True).ok
     assert check_confirmation(build)["valid"] is True
 
 
@@ -235,7 +235,7 @@ def test_cli_refusal_exit_code_is_2(workdir: Path):
     code = main(["review", "--approve", "--who", "tester", "--no-figure",
                  "--json", "-c", str(cfg)])
     assert code == 2
-    assert not (build / "a2_confirmation.json").exists()
+    assert not (build / "connection_check.json").exists()
 
 
 def test_cli_signs(workdir: Path):
@@ -243,6 +243,6 @@ def test_cli_signs(workdir: Path):
     cfg = _config_file(workdir, run_dir)
     code = main(["review", "--approve", "--who", "tester", "--no-figure",
                  "-c", str(cfg)])
-    assert (build / "a2_confirmation.json").is_file(), "CLI 必须真的把确认写进 build 目录"
+    assert (build / "connection_check.json").is_file(), "CLI 必须真的把确认写进 build 目录"
     # 签署后继续走 review；这里只断言签署结果已落盘，不约束 review 自身的结论
     assert code in (0, 1)

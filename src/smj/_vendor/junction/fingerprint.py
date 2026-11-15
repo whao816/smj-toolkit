@@ -1,13 +1,14 @@
-"""P0-6 (AGD-2026-09-25-SMJ): 建结几何指纹与 A2 人工确认绑定。
+"""P0-6 (AGD-2026-09-25-SMJ): 建结几何指纹与「连接核对」记录绑定。
 
 问题(实测): 本会话同一表面索引算法在三组几何上给出三组左表面索引
-([55,56,60] / [58,52,57] / [50,51,56]), 而 A2(表面原子人工确认)只在**占位几何**上
-做过一次 —— 几何一变, 旧确认**静默失效**却仍在被引用(v0.4 D12; 三组索引见
+([55,56,60] / [58,52,57] / [50,51,56]), 而表面原子核对只在**占位几何**上
+做过一次 —— 几何一变, 旧记录**静默失效**却仍在被引用(v0.4 D12; 三组索引见
 docs/smj-bdt-benchmark-results.md §9.4)。
 
-做法: au60_build 记录 surface_fingerprint(geometry.in 的字节 sha256);
-A2 确认落成 a2_confirmation.json{fingerprint, indices, who, when};
-校验时**指纹不符即确认失效**, 必须按新几何重新确认。
+做法: electrode_build 记录 surface_fingerprint(geometry.in 的字节 sha256);
+连接核对记录落成 connection_check.json{fingerprint, indices, who, when}
+(2026-11-15 之前叫 a2_confirmation.json, 旧文件仍被读取);
+校验时**指纹不符即记录失效**, 必须按新几何重新核对。
 
 纯文件操作, 不做真实计算。
 """
@@ -19,7 +20,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 FINGERPRINT_KEY = 'surface_fingerprint'
-CONFIRM_FILE = 'a2_confirmation.json'
+CONFIRM_FILE = 'connection_check.json'
+#: 2026-11-15 更名前的确认文件（「表面核对」时代的 surface_check.json、更早的
+#: A2 时代的 a2_confirmation.json）；旧 run 目录仍读它们（只读兼容，不再写）。
+LEGACY_CONFIRM_FILES = ('surface_check.json', 'a2_confirmation.json')
+LEGACY_CONFIRM_FILE = LEGACY_CONFIRM_FILES[-1]
 SURFACE_KEYS = ('left_surface_indices', 'right_surface_indices')
 
 
@@ -41,7 +46,7 @@ def attach_fingerprint(step_dir, metadata_path=None) -> dict:
 
 def record_confirmation(step_dir, who: str, when: str | None = None,
                         metadata_path=None) -> dict:
-    """登记 A2 人工确认(绑定当前几何指纹)。"""
+    """登记连接核对记录(绑定当前几何指纹)。"""
     step_dir = Path(step_dir)
     mp = Path(metadata_path) if metadata_path else step_dir / 'electrode_metadata.json'
     meta = json.loads(mp.read_text(encoding='utf-8'))
@@ -59,13 +64,21 @@ def record_confirmation(step_dir, who: str, when: str | None = None,
 
 
 def check_confirmation(step_dir) -> dict:
-    """A2 确认有效性: {'present','valid','reason',...}。
+    """连接核对记录的有效性: {'present','valid','reason',...}。
 
     无记录 -> present=False, valid=False(调用方按 warn 处理);
-    指纹不符 -> present=True, valid=False(**须重新确认**, 调用方按 error 处理)。
+    指纹不符 -> present=True, valid=False(**须按新几何重新核对**, 调用方按 error 处理)。
+    兼容旧 run: 没有 ``connection_check.json`` 时依次读 ``surface_check.json`` /
+    ``a2_confirmation.json``。
     """
     step_dir = Path(step_dir)
     cp = step_dir / CONFIRM_FILE
+    if not cp.exists():
+        for legacy_name in LEGACY_CONFIRM_FILES:
+            legacy = step_dir / legacy_name
+            if legacy.exists():
+                cp = legacy
+                break
     meta = {}
     mp = step_dir / 'electrode_metadata.json'
     if mp.exists():
@@ -85,19 +98,19 @@ def check_confirmation(step_dir) -> dict:
                     'reason': 'geometry.in 缺失, 无法计算几何指纹'}
     if not cp.exists():
         return {'present': False, 'valid': False, 'current': cur,
-                'reason': '尚无 A2 确认记录(几何指纹 %s); 需人工确认表面原子' % cur[:12]}
+                'reason': '尚无连接核对记录(几何指纹 %s); 需核对表面原子' % cur[:12]}
     try:
         rec = json.loads(cp.read_text(encoding='utf-8'))
     except (OSError, ValueError) as exc:
         return {'present': True, 'valid': False, 'current': cur,
-                'reason': 'A2 确认记录不可解析: %s' % exc}
+                'reason': '连接核对记录不可解析: %s' % exc}
     if rec.get('fingerprint') != cur:
         return {'present': True, 'valid': False, 'current': cur,
                 'recorded': rec.get('fingerprint'),
-                'reason': ('A2 确认已失效: 记录指纹 %s != 当前几何指纹 %s —— 几何已变, '
-                           '旧确认不得沿用, 须按新几何重新确认'
+                'reason': ('连接核对记录已失效: 记录指纹 %s != 当前几何指纹 %s —— 几何已变, '
+                           '旧记录不得沿用, 须按新几何重新核对'
                            % (str(rec.get('fingerprint'))[:12], cur[:12]))}
     return {'present': True, 'valid': True, 'current': cur,
             'recorded': rec.get('fingerprint'), 'who': rec.get('who'), 'when': rec.get('when'),
-            'reason': 'A2 确认有效(指纹 %s, %s @ %s)'
+            'reason': '连接核对有效(指纹 %s, %s @ %s)'
                       % (cur[:12], rec.get('who'), rec.get('when'))}
