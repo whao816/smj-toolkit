@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
-  "repo_commit": "dfff4b861eb441c2af55c8be1460c5390394cbc7",
+  "repo_commit": "11f828f7870f1281461cf8b8a92bd5a30ae9043c",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -30,8 +30,8 @@
       "bytes": 2262
     },
     "criteria.py": {
-      "sha256": "599cdf72ad93f527b0db1d990a3208828c6041a167df9c2269b42fa01950db01",
-      "bytes": 20722
+      "sha256": "1783add2467511021ea59c68a087c5177a400595cc314a04252a8cb1c50cb7a1",
+      "bytes": 21271
     },
     "demo.py": {
       "sha256": "501fb09f251c197206664e996a10f018f9cc8a61edeb597ce2e464169043e97e",
@@ -250,6 +250,18 @@
         "tests/test_cli_connection_check.py",
         "tests/test_runner_connection_check.py",
         "tests/test_review_family_drift.py",
+        "tests/test_family.py"
+      ]
+    },
+    {
+      "id": "F-FAMILY-sme",
+      "commit": "2026-11-15",
+      "files": [
+        "criteria.py"
+      ],
+      "what": "SYSTEM_FAMILIES 登记判据族 SME（Au-(1,4-bis(methylthio)benzene)-Au），让 t_ef_magnitude / g_in_theory_band / seebeck_sign 记「不适用（仅记录）」而不是闸门。",
+      "why": "这三条判据带都按 Au–BDT–Au 硫醇盐标定（0.03–0.40 G0、Seebeck 正号）；甲硫基（硫醚）是配位型接触，S 上无 H、不脱质子，带内数值对它没有参考意义，不登记族名会把一次物理上正常的算例判成「否证 H0」。",
+      "tests": [
         "tests/test_family.py"
       ]
     }

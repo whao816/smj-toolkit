@@ -104,6 +104,18 @@ LOCAL_PATCHES = [
                   "tests/test_runner_connection_check.py", "tests/test_review_family_drift.py",
                   "tests/test_family.py"],
     },
+    {
+        "id": "F-FAMILY-sme",
+        "commit": "2026-11-15",
+        "files": ["criteria.py"],
+        "what": "SYSTEM_FAMILIES 登记判据族 SME（Au-(1,4-bis(methylthio)benzene)-Au），"
+                "让 t_ef_magnitude / g_in_theory_band / seebeck_sign 记「不适用（仅记录）」"
+                "而不是闸门。",
+        "why": "这三条判据带都按 Au–BDT–Au 硫醇盐标定（0.03–0.40 G0、Seebeck 正号）；"
+               "甲硫基（硫醚）是配位型接触，S 上无 H、不脱质子，带内数值对它没有参考意义，"
+               "不登记族名会把一次物理上正常的算例判成「否证 H0」。",
+        "tests": ["tests/test_family.py"],
+    },
 ]
 
 

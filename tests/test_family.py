@@ -86,3 +86,26 @@ def test_bpy_family_marks_bdt_bands_not_applicable(workdir):
     assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
     assert not {"t_ef_magnitude", "g_in_theory_band",
                 "seebeck_sign"} & set(verdict.get("failed_criteria") or [])
+
+
+def test_sme_family_registered():
+    from smj._vendor.junction.criteria import system_family
+
+    assert system_family("sme") == "Au-(1,4-bis(methylthio)benzene)-Au"
+    assert system_family("SME") == "Au-(1,4-bis(methylthio)benzene)-Au"
+
+
+def test_sme_family_marks_bdt_bands_not_applicable(workdir):
+    """SMe 是硫醚配位接触（S 上无 H，不脱质子），BDT 标定的三条判据必须记"不适用"。"""
+    from smj._vendor.junction.validate import validate_junction_run
+
+    project = workdir / "sme-family"
+    stage = project / "aitranss_te"
+    stage.mkdir(parents=True, exist_ok=True)
+    (stage / "TE.dat").write_text(TE, encoding="utf-8")
+
+    verdict = validate_junction_run(project, system="SME")
+    names = {c["name"] for c in verdict["checks"] if c.get("applicable") is False}
+    assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
+    assert not {"t_ef_magnitude", "g_in_theory_band",
+                "seebeck_sign"} & set(verdict.get("failed_criteria") or [])
