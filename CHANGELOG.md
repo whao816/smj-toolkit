@@ -4,6 +4,13 @@
 
 ## 未发布
 
+### 脚本整理（2026-11-18）
+
+- 原仓库根的一次性脚本 `_azo.py` 整理为 `scripts/azo_ez_ratio.py`：两个 run 的
+  `TE.dat` 路径与统计窗口改为参数（支持 run 根目录、`runs/<name>/<name>` 布局或
+  `TE.dat` 路径），新增 `--json` 输出；数值口径与原脚本逐项核对一致。
+  `.gitignore` 不再忽略 `_azo.py`。
+
 ### 结构归档 `saved_structures/`（2026-11-18）
 
 - `molecule_opt` 在 prepare 时归档输入分子结构、collect 成功后归档 `opt.xyz` 到
