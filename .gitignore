@@ -10,3 +10,7 @@ pytest-cache-files-*/
 runs/
 
 .gh-keys/
+
+# 组会材料与一次性 scratch，不纳入版本库
+presentation/
+_azo.py
