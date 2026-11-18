@@ -20,6 +20,7 @@ from .._vendor.junction.fingerprint import attach_fingerprint
 from ..electrode_library import resolve_cluster
 from ..errors import StageError
 from ..provenance import sha256_file
+from ..structure_archive import safe_archive
 from ._helpers import est_record
 from .base import Collected, Prepared, Stage, register
 
@@ -160,5 +161,10 @@ class ElectrodeBuildStage(Stage):
         }
         notes = ["本地阶段产物已就绪；surface_fingerprint 供审阅确认使用" if fingerprint
                  else "electrode_metadata.json 缺 surface_fingerprint：审阅确认无法绑定几何"]
+        # 分子结几何就是在这里第一次生成的：collect 校验通过后归档，manifest 里
+        # 通过 surface_fingerprint / 原子数与该次装配记录对应。
+        notes.extend(safe_archive(
+            ctx.layout.run_dir, geometry, stage=self.name, kind="junction",
+            results=results, fmt="aims", natoms=actual))
         return self.collected(
             ctx, stage_dir, artifacts=list(self.outputs), results=results, notes=notes)

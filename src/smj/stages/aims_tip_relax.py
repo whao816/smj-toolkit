@@ -14,6 +14,7 @@ from pathlib import Path
 from .._vendor.junction.geometry import read_xyz
 from .._vendor.junction.inputs import make_tip_relax_input, measure_au_s_bonds
 from ..errors import StageBlocked, StageError
+from ..structure_archive import safe_archive
 from ._helpers import (est_record, resolve_anchor_indices, resolve_geometry_anchor_indices,
                        submit_command, vdw_mode)
 from .base import Collected, Prepared, Stage, register
@@ -160,6 +161,12 @@ class AimsTipRelaxStage(Stage):
                 payload["delta_A"] = {side: distances[side] - target_value for side in distances}
         if source != "geometry.in.next_step":
             notes.append("未找到 geometry.in.next_step：BFGS 未写出最终几何，按初始 geometry.in 记录")
+        # 「分子 + 两枚 tip」是后续装配电极的中间结构，同样进 saved_structures，
+        # 这样从优化分子到完整分子结的每一版几何都可追溯。
+        notes.extend(safe_archive(
+            ctx.layout.run_dir, geometry, stage=self.name, kind="molecule_tips",
+            engine="aims", results={"aims_tip_relax": payload},
+            fmt="aims", natoms=payload["atom_count"]))
         return self.collected(
             ctx, stage_dir, artifacts=[source],
             results={"aims_tip_relax": payload}, notes=notes,

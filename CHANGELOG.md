@@ -7,12 +7,17 @@
 ### 结构归档 `saved_structures/`（2026-11-18）
 
 - `molecule_opt` 在 prepare 时归档输入分子结构、collect 成功后归档 `opt.xyz` 到
-  `<run>/saved_structures/`；`manifest.json` 记录 `stage` / `kind` / `engine` /
-  `sha256` / `natoms` / `source` / `created_at`，collect 条目另写
+  `<run>/saved_structures/`；`manifest.json` 记录 `stage` / `kind` / `format` /
+  `engine` / `sha256` / `natoms` / `source` / `created_at`，collect 条目另写
   `<seq>_<stage>_<kind>.results.json` 结果快照，并记快照 sha256 与标量摘要
   （能量/收敛/最大力/弛豫步数），结构文件与源文件逐字节一致。
-- 归档目录已加入 `.gitignore`；归档失败只记阶段 note，不阻断 prepare/collect。
-- 新增 `tests/test_structure_archive.py`。
+- 分子结结构链同样归档：`aims_tip_relax` → `molecule_tips`（分子 + 两枚 tip），
+  `electrode_build` → `junction`（补全两侧电极后的完整分子结，collect 校验通过后），
+  `au_relax` → `junction_relaxed`（贴装后弛豫的新几何；`electrode.relax=false` 的
+  直通分支不重复归档）。FHI-aims 几何按原生 `geometry.in`（`.in`）落盘，`format`
+  字段区分 `xyz`/`aims`，`natoms` 由解析器核对。
+- 新增 `safe_archive()`：归档写盘失败只返回一行 note，不阻断 prepare/collect。
+- 归档目录已加入 `.gitignore`；新增 `tests/test_structure_archive.py`（9 例）。
 
 ### 引擎插件层（2026-11-18）
 

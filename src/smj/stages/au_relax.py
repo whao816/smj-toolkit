@@ -28,6 +28,7 @@ from .._vendor.junction.inputs import make_au_relax_input
 from .._vendor.junction.surface_index import verify_surface_indices
 from ..errors import StageBlocked, StageError
 from ..provenance import sha256_file, verify_parent_geometry
+from ..structure_archive import safe_archive
 from ._helpers import est_record, submit_command, vdw_mode
 from .base import Collected, Prepared, Stage, register
 
@@ -131,6 +132,8 @@ class AuRelaxStage(Stage):
 
         if (stage_dir / SKIP_MARKER).is_file():
             attach_fingerprint(stage_dir)
+            # 直通分支不改几何：分子结结构已在 electrode_build 的 junction 条目里，
+            # 这里不重复归档同一份字节（manifest 序号留给真正的新几何）。
             return self.collected(
                 ctx, stage_dir,
                 artifacts=["geometry.in", "electrode_metadata.json", SKIP_MARKER],
@@ -188,20 +191,27 @@ class AuRelaxStage(Stage):
             json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         attach_fingerprint(stage_dir)
 
+        results = {"au_relax": {
+            "enabled": True,
+            "atom_count": len(after),
+            "normal_termination": True,
+            "force_threshold": ctx.config.electrode.relax_force_threshold,
+            "surface_indices_verified": True,
+        }}
+        notes = ["弛豫后几何与表面三元组已核对：%s" % (metadata.get("left_surface_indices"),)]
+        # 贴装后弛豫产出了新一版分子结几何（几何与表面核对都通过才走到这里），
+        # 归档后 manifest 里 junction_relaxed 与 electrode_build 的 junction 可对照。
+        notes.extend(safe_archive(
+            ctx.layout.run_dir, stage_dir / "geometry.in", stage=self.name,
+            kind="junction_relaxed", engine="aims", results=results,
+            fmt="aims", natoms=len(after)))
         return self.collected(
             ctx, stage_dir,
             artifacts=[name for name in ("geometry.in", "geometry.in.next_step", "control.in",
                                          "aims.out", "sub_aims.sh", "input_summary.json",
                                          "electrode_metadata.json")
                        if (stage_dir / name).is_file()],
-            results={"au_relax": {
-                "enabled": True,
-                "atom_count": len(after),
-                "normal_termination": True,
-                "force_threshold": ctx.config.electrode.relax_force_threshold,
-                "surface_indices_verified": True,
-            }},
-            notes=["弛豫后几何与表面三元组已核对：%s" % (metadata.get("left_surface_indices"),)],
+            results=results, notes=notes,
         )
 
     # -- 内部 -------------------------------------------------------------- #

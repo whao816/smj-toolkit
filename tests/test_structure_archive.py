@@ -179,4 +179,95 @@ def test_summarize_results_keeps_scalars_only():
     assert summary["final_scf_energy_hartree"] == -1.5
     # 非标量块留给结果快照，manifest 只放可检索的摘要。
     assert "geometry_check" not in summary
-    assert "atom_count" not in summary
+    assert summary["atom_count"] == 2
+
+
+GEOMETRY = """# junction geometry
+atom 0.0 0.0 0.0 Au
+atom 0.0 0.0 2.5 S
+atom 0.0 0.0 4.0 Au
+"""
+
+
+def test_archive_aims_geometry_uses_native_format(workdir):
+    run = workdir / "run"
+    source = workdir / "geometry.in"
+    source.write_text(GEOMETRY, encoding="utf-8")
+
+    entry = archive_structure(
+        run, source, stage="electrode_build", kind="junction", fmt="aims",
+        results={"electrode_build": {"final_atom_count": 3,
+                                     "surface_fingerprint": "abc123"}})
+
+    assert entry["format"] == "aims"
+    assert entry["file"].endswith(".in")
+    assert entry["natoms"] == 3
+    root = run / ARCHIVE_DIRNAME
+    assert (root / entry["file"]).read_bytes() == source.read_bytes()
+    assert entry["summary"] == {
+        "final_atom_count": 3, "surface_fingerprint": "abc123",
+        "results_key": "electrode_build",
+    }
+
+
+def test_summarize_results_prefers_stage_block():
+    summary = summarize_results(
+        {"electrode_build": {"final_atom_count": 7},
+         "molecule_opt": {"atom_count": 2}},
+        stage="electrode_build")
+    assert summary["results_key"] == "electrode_build"
+    assert summary["final_atom_count"] == 7
+
+
+def test_safe_archive_failure_degrades_to_note(workdir, monkeypatch):
+    from smj import structure_archive
+
+    source = workdir / "a.xyz"
+    source.write_text(XYZ, encoding="utf-8")
+
+    def boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(structure_archive, "archive_structure", boom)
+    notes = structure_archive.safe_archive(
+        workdir / "run", source, stage="molecule_opt", kind="input")
+
+    assert notes and "结构归档失败" in notes[0]
+
+
+def test_electrode_build_collect_archives_junction(workdir):
+    from smj.stages.electrode_build import ElectrodeBuildStage
+
+    run = workdir / "run"
+    stage_dir = run / "electrode_build"
+    stage_dir.mkdir(parents=True)
+    (stage_dir / "geometry.in").write_text(GEOMETRY, encoding="utf-8")
+    (stage_dir / "electrode_metadata.json").write_text(json.dumps({
+        "final_atom_count": 3,
+        "original_atom_count": 3,
+        "surface_fingerprint": "deadbeef",
+        "surface_indices": {"left_surface_indices": [1, 2, 3],
+                            "right_surface_indices": [1, 2, 3]},
+        "left_surface_indices": [1, 2, 3],
+        "right_surface_indices": [1, 2, 3],
+        "electrode_element": "Au",
+        "electrode_a_lattice": 4.078,
+    }), encoding="utf-8")
+    ctx = SimpleNamespace(
+        layout=SimpleNamespace(run_dir=run),
+        config=SimpleNamespace(),
+        require_stage_file=lambda name, filename: stage_dir / filename,
+    )
+
+    collected = ElectrodeBuildStage().collect(ctx, stage_dir)
+
+    entry = _entries(workdir)[-1]
+    assert entry["stage"] == "electrode_build"
+    assert entry["kind"] == "junction"
+    assert entry["format"] == "aims"
+    assert entry["natoms"] == 3
+    assert entry["summary"]["final_atom_count"] == 3
+    assert entry["summary"]["surface_fingerprint"] == "deadbeef"
+    assert (run / ARCHIVE_DIRNAME / entry["file"]).read_bytes() == (
+        stage_dir / "geometry.in").read_bytes()
+    assert any("结构已归档" in note for note in collected.notes)
