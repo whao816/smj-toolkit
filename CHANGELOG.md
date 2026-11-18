@@ -4,6 +4,16 @@
 
 ## 未发布
 
+### 结构归档 `saved_structures/`（2026-11-18）
+
+- `molecule_opt` 在 prepare 时归档输入分子结构、collect 成功后归档 `opt.xyz` 到
+  `<run>/saved_structures/`；`manifest.json` 记录 `stage` / `kind` / `engine` /
+  `sha256` / `natoms` / `source` / `created_at`，collect 条目另写
+  `<seq>_<stage>_<kind>.results.json` 结果快照，并记快照 sha256 与标量摘要
+  （能量/收敛/最大力/弛豫步数），结构文件与源文件逐字节一致。
+- 归档目录已加入 `.gitignore`；归档失败只记阶段 note，不阻断 prepare/collect。
+- 新增 `tests/test_structure_archive.py`。
+
 ### 引擎插件层（2026-11-18）
 
 - 新增 `smj.engines` 注册表：`Engine` 协议声明脚本名、产物、资源/环境锚点、预检探测项、

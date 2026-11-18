@@ -14,3 +14,6 @@ runs/
 # 组会材料与一次性 scratch，不纳入版本库
 presentation/
 _azo.py
+
+# 运行期归档的分子结构（每次 prepare/collect 自动生成，与结果快照挂钩）
+saved_structures/

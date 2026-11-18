@@ -372,6 +372,10 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 ├── run_spec.previous.json       # 仅 --force 重绑时保留的上一份快照
 ├── manifest.json                # 产物清单（sha256、大小、阶段、回取模式）
 ├── report.md                    # 人读报告：概览/阶段状态/输入摘要/资源/输运/失败/产物
+├── saved_structures/            # 结构归档（已 gitignore）：xyz 原样副本 + 结果快照 + manifest.json
+│   ├── 0001_molecule_opt_input.xyz
+│   ├── 0002_molecule_opt_optimized.xyz
+│   └── 0002_molecule_opt_optimized.results.json
 ├── molecule_opt/                # 每阶段一个目录，输入+产物都在里面
 │   ├── mol.gjf  sub_g16.sh  input_summary.json
 │   └── mol.log  opt.xyz  gaussian_summary.json
@@ -392,6 +396,12 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 
 `state.json` 是唯一状态来源：`smj status` 读它；`smj report` 由它 + 产物目录生成
 `manifest.json`/`report.md`（默认不覆盖已存在的报告，`--force` 才重写）。
+
+`saved_structures/manifest.json` 把每份结构与产出它的计算绑在一起：`stage`/`kind`
+（`input`/`optimized`）/`engine`/`sha256`/`natoms`/`source`/`created_at`，优化后的条目还带
+结果快照文件名、快照 `sha256` 与能量/收敛/最大力摘要。结构文件与源 xyz 逐字节一致，
+可直接用 `sha256` 对账；归档目录已在 `.gitignore` 中，重复 prepare/collect 会追加新条目
+而不是覆盖历史。
 
 ## 7. 附带功能
 

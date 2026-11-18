@@ -22,6 +22,7 @@ from .._vendor.junction.geometry import read_xyz
 from ..checks import total_electrons
 from ..engines import DEFAULT_ENGINE, all_engines, engine_for_config, get_engine
 from ..errors import StageError
+from ..structure_archive import archive_note, archive_structure
 from ._helpers import est_record, submit_command
 from .base import Collected, Prepared, Stage, register
 
@@ -85,24 +86,48 @@ class MoleculeOptStage(Stage):
             ctx, stage_dir, stage=self.name, molecule=molecule, xyz=xyz,
             natoms=natoms, electron_note=electron_note,
             estimate=estimate, env=env)
+        notes = list(part.notes)
+        # 输入结构是"构建好"的那一版：先落盘归档，之后用户改 molecule.xyz
+        # 也不影响本次 run 的审计链。
+        notes.extend(self._archive(ctx, xyz, kind="input", engine=engine.name))
         return self.prepared(
             ctx, stage_dir,
             inputs=list(part.inputs),
             resources=est_record(estimate),
             script=part.script,
             artifacts=list(part.artifacts),
-            notes=list(part.notes),
+            notes=notes,
             commands=submit_command(part.script),
         )
 
     # -- collect ----------------------------------------------------------- #
     def collect(self, ctx, stage_dir: Path) -> Collected:
         stage_dir = Path(stage_dir)
-        part = engine_for_config(ctx.config).collect(
-            ctx, stage_dir, stage=self.name)
+        engine = engine_for_config(ctx.config)
+        part = engine.collect(ctx, stage_dir, stage=self.name)
+        notes = list(part.notes)
+        opt_xyz = stage_dir / "opt.xyz"
+        if opt_xyz.is_file():
+            # 只有真正产出 opt.xyz 的 collect 才归档：失败分支宁可不留半截结构。
+            notes.extend(self._archive(
+                ctx, opt_xyz, kind="optimized",
+                engine=engine.name, results=part.results))
         return self.collected(
             ctx, stage_dir,
             artifacts=list(part.artifacts),
             results=dict(part.results),
-            notes=list(part.notes),
+            notes=notes,
         )
+
+    # -- 结构归档 ---------------------------------------------------------- #
+    @staticmethod
+    def _archive(ctx, source: Path, *, kind: str, engine: str,
+                 results=None) -> list[str]:
+        """归档一份 xyz；写盘失败只降级为 note，不阻断阶段（审计口径）。"""
+        try:
+            entry = archive_structure(
+                ctx.layout.run_dir, source, stage="molecule_opt",
+                kind=kind, engine=engine, results=results)
+        except Exception as exc:  # noqa: BLE001 - 归档失败不能吞掉科学结果
+            return ["结构归档失败（不影响本阶段）: %s" % exc]
+        return [archive_note(entry)]
