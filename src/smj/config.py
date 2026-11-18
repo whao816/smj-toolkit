@@ -88,6 +88,14 @@ def _as_bool(value: Any, where: str) -> bool:
     raise ConfigError(_fmt(where, "应为布尔值 (true/false)，实际是 %r" % (value,)))
 
 
+def _as_choice(value: Any, choices: tuple[str, ...], where: str) -> str:
+    text = str(value).strip().lower()
+    if text not in choices:
+        raise ConfigError(_fmt(where, "应为 %s 之一，实际是 %r"
+                              % ("/".join(choices), value)))
+    return text
+
+
 def _section(data: Mapping[str, Any], key: str, where: str, warnings: list[str]) -> Mapping[str, Any]:
     value = data.get(key)
     if value is None:
@@ -155,6 +163,11 @@ class ElectrodeConfig:
     #: True = 把两个锚定原子和两个 tip 一起冻结（旧 W0-1 距离扫描口径）；
     #: 默认 False = 全原子自由弛豫，tip 可以动。
     pin_contact: bool = False
+    #: tip 放置方向：``axis``（默认）= 沿两锚原子连线外推（旧行为逐字节不变）；
+    #: ``lone_pair`` = 沿锚原子的孤对方向外推（S 为例：C–S–C 角平分线的反向）。
+    #: 间位取代的 SMe 分子里 S···S 连线可能与 S–C(Me) 键几乎同向，沿 axis 放 tip
+    #: 会把金属压进甲基（Au–C(Me) ~1.2 Å），此时用 lone_pair 才是物理接触方向。
+    tip_direction: str = "axis"
     #: 去质子口径：None = 仅当锚定原子是 S 时自动移除 S–H（N/Se 等其它锚默认保留 H）；
     #: True = 强制移除锚定原子上的 H（每个锚原子恰好 1 个）；False = 完全保留。
     strip_thiol_h: bool | None = None
@@ -418,7 +431,7 @@ _MOLECULE_KEYS = {
 }
 _ELECTRODE_KEYS = {
     "au_per_electrode", "left_anchor", "right_anchor", "au_tip_distance",
-    "anchor_au_s_target", "pin_contact", "strip_thiol_h", "vdw", "nlayers",
+    "anchor_au_s_target", "pin_contact", "tip_direction", "strip_thiol_h", "vdw", "nlayers",
     "source", "library_dir", "library_cluster", "element", "a_lattice",
     "relax", "relax_force_threshold", "relax_freeze",
 }
@@ -551,6 +564,8 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
         au_tip_distance=_as_float(data.get("au_tip_distance", 2.35), "electrode.au_tip_distance"),
         anchor_au_s_target=target,
         pin_contact=_as_bool(data.get("pin_contact", False), "electrode.pin_contact"),
+        tip_direction=_as_choice(data.get("tip_direction", "axis"),
+                                 ("axis", "lone_pair"), "electrode.tip_direction"),
         strip_thiol_h=(None if data.get("strip_thiol_h") is None
                        else _as_bool(data.get("strip_thiol_h"), "electrode.strip_thiol_h")),
         vdw=_as_bool(data.get("vdw", True), "electrode.vdw"),
@@ -786,6 +801,8 @@ electrode:
   au_tip_distance: 2.35
   anchor_au_s_target: null  # null = 只按 au_tip_distance 放置，锚–金属距离由全原子弛豫决定
   pin_contact: false        # false = aims_tip_relax 全原子自由弛豫（推荐）；true 仅用于距离扫描
+  tip_direction: axis       # axis = 沿两锚原子连线外推（默认）；lone_pair = 沿锚原子孤对外推
+                            # （S···S 连线与 S–C(Me) 近共线的间位取代 SMe 分子才需要）
   strip_thiol_h: null       # null = 仅当锚定原子为 S 时自动去质子（其它锚保留 H）；true = 强制去；false = 不去
   vdw: true
   relax: false              # false = 电极扩展后几何冻结，SCF/输运不再弛豫（推荐）

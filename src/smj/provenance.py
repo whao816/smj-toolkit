@@ -205,6 +205,10 @@ def _protocol_config(config: Any) -> dict[str, Any]:
     # 库文件位置不是物理参数；库文件内容哈希才是。
     electrode.pop("library_dir", None)
     electrode["library_file_sha256"] = _electrode_library_info(config).get("sha256")
+    # 0.2.x 时代的 protocol 里没有 tip_direction 这个键；默认值 axis 与旧行为逐字节
+    # 等价，所以只在非默认（lone_pair）时才入协议，避免历史 run_spec 集体判为漂移。
+    if electrode.get("tip_direction") == "axis":
+        electrode.pop("tip_direction", None)
 
     transport = _jsonable(config.transport)
     # 口径标记：eV 相对口径把"用户写的三元组"入协议（不随 SCF 的 efermi 变）；

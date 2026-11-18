@@ -134,17 +134,18 @@ for n in avail:
     e = np.array([r[1] for r in rows])
     t = np.array([r[2] for r in rows])
     curves[n] = (e, t)
-    axes[0].plot(e, t, **styles[n])
+    axes[0].plot(e, np.where(t > 0, t, np.nan), **styles[n])
     m = (e >= -0.35) & (e <= 0.35)
-    axes[1].plot(e[m], t[m], **styles[n])
+    axes[1].plot(e[m], np.where(t[m] > 0, t[m], np.nan), **styles[n])
 
 for ax in axes[:2]:
+    ax.set_yscale("log")          # T(E) 纵轴一律对数（T<=0 的点不画）
     ax.axvline(0, color="k", lw=0.8, ls="--")
     ax.axhline(0.27885397, color="gray", lw=0.7, ls=":")
     ax.set_xlabel("E - E_F (eV)")
-    ax.set_ylabel("T(E)  [G0 per spin]")
+    ax.set_ylabel("T(E) (G0)")
     ax.legend(fontsize=8)
-    ax.grid(alpha=0.3)
+    ax.grid(alpha=0.3, which="both")
 axes[0].set_title("full window")
 axes[1].set_title("zoom |E-EF| <= 0.35 eV")
 

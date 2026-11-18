@@ -128,6 +128,24 @@ LOCAL_PATCHES = [
                "不登记族名会把 C6/C8/C10 正常算例（G 比 BDT 低 2–3 个量级）判成「否证 H0」。",
         "tests": ["tests/test_family.py"],
     },
+    {
+        "id": "F-CRIT-2026-11-15",
+        "commit": "2026-11-15",
+        "files": ["criteria.py", "validate.py"],
+        "what": "判据口径修订：① t_ef_no_peak_near_ef → t_ef_resonance_attribution"
+                "（无峰 pass；峰按 EXPECTED_RESONANCE 族表归因到 HOMO/LUMO 侧，"
+                "|ΔE|∈[0.15,1.0] eV 记「已归因」；未登记族按实测 Seebeck 符号自洽回退）；"
+                "② 删除 t_ef_magnitude（0.03–0.40 G0 非 Thygesen 2005 原文区间，"
+                "派生包络并入 g_in_theory_band，后者 gate error→warn 并标 evidence=derived）；"
+                "③ au_s_bond 带 2.40–2.49 → 2.40–2.44 Å（Jackson 2009 S–Au=2.42±0.02 Å；"
+                "2.49 无一手源），validate.py 的 AU_S_BAND 与 4 处 detail 同步；"
+                "④ te_present 在 TE.dat 不可解析时也记 missing。",
+        "why": "原共振判据把「E_F 附近有峰」一律当错误信号，会把 2CN（LUMO 传导）与 AZ"
+               "（HOMO 侧）的正常算例判成 inconclusive，BDT 自身 −0.34 eV 的 HOMO 峰也中招；"
+               "有源 ≠ 有阈值，派生包络不足以否证 H0。证据见 docs/criteria-source-research.md。",
+        "tests": ["tests/test_resonance_attribution.py", "tests/test_family.py",
+                  "tests/test_criteria_failopen.py"],
+    },
 ]
 
 

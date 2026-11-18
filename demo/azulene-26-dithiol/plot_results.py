@@ -36,6 +36,16 @@ def read_te(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(energies), np.asarray(transmissions)
 
 
+def _scalar(value: object) -> float:
+    """analysis.json 里 max_transmission 等字段在 v1 schema 中是字典（取其中 T）。"""
+    if isinstance(value, dict):
+        value = value.get("T", float("nan"))
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(__doc__)
@@ -57,11 +67,16 @@ def main(argv: list[str]) -> int:
     fig, axes = plt.subplots(2, 1, figsize=(7.2, 6.0), sharex=True,
                              gridspec_kw={"height_ratios": [3, 1.2]})
     ax = axes[0]
-    ax.plot(energy, transmission, color="#1f4e79", lw=1.2)
+    positive = transmission[transmission > 0]
+    floor = float(positive.min()) * 0.5 if positive.size else 1e-12
+    ax.plot(energy, np.where(transmission > 0, transmission, floor),
+            color="#1f4e79", lw=1.2)
+    ax.set_yscale("log")          # T(E) 纵轴一律对数
+    ax.set_ylim(floor, max(float(np.nanmax(transmission)) * 1.15, floor * 10.0))
     ax.axvline(fermi, color="#c00000", lw=0.9, ls="--")
-    ax.set_ylabel("T(E)")
+    ax.set_ylabel("T(E) (G0)")
     ax.set_title("azulene-26-dithiol | Au(111) library electrode  (E - E_F, eV)")
-    ax.grid(alpha=0.25)
+    ax.grid(alpha=0.25, which="both")
 
     text = []
     for key, label, fmt in (
@@ -71,8 +86,8 @@ def main(argv: list[str]) -> int:
             ("ZT_electronic", "ZT_e", "%.4f"),
             ("max_transmission", "max T", "%.3f"),
     ):
-        if key in analysis:
-            text.append("%s = %s" % (label, fmt % float(analysis[key])))
+        if key in analysis and _scalar(analysis[key]) == _scalar(analysis[key]):
+            text.append("%s = %s" % (label, fmt % _scalar(analysis[key])))
     if "log10_G_over_G0_like" in analysis:
         g_over_g0 = 10.0 ** float(analysis["log10_G_over_G0_like"])
         text.insert(1, "G / G0 = %.4f" % g_over_g0)

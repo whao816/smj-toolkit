@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .._vendor.junction.geometry import read_xyz
 from .._vendor.junction.inputs import make_tip_relax_input, measure_au_s_bonds
 from ..errors import StageBlocked, StageError
 from ._helpers import (est_record, resolve_anchor_indices, resolve_geometry_anchor_indices,
@@ -35,6 +36,8 @@ class AimsTipRelaxStage(Stage):
         electrode = ctx.config.electrode
         left, right = resolve_anchor_indices(
             xyz, electrode.left_anchor, electrode.right_anchor, stage=self.name)
+        left_dir, right_dir = self._tip_directions(xyz, left, right,
+                                                   getattr(electrode, "tip_direction", "axis"))
         natoms = self.count_xyz_atoms(xyz) + 2
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)
@@ -42,6 +45,7 @@ class AimsTipRelaxStage(Stage):
             xyz, stage_dir,
             left_anchor=left, right_anchor=right,
             au_tip_distance=electrode.au_tip_distance,
+            left_direction=left_dir, right_direction=right_dir,
             species_dir=species, env=env,
             strip_thiol_h=electrode.strip_thiol_h,
             anchor_au_s_target=electrode.anchor_au_s_target,
@@ -56,8 +60,10 @@ class AimsTipRelaxStage(Stage):
             "%d 原子（分子 %d + 2 %s tip），锚定原子 %d/%d（%s）"
             % (natoms, natoms - 2, element, summary.get("left_anchor"),
                summary.get("right_anchor"), electrode.left_anchor),
-            "tip 全原子弛豫（pin_contact=%s），%s–%s 初始放置距离 %s Å，species 目录 %s"
-            % (summary.get("contact_pinned"), element, anchor_element,
+            "tip 全原子弛豫（pin_contact=%s，direction=%s），%s–%s 初始放置距离 %s Å，species 目录 %s"
+            % (summary.get("contact_pinned"),
+               getattr(electrode, "tip_direction", "axis"),
+               element, anchor_element,
                summary.get("placement_distance_A"), species),
             "prepare 只写输入与作业脚本，未提交任何远端命令",
         ]
@@ -78,6 +84,40 @@ class AimsTipRelaxStage(Stage):
             notes=notes,
             commands=submit_command(self.script),
         )
+
+    # -- tip 方向 ---------------------------------------------------------- #
+    @staticmethod
+    def _tip_directions(xyz, left: int, right: int, mode: str):
+        """按 ``electrode.tip_direction`` 给出两枚 tip 的外推方向。
+
+        ``axis``(默认) 返回 (None, None) —— 交给 ``add_tip_au`` 沿两锚原子连线外推，
+        与旧行为逐字节一致。``lone_pair`` 返回锚原子孤对方向的单位向量（以 S 为例：
+        C–S–C 角平分线的反向），用于 S···S 连线与 S–C 键近共线的间位取代分子。
+        """
+        if mode == "axis":
+            return None, None
+        if mode != "lone_pair":
+            raise StageError("未知的 electrode.tip_direction: %r" % (mode,))
+        atoms = read_xyz(xyz)
+        out = []
+        for label, idx in (("left", int(left)), ("right", int(right))):
+            anchor = atoms[idx - 1]
+            ax, ay, az = anchor.coord()
+            nbrs = [a for j, a in enumerate(atoms)
+                    if j != idx - 1
+                    and ((a.coord()[0] - ax) ** 2 + (a.coord()[1] - ay) ** 2
+                         + (a.coord()[2] - az) ** 2) ** 0.5 < 1.95]
+            if len(nbrs) != 2:
+                raise StageError(
+                    "tip_direction=lone_pair 需要锚定原子恰有 2 个近邻（C–S–C），"
+                    "%s 锚定原子 %d 实得 %d 个" % (label, idx, len(nbrs)))
+            (x1, y1, z1), (x2, y2, z2) = nbrs[0].coord(), nbrs[1].coord()
+            vx, vy, vz = 2.0 * ax - x1 - x2, 2.0 * ay - y1 - y2, 2.0 * az - z1 - z2
+            norm = (vx * vx + vy * vy + vz * vz) ** 0.5
+            if norm < 1e-6:
+                raise StageError("tip_direction=lone_pair: %s 锚定原子的孤对方向退化" % label)
+            out.append((vx / norm, vy / norm, vz / norm))
+        return out[0], out[1]
 
     # -- collect ----------------------------------------------------------- #
     def collect(self, ctx, stage_dir: Path) -> Collected:

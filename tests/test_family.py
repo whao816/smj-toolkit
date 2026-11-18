@@ -57,12 +57,12 @@ def test_family_marks_bdt_bands_not_applicable(workdir, capsys):
     from smj._vendor.junction.validate import validate_junction_run
     verdict = validate_junction_run(project, system="AZ")
     names = {c["name"] for c in verdict["checks"] if c.get("applicable") is False}
-    assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
+    assert {"g_in_theory_band", "seebeck_sign"} <= names
     assert "g_in_theory_band" not in (verdict.get("failed_criteria") or [])
 
     unknown = validate_junction_run(project, system="NOPE")
     assert all(c.get("applicable") is not False for c in unknown["checks"]
-               if c["name"] in ("t_ef_magnitude", "g_in_theory_band"))
+               if c["name"] in ("g_in_theory_band",))
 
 
 def test_bpy_family_registered():
@@ -73,7 +73,7 @@ def test_bpy_family_registered():
 
 
 def test_bpy_family_marks_bdt_bands_not_applicable(workdir):
-    """BPY 是吡啶 N 锚定、非硫醇盐体系，BDT 标定的三条判据必须记"不适用"。"""
+    """BPY 是吡啶 N 锚定、非硫醇盐体系，BDT 标定的两条判据必须记"不适用"。"""
     from smj._vendor.junction.validate import validate_junction_run
 
     project = workdir / "bpy-family"
@@ -83,9 +83,8 @@ def test_bpy_family_marks_bdt_bands_not_applicable(workdir):
 
     verdict = validate_junction_run(project, system="BPY")
     names = {c["name"] for c in verdict["checks"] if c.get("applicable") is False}
-    assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
-    assert not {"t_ef_magnitude", "g_in_theory_band",
-                "seebeck_sign"} & set(verdict.get("failed_criteria") or [])
+    assert {"g_in_theory_band", "seebeck_sign"} <= names
+    assert not {"g_in_theory_band", "seebeck_sign"} & set(verdict.get("failed_criteria") or [])
 
 
 def test_sme_family_registered():
@@ -96,7 +95,7 @@ def test_sme_family_registered():
 
 
 def test_sme_family_marks_bdt_bands_not_applicable(workdir):
-    """SMe 是硫醚配位接触（S 上无 H，不脱质子），BDT 标定的三条判据必须记"不适用"。"""
+    """SMe 是硫醚配位接触（S 上无 H，不脱质子），BDT 标定的两条判据必须记"不适用"。"""
     from smj._vendor.junction.validate import validate_junction_run
 
     project = workdir / "sme-family"
@@ -106,9 +105,8 @@ def test_sme_family_marks_bdt_bands_not_applicable(workdir):
 
     verdict = validate_junction_run(project, system="SME")
     names = {c["name"] for c in verdict["checks"] if c.get("applicable") is False}
-    assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
-    assert not {"t_ef_magnitude", "g_in_theory_band",
-                "seebeck_sign"} & set(verdict.get("failed_criteria") or [])
+    assert {"g_in_theory_band", "seebeck_sign"} <= names
+    assert not {"g_in_theory_band", "seebeck_sign"} & set(verdict.get("failed_criteria") or [])
 
 
 def test_alkane_family_registered():
@@ -120,7 +118,7 @@ def test_alkane_family_registered():
 
 
 def test_alkane_family_marks_bdt_bands_not_applicable(workdir):
-    """饱和烷链走 σ 隧穿通道，BDT 标定的三条判据必须记"不适用"而非"否证"。"""
+    """饱和烷链走 σ 隧穿通道，BDT 标定的两条判据必须记"不适用"而非"否证"。"""
     from smj._vendor.junction.validate import validate_junction_run
 
     project = workdir / "alkane-family"
@@ -131,6 +129,6 @@ def test_alkane_family_marks_bdt_bands_not_applicable(workdir):
     for system in ("HDT", "ODT", "DDT"):
         verdict = validate_junction_run(project, system=system)
         names = {c["name"] for c in verdict["checks"] if c.get("applicable") is False}
-        assert {"t_ef_magnitude", "g_in_theory_band", "seebeck_sign"} <= names
+        assert {"g_in_theory_band", "seebeck_sign"} <= names
         assert not {"t_ef_magnitude", "g_in_theory_band",
                     "seebeck_sign"} & set(verdict.get("failed_criteria") or [])

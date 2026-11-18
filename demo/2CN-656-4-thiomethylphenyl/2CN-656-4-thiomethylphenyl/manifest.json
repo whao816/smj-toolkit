@@ -1,8 +1,8 @@
 {
   "schema": "smj.report.v1",
   "run_id": "2CN-656-4-thiomethylphenyl",
-  "root": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl",
-  "generated_at": "2026-11-13T08:36:55+08:00",
+  "root": "demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl",
+  "generated_at": "2026-11-16T10:27:32+08:00",
   "spec": {
     "run": {
       "name": "2CN-656-4-thiomethylphenyl",
@@ -251,7 +251,7 @@
     }
   },
   "provenance": {
-    "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\run_spec.json",
+    "path": "demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\run_spec.json",
     "run_spec_sha256": "100ad476936e6211bf8f77d10388881ab969d297845c3f48d1a5a39669259ef9",
     "reconstructed": false,
     "protocol_sha256": "d5596b57baeb53a2ed8a055353bfc26d0e6aaa3838f7d9d7d60667c3589b5a47"
@@ -260,16 +260,15 @@
     "created_at": "2026-11-12T21:55:15+08:00",
     "updated_at": "2026-11-13T07:56:41+08:00",
     "stages": {
-      "gaussian_opt": "collected",
+      "molecule_opt": "collected",
       "aims_tip_relax": "collected",
-      "au60_build": "collected",
-      "au_relax": "collected",
+      "electrode_build": "collected",
       "aims_scf": "collected",
       "aitranss_te": "collected",
       "junction_analyze": "collected"
     },
     "details": {
-      "gaussian_opt": {
+      "molecule_opt": {
         "job_id": "26047",
         "exit_code": 0,
         "elapsed_s": 1587.5,
@@ -283,17 +282,10 @@
         "note": null,
         "error": null
       },
-      "au60_build": {
+      "electrode_build": {
         "job_id": null,
         "exit_code": null,
         "elapsed_s": null,
-        "note": null,
-        "error": null
-      },
-      "au_relax": {
-        "job_id": "26050",
-        "exit_code": 0,
-        "elapsed_s": 2825.4,
         "note": null,
         "error": null
       },
@@ -420,8 +412,10 @@
       "run_input_sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f"
     },
     "electrode": {
-      "stage": "au_relax",
-      "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\au_relax\\geometry.in",
+      "stage": "electrode_build",
+      "source": "library",
+      "element": "Au",
+      "geometry": "demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\au_relax\\geometry.in",
       "atom_count": 128,
       "au_per_electrode": 37,
       "left_surface_indices": [
@@ -438,14 +432,14 @@
       "surface_fingerprint": "951152c12dd18320d2d07575050cd0ebd9307175da9ef33ac5a9bb660ef1c25f"
     },
     "te": {
-      "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\aitranss_te\\TE.dat",
+      "source": "demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\aitranss_te\\TE.dat",
       "efermi_Ha": -0.181943661113,
       "bias_V": 0.0,
       "points": 301
     }
   },
   "stages": {
-    "gaussian_opt": {
+    "molecule_opt": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\gaussian_opt",
       "n_files": 7,
       "bytes": 1247046,
@@ -543,7 +537,7 @@
         }
       ]
     },
-    "au60_build": {
+    "electrode_build": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\au60_build",
       "n_files": 2,
       "bytes": 10675,
@@ -559,79 +553,6 @@
           "bytes": 8010,
           "retrieval": "unknown",
           "sha256": "5ca654c64af8a9826562df64696b9bf389963194831946ad332f9ccbba5245c3"
-        }
-      ]
-    },
-    "au_relax": {
-      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\au_relax",
-      "n_files": 11,
-      "bytes": 8494987,
-      "files": [
-        {
-          "name": ".dsh_done",
-          "bytes": 28,
-          "retrieval": "full",
-          "sha256": "ba6addfd8eeee9e6613ff21ea3ad9f56a8891e8a496e1cf053b2541137e285b1"
-        },
-        {
-          "name": "a2_confirmation.json",
-          "bytes": 330,
-          "retrieval": "skip",
-          "sha256": "1a557fce8cd6e45f9a2ffb18af96a99466f9279624904950e3366062d41191ad"
-        },
-        {
-          "name": "a2_surface_audit.json",
-          "bytes": 13046,
-          "retrieval": "skip",
-          "sha256": "48e8eca72f8f386e331c7061d5531d6c3c497e88a5322304a5b3d63d770f6038"
-        },
-        {
-          "name": "a2_surface_viz.png",
-          "bytes": 203575,
-          "retrieval": "skip",
-          "sha256": "fd8de91f95e2d245019fa24a49721f809585647960642eab187c7a74ef328928"
-        },
-        {
-          "name": "aims.out",
-          "bytes": 8239754,
-          "retrieval": "full",
-          "sha256": "d30797b604ac90fa2fb33d373afbe04b6c6ad5ba0b4d1ef701722c465de9ed58"
-        },
-        {
-          "name": "control.in",
-          "bytes": 13175,
-          "retrieval": "full",
-          "sha256": "8297831658e4a5cd0d3010ff229541dafbd3feb3202e4c03d31433407d1aa6ea"
-        },
-        {
-          "name": "electrode_metadata.json",
-          "bytes": 3011,
-          "retrieval": "skip",
-          "sha256": "3a96821a4c53a5e8417165c58372098715808f9851c697b7b38d0af271985fd8"
-        },
-        {
-          "name": "geometry.in",
-          "bytes": 10031,
-          "retrieval": "full",
-          "sha256": "951152c12dd18320d2d07575050cd0ebd9307175da9ef33ac5a9bb660ef1c25f"
-        },
-        {
-          "name": "geometry.in.next_step",
-          "bytes": 10031,
-          "retrieval": "full",
-          "sha256": "951152c12dd18320d2d07575050cd0ebd9307175da9ef33ac5a9bb660ef1c25f"
-        },
-        {
-          "name": "input_summary.json",
-          "bytes": 944,
-          "retrieval": "skip",
-          "sha256": "8dcadc966c38d6d406d128a4722c98f74ec6a73ad8e8f040afc1be5585351cb6"
-        },
-        {
-          "name": "sub_aims.sh",
-          "bytes": 1062,
-          "retrieval": "full",
-          "sha256": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368"
         }
       ]
     },
@@ -760,7 +681,7 @@
     }
   },
   "resources": {
-    "gaussian_opt": {
+    "molecule_opt": {
       "source": "state",
       "walltime": "00:15:00",
       "time_limit": "00:29:00",
@@ -789,23 +710,6 @@
       "core_h": 2.58,
       "capped": [],
       "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
-      "budget": {
-        "ok": true,
-        "reason": "在预算内"
-      }
-    },
-    "au_relax": {
-      "source": "state",
-      "walltime": "01:53:00",
-      "time_limit": "03:35:00",
-      "mem": "28G",
-      "ntasks": 4,
-      "cpus": null,
-      "cores": 4,
-      "atoms": 128,
-      "core_h": 7.53,
-      "capped": [],
-      "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 300+40·N s，内存 10.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
       "budget": {
         "ok": true,
         "reason": "在预算内"
@@ -847,7 +751,7 @@
     }
   },
   "transport": {
-    "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\aitranss_te\\TE.dat",
+    "source": "demo\\2CN-656-4-thiomethylphenyl\\2CN-656-4-thiomethylphenyl\\aitranss_te\\TE.dat",
     "points": 301,
     "temperature_K": 300.0,
     "L0": 0.0004770530757729543,
@@ -886,19 +790,17 @@
   "failures": [],
   "warnings": [],
   "verdict": {
-    "passed": false,
+    "passed": true,
     "engineering_passed": true,
-    "errors": 2,
-    "warnings": 1,
-    "physics_verdict": "failed",
-    "wording": "否证 H0",
-    "allowed_action": "停; 不得进入预测模式(任务卡 §7.3②)",
-    "failed_criteria": [
-      "t_ef_magnitude",
-      "g_in_theory_band"
-    ],
+    "errors": 0,
+    "warnings": 2,
+    "physics_verdict": "inconclusive",
+    "wording": "无法判定",
+    "allowed_action": "停; 须补数据或降级声明",
+    "failed_criteria": [],
     "inconclusive_criteria": [
-      "t_ef_no_peak_near_ef"
+      "t_ef_resonance_attribution",
+      "g_in_theory_band"
     ],
     "missing_evidence_criteria": [],
     "not_applicable_criteria": []
@@ -947,27 +849,19 @@
       "detail": "efermi 取自 TE.dat 表头(aitranss 实际使用值)"
     },
     {
-      "name": "t_ef_magnitude",
-      "value": 0.000470699079,
-      "passed": false,
-      "severity": "error",
-      "detail": "T(E_F)=0.0005 带 0.03-0.40 G0 (Thygesen 2005 p.13)[适用域: 适用; 体系族 未知(按适用处理)]",
-      "applicable": true
-    },
-    {
-      "name": "t_ef_no_peak_near_ef",
+      "name": "t_ef_resonance_attribution",
       "value": 0.3903,
       "passed": false,
       "severity": "warn",
-      "detail": "E_F 近旁 0.3903 eV 处有显著峰(T=0.9874); 基准要求 1.0 eV 内无峰 (Thygesen 2005 p.12; 突出度门限 0.10 为工程约定)",
+      "detail": "E_F 近旁 +0.3903 eV 处有显著峰(T=0.9874); 侧别不符(预期 HOMO 侧); 需解释; 未登记族: 按实测 S=+2.8 uV/K 符号自洽归因(自洽性检查, 非文献先验)",
       "applicable": true
     },
     {
       "name": "g_in_theory_band",
       "value": 0.0004770530757729543,
       "passed": false,
-      "severity": "error",
-      "detail": "G=0.0005 G0 带 0.03-0.40 (任务卡 §4.2)[适用域: 适用; 体系族 未知(按适用处理)]",
+      "severity": "warn",
+      "detail": "G=0.0005 G0 带 0.03-0.40 (派生包络, Thygesen 2005 §V.2)[适用域: 适用; 体系族 未知(按适用处理)]",
       "applicable": true
     },
     {
@@ -991,8 +885,8 @@
     }
   ],
   "totals": {
-    "bytes": 35704617,
-    "gib": 0.033,
-    "stages": 7
+    "bytes": 27209630,
+    "gib": 0.025,
+    "stages": 6
   }
 }

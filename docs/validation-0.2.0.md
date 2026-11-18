@@ -37,16 +37,19 @@
 
 判据（`smj report` → `manifest.verdict`）：
 
-| run | 工程判定 | 物理判定 | 未过的 warn 级判据 |
+| run | 工程判定 | 物理判定（0.2.0 原记录） | 按 2026-11-15 口径重评 |
 |---|---|---|---|
-| `bdt` | 通过 | inconclusive | `t_ef_no_peak_near_ef` |
-| `az` | 通过 | inconclusive | `t_ef_no_peak_near_ef` |
-| `2cn` | 通过 | inconclusive | `t_ef_no_peak_near_ef` |
+| `bdt` | 通过 | inconclusive（`t_ef_no_peak_near_ef`） | passed（HOMO 峰 −0.339 eV 已归因） |
+| `az` | 通过 | inconclusive（`t_ef_no_peak_near_ef`） | passed（HOMO 侧峰 −0.177 eV 已归因） |
+| `2cn` | 通过 | inconclusive（`t_ef_no_peak_near_ef`） | passed（LUMO 侧峰 +0.241 eV，按 S<0 自洽归因） |
 
-三套都是「管线通过、物理待判定」：工程判定检查的是数据完整性与 fail-closed 行为
-（SCF 收敛、TE.dat 在场、阶段哈希闭环）；物理判定失败/未定的原因是
-`t_ef_no_peak_near_ef`（E_F 1 eV 内存在透射峰）。BDT 标定族（`t_ef_magnitude`、
-`g_in_theory_band`、`seebeck_sign`）只对 `family: BDT` 生效，AZ/2CN 不做该族比对。
+三套都是「管线通过」：工程判定检查的是数据完整性与 fail-closed 行为
+（SCF 收敛、TE.dat 在场、阶段哈希闭环）。0.2.0 记录里物理判定为 `inconclusive`，
+原因是当时的 `t_ef_no_peak_near_ef` 把「E_F 1 eV 内存在透射峰」一律当错误信号；
+2026-11-15 起该判据改为 `t_ef_resonance_attribution`（按族预期通道归因，见
+[`docs/smj-计算流程梳理.md`](smj-计算流程梳理.md) §6.2 与
+[`docs/criteria-source-research.md`](criteria-source-research.md)），三套重评均 `passed`。
+BDT 标定族（`g_in_theory_band`、`seebeck_sign`）只对 `family: BDT` 生效，AZ/2CN 不做该族比对。
 
 ## 4. 阶段耗时（实测，单作业 8 核 + 1 GPU）
 

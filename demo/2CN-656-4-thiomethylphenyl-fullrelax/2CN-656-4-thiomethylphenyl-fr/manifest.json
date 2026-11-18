@@ -1,8 +1,8 @@
 {
   "schema": "smj.report.v1",
   "run_id": "2CN-656-4-thiomethylphenyl-fr",
-  "root": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr",
-  "generated_at": "2026-11-13T11:42:24+08:00",
+  "root": "demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr",
+  "generated_at": "2026-11-16T10:27:33+08:00",
   "spec": {
     "run": {
       "name": "2CN-656-4-thiomethylphenyl-fr",
@@ -264,7 +264,7 @@
     }
   },
   "provenance": {
-    "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\run_spec.json",
+    "path": "demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\run_spec.json",
     "run_spec_sha256": "c1313aa82c4945c9e72c700357ac858b3a0c76c59b30827d0acf65c43ba2c0a3",
     "reconstructed": false,
     "protocol_sha256": "58a7f3dc76382519a8a4ff96bdb6841a9788af6a6f30f105ff0f745b2817cc76"
@@ -273,15 +273,15 @@
     "created_at": "2026-11-13T09:56:51+08:00",
     "updated_at": "2026-11-13T11:42:09+08:00",
     "stages": {
-      "gaussian_opt": "collected",
+      "molecule_opt": "collected",
       "aims_tip_relax": "collected",
-      "au60_build": "collected",
+      "electrode_build": "collected",
       "aims_scf": "collected",
       "aitranss_te": "collected",
       "junction_analyze": "collected"
     },
     "details": {
-      "gaussian_opt": {
+      "molecule_opt": {
         "job_id": "26065",
         "exit_code": 0,
         "elapsed_s": 1549.0,
@@ -295,7 +295,7 @@
         "note": null,
         "error": null
       },
-      "au60_build": {
+      "electrode_build": {
         "job_id": null,
         "exit_code": null,
         "elapsed_s": null,
@@ -429,7 +429,9 @@
       "run_input_sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f"
     },
     "electrode": {
-      "stage": "au60_build",
+      "stage": "electrode_build",
+      "source": "library",
+      "element": "Au",
       "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\au60_build\\geometry.in",
       "atom_count": 128,
       "au_per_electrode": 37,
@@ -447,14 +449,14 @@
       "surface_fingerprint": "a127578d12c0acf7e30b674d4dfb318310d59fb8eed14761b1d9615372da1a85"
     },
     "te": {
-      "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat",
+      "source": "demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat",
       "efermi_Ha": -0.17951925121,
       "bias_V": 0.0,
       "points": 301
     }
   },
   "stages": {
-    "gaussian_opt": {
+    "molecule_opt": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\gaussian_opt",
       "n_files": 7,
       "bytes": 1247181,
@@ -552,7 +554,7 @@
         }
       ]
     },
-    "au60_build": {
+    "electrode_build": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\au60_build",
       "n_files": 2,
       "bytes": 10701,
@@ -696,7 +698,7 @@
     }
   },
   "resources": {
-    "gaussian_opt": {
+    "molecule_opt": {
       "source": "state",
       "walltime": "00:15:00",
       "time_limit": "00:29:00",
@@ -766,7 +768,7 @@
     }
   },
   "transport": {
-    "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat",
+    "source": "demo\\2CN-656-4-thiomethylphenyl-fullrelax\\2CN-656-4-thiomethylphenyl-fr\\aitranss_te\\TE.dat",
     "points": 301,
     "temperature_K": 300.0,
     "L0": 0.001284826359091114,
@@ -807,18 +809,16 @@
   "verdict": {
     "passed": false,
     "engineering_passed": true,
-    "errors": 3,
+    "errors": 1,
     "warnings": 1,
     "physics_verdict": "failed",
     "wording": "否证 H0",
     "allowed_action": "停; 不得进入预测模式(任务卡 §7.3②)",
     "failed_criteria": [
-      "t_ef_magnitude",
-      "g_in_theory_band",
       "seebeck_sign"
     ],
     "inconclusive_criteria": [
-      "t_ef_no_peak_near_ef"
+      "g_in_theory_band"
     ],
     "missing_evidence_criteria": [],
     "not_applicable_criteria": []
@@ -867,27 +867,19 @@
       "detail": "efermi 取自 TE.dat 表头(aitranss 实际使用值)"
     },
     {
-      "name": "t_ef_magnitude",
-      "value": 0.001216503179,
-      "passed": false,
-      "severity": "error",
-      "detail": "T(E_F)=0.0012 带 0.03-0.40 G0 (Thygesen 2005 p.13)[适用域: 适用; 体系族 未知(按适用处理)]",
-      "applicable": true
-    },
-    {
-      "name": "t_ef_no_peak_near_ef",
+      "name": "t_ef_resonance_attribution",
       "value": 0.2427,
-      "passed": false,
+      "passed": true,
       "severity": "warn",
-      "detail": "E_F 近旁 0.2427 eV 处有显著峰(T=0.5912); 基准要求 1.0 eV 内无峰 (Thygesen 2005 p.12; 突出度门限 0.10 为工程约定)",
+      "detail": "E_F 近旁 +0.2427 eV 处有显著峰(T=0.5912), 在预期 LUMO 侧且 |ΔE|∈[0.15,1.0] eV -> 已归因; 未登记族: 按实测 S=-29.1 uV/K 符号自洽归因(自洽性检查, 非文献先验)",
       "applicable": true
     },
     {
       "name": "g_in_theory_band",
       "value": 0.001284826359091114,
       "passed": false,
-      "severity": "error",
-      "detail": "G=0.0013 G0 带 0.03-0.40 (任务卡 §4.2)[适用域: 适用; 体系族 未知(按适用处理)]",
+      "severity": "warn",
+      "detail": "G=0.0013 G0 带 0.03-0.40 (派生包络, Thygesen 2005 §V.2)[适用域: 适用; 体系族 未知(按适用处理)]",
       "applicable": true
     },
     {

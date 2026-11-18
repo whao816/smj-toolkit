@@ -1,242 +1,29 @@
 {
   "schema": "smj.report.v1",
   "run_id": "azulene-26-dithiol",
-  "root": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol",
-  "generated_at": "2026-11-12T18:55:12+08:00",
-  "spec": {
-    "run": {
-      "name": "azulene-26-dithiol",
-      "dir": ".",
-      "mode": "slurm-ssh",
-      "clean": false,
-      "keep_going": false
-    },
-    "molecule": {
-      "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\molecule.xyz",
-      "charge": 0,
-      "multiplicity": 1,
-      "method": "b3lyp",
-      "basis": "def2-tzvp",
-      "family": "AZ"
-    },
-    "electrode": {
-      "au_per_electrode": 30,
-      "left_anchor": "S",
-      "right_anchor": "S",
-      "au_tip_distance": 2.35,
-      "anchor_au_s_target": 2.4,
-      "strip_thiol_h": true,
-      "vdw": true,
-      "nlayers": null,
-      "source": "library",
-      "library_dir": null,
-      "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
-      "relax": true,
-      "relax_force_threshold": "0.05",
-      "relax_freeze": "electrodes"
-    },
-    "transport": {
-      "temperature": 300.0,
-      "energy_window": [
-        -0.2075,
-        0.0002,
-        -0.1695
-      ],
-      "ener": null,
-      "estep": null,
-      "eend": null,
-      "resolved_window": [
-        -0.2075,
-        0.0002,
-        -0.1695
-      ]
-    },
-    "cluster": {
-      "host": "gpu-outside",
-      "user": "haow",
-      "port": 22,
-      "key": null,
-      "remote_root": "/home/haow/smj-demo-runs",
-      "partition": "main",
-      "ntasks": 4,
-      "gres": "gpu:0",
-      "account": null,
-      "qos": null,
-      "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
-      "time_limit": null,
-      "mem": "9G",
-      "poll_seconds": 30.0,
-      "timeout_hours": 3.0,
-      "env": {
-        "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
-        "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
-        "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
-        "mkl_lib": "/opt/intel/oneapi/2025.3/lib"
-      }
-    },
-    "paths": {
-      "templates": null,
-      "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species"
-    },
-    "review": {
-      "require_a2": true,
-      "a2_deviation": 0.15,
-      "accept_deviation": null
-    }
-  },
-  "run_spec": {
-    "schema": "smj.run_spec.v1",
-    "created_at": "2026-11-12T18:55:12+08:00",
-    "reconstructed": true,
-    "rebound": false,
-    "run_id": "azulene-26-dithiol",
-    "run_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol",
-    "config_sha256": "ae456d98832271c068be369501d9ef46b474c69ce95d7929c5cfc993ee7a9214",
-    "protocol_sha256": "4d85ec8a943bbf3894cdabd97aba6f4cb3fcb9003add8f8f59defd5171b15c69",
-    "config": {
-      "run": {
-        "name": "azulene-26-dithiol",
-        "dir": ".",
-        "mode": "slurm-ssh",
-        "clean": false,
-        "keep_going": false
-      },
-      "molecule": {
-        "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\molecule.xyz",
-        "charge": 0,
-        "multiplicity": 1,
-        "method": "b3lyp",
-        "basis": "def2-tzvp",
-        "family": "AZ"
-      },
-      "electrode": {
-        "au_per_electrode": 30,
-        "left_anchor": "S",
-        "right_anchor": "S",
-        "au_tip_distance": 2.35,
-        "anchor_au_s_target": 2.4,
-        "strip_thiol_h": true,
-        "vdw": true,
-        "nlayers": null,
-        "source": "library",
-        "library_dir": null,
-        "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
-        "relax": true,
-        "relax_force_threshold": "0.05",
-        "relax_freeze": "electrodes"
-      },
-      "transport": {
-        "temperature": 300.0,
-        "energy_window": [
-          -0.2075,
-          0.0002,
-          -0.1695
-        ],
-        "ener": null,
-        "estep": null,
-        "eend": null,
-        "resolved_window": [
-          -0.2075,
-          0.0002,
-          -0.1695
-        ]
-      },
-      "cluster": {
-        "host": "gpu-outside",
-        "user": "haow",
-        "port": 22,
-        "key": null,
-        "remote_root": "/home/haow/smj-demo-runs",
-        "partition": "main",
-        "ntasks": 4,
-        "gres": "gpu:0",
-        "account": null,
-        "qos": null,
-        "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
-        "time_limit": null,
-        "mem": "9G",
-        "poll_seconds": 30.0,
-        "timeout_hours": 3.0,
-        "env": {
-          "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
-          "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
-          "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
-          "mkl_lib": "/opt/intel/oneapi/2025.3/lib"
-        }
-      },
-      "paths": {
-        "templates": null,
-        "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species"
-      },
-      "review": {
-        "require_a2": true,
-        "a2_deviation": 0.15,
-        "accept_deviation": null
-      }
-    },
-    "electrode_library": {
-      "path": null,
-      "exists": false,
-      "sha256": null
-    },
-    "software": {
-      "smj": "0.1.2",
-      "python": "3.12.10",
-      "platform": "Windows-11-10.0.26300-SP0",
-      "git": {
-        "root": "D:\\dsh_projects\\AutoSMJ",
-        "commit": "2897a0da384c258acc8091fc4d2fb3f220c64cb0",
-        "dirty": true
-      },
-      "executables": {
-        "AIMS_BIN": {
-          "path": "\\data\\apps\\fhi-aims.221103-cuda12.8-oneapi2025.3\\bin\\aims.221103.scalapack.mpi.x",
-          "exists": false
-        },
-        "AITRANSS_BIN": {
-          "path": "\\data\\apps\\fhi-aims.221103-cuda12.8-oneapi2025.3\\bin\\aitranss.071813.openmp.ifx2025.3.x",
-          "exists": false
-        },
-        "MKL_LIB": {
-          "path": "\\opt\\intel\\oneapi\\2025.3\\lib",
-          "exists": false
-        }
-      },
-      "cluster_env_keys": [
-        "AIMS_BIN",
-        "AIMS_LD_MODULE",
-        "AITRANSS_BIN",
-        "MKL_LIB"
-      ]
-    },
-    "reconstructed_at": "2026-11-12T18:55:12+08:00",
-    "reconstruction_reason": "legacy run 没有 run_spec.json；用当前可加载的配置重建，不能证明与原始 run 完全一致",
-    "molecule": {
-      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\molecule.xyz",
-      "exists": true,
-      "sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e"
-    }
-  },
+  "root": "demo\\azulene-26-dithiol\\azulene-26-dithiol",
+  "generated_at": "2026-11-16T10:27:33+08:00",
+  "spec": {},
+  "run_spec": null,
   "provenance": {
     "path": null,
     "run_spec_sha256": null,
-    "reconstructed": true,
-    "protocol_sha256": "4d85ec8a943bbf3894cdabd97aba6f4cb3fcb9003add8f8f59defd5171b15c69"
+    "reconstructed": false,
+    "protocol_sha256": null
   },
   "state": {
     "created_at": "2026-11-12T07:34:10+08:00",
     "updated_at": "2026-11-12T15:26:59+08:00",
     "stages": {
-      "gaussian_opt": "collected",
+      "molecule_opt": "collected",
       "aims_tip_relax": "collected",
-      "au60_build": "collected",
-      "au_relax": "collected",
+      "electrode_build": "collected",
       "aims_scf": "collected",
       "aitranss_te": "collected",
       "junction_analyze": "collected"
     },
     "details": {
-      "gaussian_opt": {
+      "molecule_opt": {
         "job_id": null,
         "exit_code": null,
         "elapsed_s": null,
@@ -250,17 +37,10 @@
         "note": null,
         "error": null
       },
-      "au60_build": {
+      "electrode_build": {
         "job_id": null,
         "exit_code": null,
         "elapsed_s": null,
-        "note": null,
-        "error": null
-      },
-      "au_relax": {
-        "job_id": "26029",
-        "exit_code": 0,
-        "elapsed_s": 4210.4,
         "note": null,
         "error": null
       },
@@ -292,97 +72,18 @@
   },
   "inputs": {
     "run_id": "azulene-26-dithiol",
-    "mode": "slurm-ssh",
-    "temperature_K": 300.0,
-    "spec": {
-      "run": {
-        "name": "azulene-26-dithiol",
-        "dir": ".",
-        "mode": "slurm-ssh",
-        "clean": false,
-        "keep_going": false
-      },
-      "molecule": {
-        "xyz": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\molecule.xyz",
-        "charge": 0,
-        "multiplicity": 1,
-        "method": "b3lyp",
-        "basis": "def2-tzvp",
-        "family": "AZ"
-      },
-      "electrode": {
-        "au_per_electrode": 30,
-        "left_anchor": "S",
-        "right_anchor": "S",
-        "au_tip_distance": 2.35,
-        "anchor_au_s_target": 2.4,
-        "strip_thiol_h": true,
-        "vdw": true,
-        "nlayers": null,
-        "source": "library",
-        "library_dir": null,
-        "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
-        "relax": true,
-        "relax_force_threshold": "0.05",
-        "relax_freeze": "electrodes"
-      },
-      "transport": {
-        "temperature": 300.0,
-        "energy_window": [
-          -0.2075,
-          0.0002,
-          -0.1695
-        ],
-        "ener": null,
-        "estep": null,
-        "eend": null,
-        "resolved_window": [
-          -0.2075,
-          0.0002,
-          -0.1695
-        ]
-      },
-      "cluster": {
-        "host": "gpu-outside",
-        "user": "haow",
-        "port": 22,
-        "key": null,
-        "remote_root": "/home/haow/smj-demo-runs",
-        "partition": "main",
-        "ntasks": 4,
-        "gres": "gpu:0",
-        "account": null,
-        "qos": null,
-        "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
-        "time_limit": null,
-        "mem": "9G",
-        "poll_seconds": 30.0,
-        "timeout_hours": 3.0,
-        "env": {
-          "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
-          "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
-          "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
-          "mkl_lib": "/opt/intel/oneapi/2025.3/lib"
-        }
-      },
-      "paths": {
-        "templates": null,
-        "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species"
-      },
-      "review": {
-        "require_a2": true,
-        "a2_deviation": 0.15,
-        "accept_deviation": null
-      }
-    },
+    "mode": null,
+    "temperature_K": null,
+    "spec": {},
     "molecule": {
       "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt\\opt.xyz",
-      "atom_count": 20,
-      "run_input_sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e"
+      "atom_count": 20
     },
     "electrode": {
-      "stage": "au_relax",
-      "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au_relax\\geometry.in",
+      "stage": "electrode_build",
+      "source": "library",
+      "element": "Au",
+      "geometry": "demo\\azulene-26-dithiol\\azulene-26-dithiol\\au_relax\\geometry.in",
       "atom_count": 92,
       "au_per_electrode": 37,
       "left_surface_indices": [
@@ -399,14 +100,14 @@
       "surface_fingerprint": "0a5af56c3eb707fa49e434c4438172699d6cb7a8fa2e21d840d3a39cbb3e63f0"
     },
     "te": {
-      "source": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\TE.dat",
+      "source": "demo\\azulene-26-dithiol\\azulene-26-dithiol\\aitranss_te\\TE.dat",
       "efermi_Ha": -0.188452434085,
       "bias_V": 0.0,
       "points": 190
     }
   },
   "stages": {
-    "gaussian_opt": {
+    "molecule_opt": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\gaussian_opt",
       "n_files": 6,
       "bytes": 418718,
@@ -504,7 +205,7 @@
         }
       ]
     },
-    "au60_build": {
+    "electrode_build": {
       "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au60_build",
       "n_files": 5,
       "bytes": 201255,
@@ -538,61 +239,6 @@
           "bytes": 5778,
           "retrieval": "unknown",
           "sha256": "9b8d6dd4f53832dd2fbb96dc715b74c7c37e467d4b2ac706fd304ffabdf74331"
-        }
-      ]
-    },
-    "au_relax": {
-      "dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\au_relax",
-      "n_files": 8,
-      "bytes": 13668453,
-      "files": [
-        {
-          "name": ".dsh_done",
-          "bytes": 28,
-          "retrieval": "full",
-          "sha256": "1e5f1d626db030e9c182928143b684a364a9a7231b69389e7f5cb528d67375d3"
-        },
-        {
-          "name": "aims.out",
-          "bytes": 13636836,
-          "retrieval": "full",
-          "sha256": "a2dca3a89ea0700653f9a6a51106481389e6af12a0fc02ad664d308659d860a1"
-        },
-        {
-          "name": "control.in",
-          "bytes": 10664,
-          "retrieval": "full",
-          "sha256": "711c9564a97952d25089a0db955892bb944cbde5ba1630dfd52c92d646b65c24"
-        },
-        {
-          "name": "electrode_metadata.json",
-          "bytes": 2928,
-          "retrieval": "skip",
-          "sha256": "9b401676f76cd35e6c863397e563c74440d9eb998ba6a28c8f4ade3ffded802d"
-        },
-        {
-          "name": "geometry.in",
-          "bytes": 8015,
-          "retrieval": "full",
-          "sha256": "0a5af56c3eb707fa49e434c4438172699d6cb7a8fa2e21d840d3a39cbb3e63f0"
-        },
-        {
-          "name": "geometry.in.next_step",
-          "bytes": 8015,
-          "retrieval": "full",
-          "sha256": "0a5af56c3eb707fa49e434c4438172699d6cb7a8fa2e21d840d3a39cbb3e63f0"
-        },
-        {
-          "name": "input_summary.json",
-          "bytes": 906,
-          "retrieval": "skip",
-          "sha256": "0c6d69b230681aabe6f1c84bff4bf73906baf934d3367b0d2d8411166faca31b"
-        },
-        {
-          "name": "sub_aims.sh",
-          "bytes": 1061,
-          "retrieval": "full",
-          "sha256": "8296af8b6ce55ca663866fd9d3dbe3dd9e1b5c2a1fec2486a115632d093cb200"
         }
       ]
     },
@@ -733,7 +379,7 @@
     }
   },
   "resources": {
-    "gaussian_opt": {
+    "molecule_opt": {
       "source": "state",
       "walltime": "00:15:00",
       "time_limit": "00:29:00",
@@ -762,23 +408,6 @@
       "core_h": 1.17,
       "capped": [],
       "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
-      "budget": {
-        "ok": true,
-        "reason": "在预算内"
-      }
-    },
-    "au_relax": {
-      "source": "state",
-      "walltime": "01:23:00",
-      "time_limit": "02:38:00",
-      "mem": "24G",
-      "ntasks": 4,
-      "cpus": null,
-      "cores": 4,
-      "atoms": 92,
-      "core_h": 5.53,
-      "capped": [],
-      "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 300+40·N s，内存 10.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9",
       "budget": {
         "ok": true,
         "reason": "在预算内"
@@ -820,7 +449,7 @@
     }
   },
   "transport": {
-    "source": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\azulene-26-dithiol\\junction_analyze\\analysis.json",
+    "source": "demo\\azulene-26-dithiol\\azulene-26-dithiol\\junction_analyze\\analysis.json",
     "points": 190,
     "temperature_K": 300.0,
     "L0": 0.7461471866885822,
@@ -843,7 +472,7 @@
   },
   "failures": [],
   "warnings": [
-    "run_spec.json 缺失：manifest 用当前配置重建（reconstructed=true），不能证明与原始 run 的参数完全一致"
+    "run_spec.json 缺失：run 目录里没有可加载的配置，manifest 无法绑定运行参数"
   ],
   "verdict": {
     "passed": true,
@@ -855,11 +484,10 @@
     "allowed_action": "停; 须补数据或降级声明",
     "failed_criteria": [],
     "inconclusive_criteria": [
-      "t_ef_no_peak_near_ef"
+      "t_ef_resonance_attribution"
     ],
     "missing_evidence_criteria": [],
     "not_applicable_criteria": [
-      "t_ef_magnitude",
       "g_in_theory_band",
       "seebeck_sign"
     ]
@@ -908,27 +536,19 @@
       "detail": "efermi 取自 TE.dat 表头(aitranss 实际使用值)"
     },
     {
-      "name": "t_ef_magnitude",
-      "value": 0.7618455393,
-      "passed": false,
-      "severity": "error",
-      "detail": "T(E_F)=0.7618 带 0.03-0.40 G0 (Thygesen 2005 p.13)[适用域: 不适用(仅记录, 不作闸门); 体系族 Au-(2,6-azulenedithiol)-Au]",
-      "applicable": false
-    },
-    {
-      "name": "t_ef_no_peak_near_ef",
+      "name": "t_ef_resonance_attribution",
       "value": 0.0938,
       "passed": false,
       "severity": "warn",
-      "detail": "E_F 近旁 -0.0938 eV 处有显著峰(T=0.9497); 基准要求 1.0 eV 内无峰 (Thygesen 2005 p.12; 突出度门限 0.10 为工程约定)",
+      "detail": "E_F 近旁 -0.0938 eV 处有显著峰(T=0.9497); 距 E_F 过近(<0.15 eV); 需解释; 族表(Au-(2,6-azulenedithiol)-Au): 薁为非交替烃, 谱不对称; GW 模型取 E_F=-1.5 eV(绝对共振位未给, 故只登记通道侧、不登记窗口); 本管线 S=+54.1 与 HOMO 侧一致",
       "applicable": true
     },
     {
       "name": "g_in_theory_band",
       "value": 0.7461471866885822,
       "passed": false,
-      "severity": "error",
-      "detail": "G=0.7461 G0 带 0.03-0.40 (任务卡 §4.2)[适用域: 不适用(仅记录, 不作闸门); 体系族 Au-(2,6-azulenedithiol)-Au]",
+      "severity": "warn",
+      "detail": "G=0.7461 G0 带 0.03-0.40 (派生包络, Thygesen 2005 §V.2)[适用域: 不适用(仅记录, 不作闸门); 体系族 Au-(2,6-azulenedithiol)-Au]",
       "applicable": false
     },
     {
@@ -952,8 +572,8 @@
     }
   ],
   "totals": {
-    "bytes": 28711191,
-    "gib": 0.027,
-    "stages": 7
+    "bytes": 15042738,
+    "gib": 0.014,
+    "stages": 6
   }
 }

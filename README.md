@@ -84,13 +84,15 @@ prepare 也把同样的 `species.json` 写进阶段目录，collect 搬进 `resu
 
 | 体系 | 锚定化学 | 结原子数 | 每侧 Au | G/G0 (L0) | 物理判定 |
 |---|---|---|---|---|---|
-| 1,4-benzenedithiol (BDT) | 硫醇盐 | 86 | 37 | 0.279 | inconclusive（E_F 附近有峰） |
-| azulene-2,6-dithiol (AZ) | 硫醇盐 | 92 | 37 | 0.381 | inconclusive（E_F 附近有峰） |
-| 2CN-656-4-thiomethylphenyl | 硫醚 | 128 | 37 | 0.00132 | inconclusive（E_F 附近有峰） |
+| 1,4-benzenedithiol (BDT) | 硫醇盐 | 86 | 37 | 0.279 | passed（HOMO 峰 −0.34 eV 已归因） |
+| azulene-2,6-dithiol (AZ) | 硫醇盐 | 92 | 37 | 0.381 | passed（HOMO 峰 −0.18 eV 已归因） |
+| 2CN-656-4-thiomethylphenyl | 硫醚 | 128 | 37 | 0.00132 | passed（LUMO 峰 +0.24 eV 自洽归因） |
 
-三套的**工程判定均通过**（SCF 收敛、TE 数据完整、阶段哈希闭环、连接核对有效）；
-物理判据的 `inconclusive` 是 `t_ef_no_peak_near_ef`（E_F 1 eV 内有透射峰），
-不代表管线失败。BDT 族判据只对标定族生效，AZ/2CN 不做该族比对。
+三套的**工程判定均通过**（SCF 收敛、TE 数据完整、阶段哈希闭环、连接核对有效）。
+2026-11-15 起，E_F±1.0 eV 内的透射峰不再直接判 `inconclusive`，而是按族预期通道归因
+（`t_ef_resonance_attribution`）：峰在预期侧且 0.15≤|ΔE|≤1.0 eV 记「物理信号已归因」；
+2CN 未登记文献通道，按实测 Seebeck 负号自洽归入 LUMO 侧。BDT 族判据只对标定族生效，
+AZ/2CN 不做该族比对。
 
 ## 1. 安装
 

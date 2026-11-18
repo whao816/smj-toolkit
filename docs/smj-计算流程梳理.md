@@ -288,7 +288,7 @@ smj ensemble --dir ensemble/ --report                             # 汇总 gap /
 - **默认参数**：`temperature = transport.temperature`（默认 300 K）；常数 `k_B=8.6173324e-5 eV/K`、`h=4.135667662e-15 eV·s`；自旋极化时两列取平均。
 - **产物**：`junction_analyze/results.json`（含 `fermi_nearest`、`max_transmission`）。
 - **免责**：点数 ≤7 时 note「7 点样本免责：仅验证管线，非生产科学结论（`_like` 语义）」。
-- **可选**：`smj analyze` 生成 `analysis.json`（schema `smj.analysis.v1`），用**独立解析器 + Simpson 求积 + CODATA 常数**复核主结果，并可 `plot=True` 出 `T_E_plot.png`（matplotlib 属可选 extra `plot`）。
+- **可选**：`smj analyze` 生成 `analysis.json`（schema `smj.analysis.v1`），用**独立解析器 + Simpson 求积 + CODATA 常数**复核主结果，并可 `plot=True` 出 `T_E_plot.png`（matplotlib 属可选 extra `plot`）。图**纵轴为对数**：下限取最小正值的一半（`T_LOG_FLOOR=1e-12` 兜底），`T≤0` 的点在轴上截断而非丢弃，否则 T(E) 的 1e-3 量级深谷（反共振/干涉谷）在线性轴上会被压成一条贴底的线。
 
 ---
 
@@ -426,32 +426,49 @@ smj ensemble --dir ensemble/ --report                             # 汇总 gap /
 | `junction_geom_surface_valid` | error | 左右表面索引非空、在 1..N、互不相交、全为电极元素（否则 aitranss 报「左右电极共享原子」） |
 | `junction_geom_surface_side` | error | 输运轴取左右 linker 连线主导坐标轴；左索引在中点左侧、右索引在右侧 |
 | `junction_geom_contacts` | error | 元素对键长下限 = 0.7×共价半径和，3 Å 预筛；短于下限视为原子重叠 |
-| `junction_geom_anchor_aus` | warn/info | thiolate 落在 2.40–2.49 Å → ok；硫醚/硫醇按配位接触（≈2.6–2.7 Å vdW 和）；未识别化学 → info |
+| `junction_geom_anchor_aus` | warn/info | thiolate 落在 2.40–2.44 Å → ok（Jackson 2009 实验锚点 2.42±0.02 Å）；硫醚/硫醇按配位接触（≈2.6–2.7 Å vdW 和）；未识别化学 → info |
 | `junction_geom_electrode_extent` | info | 仅报告电极沿输运轴延伸量 |
 | `junction_connection_check` | error/warn | 连接核对有效 ok；有记录但指纹不符 error；无记录 warn（旧 check 名 `junction_surface_check` / `junction_a2_confirmation` 兼容） |
 
 表面三角选择（det-v1）：每侧 3 个原子，按「与 tip 同元素、排除对侧 tip、按输运轴中点分侧」取外层最远层，排序键 =（最长边、到 tip 投影距离、面积）各按 **0.05 Å 分桶** + 顶点坐标字典序，结果与原子顺序无关、可复现；同桶多解记 `tie_count`。旧实现用绝对 1e-3 Å + 遍历顺序，同一几何不同次运行会给出不同索引（三种优化设置各一套），因此改为确定性规则。
 
-### 6.2 物理判据（11 条）
+### 6.2 物理判据（10 条）
 
 - physical 判据必须带 `source{doi,locator}`（无源不得作闸门）；engineering 判据免源但须标 `kind`。
 - `gate=error` 未过 → `failed`；`gate=warn` 未过 → `inconclusive`；`missing=True`（证据缺失）→ `inconclusive`，**证据缺失 ≠ 否证**。
+- 有源 ≠ 有阈值：标 `evidence=derived` 的带是文献散布/派生包络，只用于提示，不足以否证 H0。
 
-| 判据 | 类型 | 闸门 | 默认带 | 适用 |
-|------|------|------|--------|------|
-| `gaussian_no_imaginary` | physical | error | 无虚频 | Gaussian 引擎 |
-| `scf_converged` | engineering | error | — | 全链 |
-| `te_present` | engineering | error | `TE.dat` 必须存在 | 全链 |
-| `grid_independence` | physical | warn | 抽稀后 L0/L1/L2 相对变化 <1% | 全链 |
-| `electrodes_disjoint` | engineering | error | 左右电极无共享原子 | 全链 |
-| `au_s_bond` | physical | warn | 2.40–2.49 Å | **仅 S 锚去质子硫醇盐；非 S 锚只报接触距离** |
-| `t_ef_magnitude` | physical | error | 0.03–0.40 G0 | BDT |
-| `t_ef_no_peak_near_ef` | physical | warn | E_F ±1 eV 无显著峰 | 全链 |
-| `g_in_theory_band` | physical | error | 0.03–0.40 G0 | BDT |
-| `seebeck_sign` | physical | error | S > 0 | BDT |
-| `k_e_zt_order` | physical | warn | 未实现（来源待补） | 全链 |
+| 判据 | 类型 | 闸门 | 默认带 | 适用 | 来源（physical） |
+|------|------|------|--------|------|------------------|
+| `gaussian_no_imaginary` | physical | error | 无虚频 | Gaussian 引擎 | 项目既定口径（任务卡 §3）；低频阈值仍无源，见 `KNOWN_GAPS` |
+| `scf_converged` | engineering | error | — | 全链 | — |
+| `te_present` | engineering | error | `TE.dat` 必须存在且可解析 | 全链 | — |
+| `grid_independence` | physical | warn | 抽稀后 L0/L1/L2 相对变化 <1% | 全链 | 任务卡 §5.1.3（实测 ≤0.09%） |
+| `electrodes_disjoint` | engineering | error | 左右电极无共享原子 | 全链 | — |
+| `au_s_bond` | physical | warn | 2.40–2.44 Å | **仅 S 锚去质子硫醇盐；硫醚、非 S 锚只报接触距离** | Jackson 2009 摘要：Au(111)(√3×√3)R30–CH₃S atop，NIXSW+S1s PhD，S–Au=2.42±0.02 Å（表面吸附相，仅方向性；Thygesen 2005 §V.2 的 2.40 Å 是采用 Stokbro 2003 的输入） |
+| `t_ef_resonance_attribution` | physical | warn | 近 E_F 峰落在族预期通道侧且 0.15≤\|ΔE\|≤1.0 eV | 全链（族表；未登记族按实测 Seebeck 符号自洽回退） | Thygesen 2005 §V.2：窄峰 −1.5/−1.0 eV、宽峰 −3.0/+2.5 eV；0.15 eV 下限按 PBE 半局域能级误差 0.1–0.3 eV（Gulyaev 2026） |
+| `g_in_theory_band` | physical | warn | 0.03–0.40 G0（**派生包络**，evidence=derived） | BDT | Thygesen 2005 §V.2：around 0.1 G0 的 1/3–4 倍（Ref.15 ×1/3 … Ref.48 ×4；原文无此区间） |
+| `seebeck_sign` | physical | error | S > 0 | BDT | Reddy 2007 +8.7±2.1 µV/K、Lee 2014 +7.4±0.5 µV/K（均 Au–BDT–Au 实测） |
+| `k_e_zt_order` | physical | warn | 未实现（来源待补） | 全链 | —（`KNOWN_GAPS`） |
 
-判据族（`molecule.family`）：`BDT`、`2CN`、`C4`、`AZ`；未登记/`null` → 全部判据适用（fail-safe）。
+**共振判据的语义**（2026-11-15 改）：E_F±1.0 eV 内的显著峰不再是「错误信号」，而是**需解释的物理信号**。
+
+- 无显著峰 → `pass`（含「TE 窗口截断导致看不到峰」的情形，判据不要求峰必须存在）；
+- 峰在预期通道侧且 0.15≤\|ΔE\|≤1.0 eV → `pass`，detail 记「物理信号已归因」；
+- 侧别不符 / 距 E_F <0.15 eV / 通道未知 → `warn`，detail 说明需要解释的方向；
+- 0.15 eV 下限是 PBE 能级误差量级的**工程容差**，不是「允许的物理共振距离」；PBE 会把峰系统性推向 E_F（本管线 BDT 最近峰 −0.339 eV），因此不要求复现文献峰位。
+
+判据族（`molecule.family`）与预期通道（`EXPECTED_RESONANCE`，均带 `source{doi,locator}`）：
+
+| 族 | 预期通道 | 依据 |
+|----|----------|------|
+| `Au-BDT-Au` | HOMO（占据侧） | Thygesen 2005 §V.2 窄峰在 −1.0 eV；Reddy 2007 S=+8.7±2.1 µV/K |
+| `Au-(4,4'-bipyridine)-Au` | LUMO（空侧） | Widawsky 2012 Table 1：S=−9.5 µV/K，LUMO 在 E_F 上方 1.47–1.53 eV |
+| `Au-(2,6-azulenedithiol)-Au` | HOMO（侧） | Xia 2014 GW；E_F 绝对位置依赖模型 |
+| `Au-alkane-dithiol-Au` | 无（宽 gap） | Xu & Tao 2003：β_N≈1.0±0.1，无近 E_F 共振 |
+| 其它（2CN、SME…） | 未登记 | 按实测 Seebeck 符号自洽归因（T(E) 与 S 是同一组数据的不同矩），不自称文献先验 |
+
+未登记/`null` 族仍全部适用（fail-safe）；`t_ef_magnitude`（0.03–0.40 G0）已于 2026-11-15 按「无一手区间则取消」规则删除，其派生包络并入 `g_in_theory_band` 并降为 warn。0.2.0 三体系在新口径下：BDT/AZ/2CN 均 `passed`（AZ/2CN 原先因「E_F 附近有峰」被记 inconclusive）；`bdt-anchor24` 因 S=−22.2 µV/K 对 BDT 族判 `seebeck_sign` failed。
 
 ---
 

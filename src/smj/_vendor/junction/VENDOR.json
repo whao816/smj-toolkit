@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
-  "repo_commit": "cc6a619a76091d21f54bb9dc8174413003f78e83",
+  "repo_commit": "8c8403e65e7ac35e3fa15202ceee25e0bb2ccf10",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -30,8 +30,8 @@
       "bytes": 2262
     },
     "criteria.py": {
-      "sha256": "081c3ce294b184879aa8a7ec6167c3d9160f61490581671007d944a61b22d39f",
-      "bytes": 21982
+      "sha256": "a46f715720aebd306c0e6b0a65de460ffab3295d970ee4a164ee8f917983b1f3",
+      "bytes": 26145
     },
     "demo.py": {
       "sha256": "501fb09f251c197206664e996a10f018f9cc8a61edeb597ce2e464169043e97e",
@@ -46,8 +46,8 @@
       "bytes": 5808
     },
     "fixtures.py": {
-      "sha256": "ff07b9e137a85b0fb79fcbe8403c6d60f0af4071aa493195cc52f2700687a040",
-      "bytes": 7207
+      "sha256": "38e3f6aa835ca5a21a9ba6221adf7903c048ab115d4a53a67246fd7dee9e5f54",
+      "bytes": 7469
     },
     "geometry.py": {
       "sha256": "2bef5b4d7f1f9869458f12e4bb7f8ebc62b5a8aba55cb7809a754f252c97a921",
@@ -58,8 +58,8 @@
       "bytes": 7952
     },
     "inputs.py": {
-      "sha256": "04adde1374cd5b91480e24ffa0b328be901f197367e85734128cd389dc3312cc",
-      "bytes": 26463
+      "sha256": "7128fdefe5a36740080e296f52287635a3e1aaec7a82be337aa3ab58d081d255",
+      "bytes": 27337
     },
     "jobwait.py": {
       "sha256": "ae8b6b4a48cbd6e6b169768f00b51ded4e82f8e16178706cc386c3ada5f96997",
@@ -78,8 +78,8 @@
       "bytes": 8292
     },
     "molecules.py": {
-      "sha256": "6ae88ca119b3043ae4140300b26bed28a6d4f3cf601621c779135c7f8bcf0bc6",
-      "bytes": 9533
+      "sha256": "1ff9e12f4782a37a0c328a7b66808a34bd5ea466f819f7102411f93c1e2d7d8e",
+      "bytes": 9431
     },
     "paramhash.py": {
       "sha256": "31f3c1d1ea58575fb65fadf2bd45a4652b9e561b4f9691683b322a9b73081fbb",
@@ -110,16 +110,16 @@
       "bytes": 14953
     },
     "tcontrol.py": {
-      "sha256": "95ad598efbd50a8ee008c7d6dfe61dec3295cafa9e24f140fad9d0eaad3b6768",
-      "bytes": 9978
+      "sha256": "e6938597beba985a7c07d078be972abf909d74a1d20ccc853ac54ae1ac10acc6",
+      "bytes": 10333
     },
     "templates/control_orbital.in": {
       "sha256": "d090d1aaa25ac31b7004318b837cbab178b7bcefc080afc05340942e44146b5a",
       "bytes": 833
     },
     "templates/control_relax.in": {
-      "sha256": "275e27f867aa524b60ce1aa541d505345aa3d6491b24f08378d6b1949b619bb5",
-      "bytes": 769
+      "sha256": "d0953ad2928fdd707b4f9e3759c6db4fe4a615d2461c5efe9d50322dfbe877d0",
+      "bytes": 1427
     },
     "templates/control_scf.in": {
       "sha256": "ccaef06fda05f6207ec61742f860a3f74b8e73e40ceff1f8a012a440ce92174a",
@@ -146,8 +146,8 @@
       "bytes": 566
     },
     "validate.py": {
-      "sha256": "bbdacf659b7a40a8c2c4d4ad3c1328b9bc8f65f87100043c63bb48832c473c43",
-      "bytes": 23784
+      "sha256": "1528d9bcdfb2fc4a9d5f0a5a88021de6fc5d0bbf3bf982897075fd96f588fce0",
+      "bytes": 23803
     }
   },
   "local_patches": [
@@ -275,6 +275,21 @@
       "why": "烷烃二硫醇走饱和 σ 链的隧穿通道（Xu & Tao 2003 的链长衰减序列），与 Au–BDT–Au 的 π 通道不同族；三条判据带都按 BDT 硫醇盐标定，不登记族名会把 C6/C8/C10 正常算例（G 比 BDT 低 2–3 个量级）判成「否证 H0」。",
       "tests": [
         "tests/test_family.py"
+      ]
+    },
+    {
+      "id": "F-CRIT-2026-11-15",
+      "commit": "2026-11-15",
+      "files": [
+        "criteria.py",
+        "validate.py"
+      ],
+      "what": "判据口径修订：① t_ef_no_peak_near_ef → t_ef_resonance_attribution（无峰 pass；峰按 EXPECTED_RESONANCE 族表归因到 HOMO/LUMO 侧，|ΔE|∈[0.15,1.0] eV 记「已归因」；未登记族按实测 Seebeck 符号自洽回退）；② 删除 t_ef_magnitude（0.03–0.40 G0 非 Thygesen 2005 原文区间，派生包络并入 g_in_theory_band，后者 gate error→warn 并标 evidence=derived）；③ au_s_bond 带 2.40–2.49 → 2.40–2.44 Å（Jackson 2009 S–Au=2.42±0.02 Å；2.49 无一手源），validate.py 的 AU_S_BAND 与 4 处 detail 同步；④ te_present 在 TE.dat 不可解析时也记 missing。",
+      "why": "原共振判据把「E_F 附近有峰」一律当错误信号，会把 2CN（LUMO 传导）与 AZ（HOMO 侧）的正常算例判成 inconclusive，BDT 自身 −0.34 eV 的 HOMO 峰也中招；有源 ≠ 有阈值，派生包络不足以否证 H0。证据见 docs/criteria-source-research.md。",
+      "tests": [
+        "tests/test_resonance_attribution.py",
+        "tests/test_family.py",
+        "tests/test_criteria_failopen.py"
       ]
     }
   ],

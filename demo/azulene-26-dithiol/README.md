@@ -66,6 +66,10 @@
 | 主透射峰 | T=1.30 @ E−E_F = −0.37 eV；次峰 T=0.95 @ −0.06 eV |
 | 判定 | 工程判定 **通过**；物理判定 **inconclusive**（唯一未过：`t_ef_no_peak_near_ef` warn） |
 
+> **口径注（2026-11-15）**：上表是旧判据 `t_ef_no_peak_near_ef` 的原始记录。新判据 `t_ef_resonance_attribution` 取距 E_F 最近的显著峰做归因：本 demo 最近峰在 −0.06 eV 附近（余量 <0.15 eV），仍会触发「距 E_F 过近」warn，故本 demo 保持 inconclusive 作为历史样本；0.2.0 的正式重评用 `runs/az`（峰 −0.177 / −0.406 eV，HOMO 侧）→ passed，见 `docs/validation-0.2.0.md`。
+>
+> **重评记录（2026-11-16）**：`manifest.json` / `report.md` 已按当前口径重写，判据评估实测最近峰为 −0.0938 eV（T=0.9497），结论仍 **inconclusive**（唯一未过：`t_ef_resonance_attribution` warn，距 E_F <0.15 eV）。全量重评对照见 `docs/runs-reverdict-2026-11-16.md`。
+
 ![TE overview](azulene-26-dithiol/junction_analyze/TE_overview.png)
 
 与主仓此前 138 原子（60 Au/侧、nlayers 4、Au–S 2.24 Å）基线的对照：

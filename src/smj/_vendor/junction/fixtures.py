@@ -14,9 +14,10 @@
 注: 会话叙述里 624059 曾记作 G=0.8611, 而本地产物现算 L0=0.861257(差 1.5e-4);
 与已登记的"L0 第 7 位"同类, **以本地产物现算值为准**并留此说明。
 
-注(2026-10-24 第二刀): T(E_F)/G 绿带判据也登记了 applies_to(仅 Au-BDT-Au), 故 2cn
-基准的 physics_verdict 由 failed 改判 inconclusive(三条 BDT 标定判据均记 not_applicable);
-bdt 两条基准不受影响(同族, 判据适用)。历史 run 的 report/DB 记录不重写。
+注(2026-10-24 第二刀): G 理论带/Seebeck 判据登记了 applies_to(仅 Au-BDT-Au), 故 2cn
+基准中这两条记 not_applicable; 2026-11-15 判据更新(t_ef_magnitude 取消、共振归因口径)
+后 2cn 的 physics_verdict 为 passed。bdt 两条基准仍可复算(同族, 判据适用;
+g_in_theory_band 现为 warn/派生包络, 故 inconclusive)。历史 run 的 report/DB 记录不重写。
 """
 from __future__ import annotations
 
@@ -29,8 +30,9 @@ FIXTURES = {
         'te_sha256': 'aa961b1977e30aeb78f0c306cfa3d40f3a1f7b2502e4cd6163e269ab2c4249ab',
         'te_rows': 4001,
         't_ef': 0.8491, 'l0': 0.860733, 's_uV_per_K': 37.1507,
-        'physics_verdict': 'failed',
-        'failed_criteria': ['t_ef_magnitude', 'g_in_theory_band'],
+        'physics_verdict': 'inconclusive',
+        'failed_criteria': [],
+        'inconclusive_criteria': ['g_in_theory_band'],
         'stages': 5,
     },
     'bdt-trans-smj-624059': {
@@ -39,8 +41,9 @@ FIXTURES = {
         'te_sha256': 'eac812ccf0f721dca53f8baa582304a92f1551aa43b85cef8d2131b3c35665c1',
         'te_rows': 4001,
         't_ef': 0.8496, 'l0': 0.861257, 's_uV_per_K': 37.1275,
-        'physics_verdict': 'failed',
-        'failed_criteria': ['t_ef_magnitude', 'g_in_theory_band'],
+        'physics_verdict': 'inconclusive',
+        'failed_criteria': [],
+        'inconclusive_criteria': ['g_in_theory_band'],
         'stages': 5,
     },
     '2cn-smj-g16t01': {
@@ -50,19 +53,21 @@ FIXTURES = {
         'note': ('主场真实算例(2CN-656-4-thiomethylphenyl 54 原子 + au10 电极 -> 74 原子; '
                  '与 bdt 族分属不同 run 根, 故用 run_root 显式定位)。**阶段目录名为 au10_build**'
                  '(小电极变体)而非 au60_build, 故用 stage_names 显式声明, 不按 SMJ_STAGES 数数。'
-                 '**2026-10-24 第二刀(判据适用域)**: seebeck_sign 与 T(E_F)/G 绿带都按 Au-BDT-Au'
-                 '标定(Reddy 2007 正号 / Thygesen 2005 p.13 绿带), 对 2cn 属**判据适用性**问题而非'
-                 '物理错误 —— 由 criteria.applies_to 表达, 三条判据对 2CN 均记 not_applicable、'
-                 '不计入 failed/inconclusive; 于是 physics_verdict 由 failed 变为 inconclusive'
-                 '(唯一剩下的未过项是 warn 级 t_ef_no_peak_near_ef)。历史 run 的 report/DB 记录'
-                 '不重写, 本 fixture 只冻结"当前口径下"的可复算基准'),
+                 '**2026-10-24 第二刀(判据适用域)**: seebeck_sign 与 G 理论带都按 Au-BDT-Au'
+                 '标定(Reddy 2007 正号 / Thygesen 2005 派生带), 对 2cn 属**判据适用性**问题而非'
+                 '物理错误 —— 由 criteria.applies_to 表达, 两条判据对 2CN 记 not_applicable、'
+                 '不计入 failed/inconclusive。**2026-11-15(判据更新)**: t_ef_magnitude 取消'
+                 '(无一手区间); t_ef_no_peak_near_ef 改为 t_ef_resonance_attribution —— 2CN 未'
+                 '登记族, 按实测 S=-102.9 uV/K 自洽归入 LUMO 侧, 峰 +0.241 eV 落在 0.15-1.0 eV '
+                 '-> pass; 于是 physics_verdict 由 inconclusive 变为 passed。历史 run 的 report/DB '
+                 '记录不重写, 本 fixture 只冻结"当前口径下"的可复算基准'),
         'te_sha256': 'd9616f307f56cf51542cd53bc9af92d2941a44d0aa75c43c477a80e585d269e4',
         'te_rows': 4001,
         't_ef': 0.01863583574, 'l0': 0.0813315561957088, 's_uV_per_K': -102.91458413897126,
-        'physics_verdict': 'inconclusive',       # 2026-10-24 第二刀: 绿带对非 BDT 族不适用
+        'physics_verdict': 'passed',
         'failed_criteria': [],
-        'inconclusive_criteria': ['t_ef_no_peak_near_ef'],
-        'not_applicable_criteria': ['t_ef_magnitude', 'g_in_theory_band', 'seebeck_sign'],
+        'inconclusive_criteria': [],
+        'not_applicable_criteria': ['g_in_theory_band', 'seebeck_sign'],
         'stages': 5,
         'stage_names': ['gaussian_opt', 'aims_tip_relax', 'au10_build', 'aims_scf', 'aitranss_te'],
     },

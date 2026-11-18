@@ -8,13 +8,13 @@
 | 项 | 值 |
 |---|---|
 | run_id | `2CN-656-4-thiomethylphenyl-aimsopt` |
-| 根目录 | `D:\dsh_projects\AutoSMJ\demo\2CN-656-4-thiomethylphenyl-aimsopt\2CN-656-4-thiomethylphenyl-aimsopt` |
+| 根目录 | `demo\2CN-656-4-thiomethylphenyl-aimsopt\2CN-656-4-thiomethylphenyl-aimsopt` |
 | 模式 | slurm-ssh |
 | 参数快照 | run_spec.json（sha256 3de72e06c870…）；protocol d0a6584b1c44… |
 | 阶段数 / 文件总量 | 6 / 0.043 GiB |
 | 阶段状态 | molecule_opt=collected, aims_tip_relax=collected, electrode_build=collected, aims_scf=collected, aitranss_te=collected, junction_analyze=collected |
 | 首个未完成阶段 | `—` |
-| 生成时间 | 2026-11-13T22:12:47+08:00 |
+| 生成时间 | 2026-11-16T10:27:32+08:00 |
 
 ## 0.1 判定
 
@@ -24,8 +24,8 @@
 | 物理判定 | 否证 H0（failed） |
 | 允许动作 | 停; 不得进入预测模式(任务卡 §7.3②) |
 
-- 否证 H0 的 error 级判据: `t_ef_magnitude`, `g_in_theory_band`, `seebeck_sign`
-- 未过的 warn 级判据: `t_ef_no_peak_near_ef`
+- 否证 H0 的 error 级判据: `seebeck_sign`
+- 未过的 warn 级判据: `g_in_theory_band`
 
 ## 1. 阶段状态
 
@@ -46,9 +46,11 @@
 | 分子原子数 | 54 |
 | 建结阶段 | electrode_build |
 | 结原子数 | 128 |
-| 每侧电极 Au | 37 |
+| 电极构建方式 | library |
+| 电极元素 | Au |
+| 每侧电极原子数 | 37 |
 | 输运温度 (K) | 300.0 |
-| TE.dat | D:\dsh_projects\AutoSMJ\demo\2CN-656-4-thiomethylphenyl-aimsopt\2CN-656-4-thiomethylphenyl-aimsopt\aitranss_te\TE.dat |
+| TE.dat | demo\2CN-656-4-thiomethylphenyl-aimsopt\2CN-656-4-thiomethylphenyl-aimsopt\aitranss_te\TE.dat |
 | TE 数据点 | 301 |
 | efermi (Ha) | -0.17942907342 |
 
@@ -72,7 +74,7 @@
 | k_e (pW/K) | 1.2664 |
 | ZT_electronic | 0.029911 |
 | 数据点 | 301 |
-| 来源 | `D:\dsh_projects\AutoSMJ\demo\2CN-656-4-thiomethylphenyl-aimsopt\2CN-656-4-thiomethylphenyl-aimsopt\aitranss_te\TE.dat` |
+| 来源 | `demo\2CN-656-4-thiomethylphenyl-aimsopt\2CN-656-4-thiomethylphenyl-aimsopt\aitranss_te\TE.dat` |
 
 ## 5. 失败原因
 

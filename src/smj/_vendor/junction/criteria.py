@@ -7,11 +7,20 @@
 P1-5 的强制由 lint_registry() + tests/test_smj_automation.py 的 ratchet 用例实现:
 新增无源判据即失败; 已登记的缺口(见 KNOWN_GAPS)数量固定, 只能减少不能增加。
 
-判据数值来源(均已回读原文核验, 见 docs/taskcard-smj-bdt-benchmark.md §4.2):
-- Au-S 带 2.40-2.49 A: Thygesen 2005 p.12 `dAu-S = 2.40 A`; Jackson 2009 `S-Au = 2.42+-0.02 A`
-- T(E_F) 带 0.03-0.4: 由 Thygesen 2005 p.13 `0.1G0` 与其 Ref.15/48 的 x3/x4 关系推得
-- T(E_F) 结构判据: Thygesen 2005 p.12 峰位(-3.0/+2.5 宽峰, -1.5/-1.0 窄峰) -> E_F 近旁 1.0 eV 内无峰
-- 适用域(2026-10-24 第二刀): T(E_F)/G 绿带与 seebeck_sign 同属 **Au-BDT-Au 标定域**, 故同带
+判据数值来源(均已回读原文核验, 见 docs/criteria-source-research.md §2):
+- Au-S 带 2.40-2.44 A: Jackson 2009 摘要 `S-Au = 2.42+-0.02 A`(Au(111)(sqrt3xsqrt3)R30-CH3S
+  表面相, NIXSW+S1s PhD 实验锚点; 2.44=2.42+0.02; 旧带上端 2.49 A 无一手源, 2026-11-15 收窄)。
+  Thygesen 2005 §V.2 的 d(Au-S)=2.40 A 是**采用 Stokbro 2003**("in accordance with Ref. 48")
+  的模型输入, 非该文测量/计算结论。
+- T(E_F)/G 理论带 0.03-0.4: **派生量, 非原文区间** —— Thygesen 2005 §V.2 只给 "around 0.1 G0"
+  与 "比 Ref.48 小 4 倍、比 Ref.15 大 3 倍", [0.1/3, 0.1x4] 是文献散布包络。原文同时承认 BDT
+  理论电导比实验高 2-3 个数量级, 故该带只检验"是否落在 DFT-NEGF 理论族内", 不检验"是否复现
+  实验"; 2026-11-15: t_ef_magnitude 按用户规则取消(无一手区间), g_in_theory_band 降为 warn
+  并标 evidence=derived(派生量不足以否证 H0)。
+- 共振归因: 族表 EXPECTED_RESONANCE 给各族的预期通道(HOMO/LUMO); 未登记族按实测
+  Seebeck 符号自洽归因(T(E) 与 S 是同一组数据的不同矩)。E_F 近旁 1.0 eV 内出现显著峰
+  -> **需解释的物理信号**; 峰落在预期侧且 0.15-1.0 eV -> 已归因(pass)。
+- 适用域(2026-10-24 第二刀): G 理论带与 seebeck_sign 同属 **Au-BDT-Au 标定域**, 故同带
   applies_to; 换分子族(如饱和烷烃二硫醇)不作闸门, 实算值仍记录(见 SYSTEM_FAMILIES)
 """
 from __future__ import annotations
@@ -20,6 +29,7 @@ from pathlib import Path
 
 THY = {'doi': '10.1016/j.chemphys.2005.05.032'}
 JAC = {'doi': '10.1016/j.susc.2009.01.022'}
+WID = {'doi': '10.1021/nl203634m'}
 
 # kind: physical(物理判据, 须有源) | engineering(程序/接口语义, 免源但须标注)
 # gate: error(阻断) | warn(告警) | info(仅报告)
@@ -34,7 +44,7 @@ CRITERIA = [
     # 2026-11-11 本地补丁 (smj F2): 产物缺失必须是 error 级判据, 不能被"零判据"静默判过。
     {'name': 'te_present', 'kind': 'engineering', 'gate': 'error', 'implemented': True,
      'band': None, 'source': None,
-     'note': 'transmission 产物存在性(程序语义); 缺失时物理判据无法评估, 不得判 passed'},
+     'note': 'transmission 产物存在性(程序语义); 缺失或不可解析时物理判据无法评估, 不得判 passed'},
 
     {'name': 'grid_independence', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
      'band': [0.01, None], 'source': dict(THY, locator='—'),
@@ -45,35 +55,35 @@ CRITERIA = [
      'note': 'aitranss 语义: 左右电极共享原子即终止(trans.f); 见 P0-4'},
 
     {'name': 'au_s_bond', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
-     'band': [2.40, 2.49], 'source': dict(THY, locator='p.12'),
-     'note': '另有实验锚点 ' + JAC['doi'] + ' S-Au=2.42+-0.02; 仅方向性(两锚点均为表面/金字塔配位); '
-             '仅适用于 S 为锚的去质子硫醇盐；-SCH3 等硫醚的 S–Au 是配位接触，'
-             'N/Se 等非 S 锚只报接触距离，2.40–2.49 Å 均不适用'},
+     'band': [2.40, 2.44], 'source': dict(JAC, locator='摘要: Au(111)(sqrt3xsqrt3)R30-CH3S atop, '
+                                                       'NIXSW+S1s PhD, S-Au=2.42+-0.02 A'),
+     'note': '实验锚点 Jackson 2009 2.42+-0.02 -> 带 [2.40, 2.44](2.44=2.42+0.02; 旧上端 2.49 '
+             '无一手源)。Thygesen 2005 §V.2 的 d(Au-S)=2.40 A 是**采用 Stokbro 2003** 的模型'
+             '输入("in accordance with Ref. 48"), 不是该文结论。锚点为表面吸附相、非电极-分子'
+             '-电极结, 故仅方向性(低配位单 Au 顶位/桥位、金字塔配位都可偏离, 偏离只提示不阻断); '
+             '仅适用于 S 为锚的去质子硫醇盐；-SCH3 等硫醚的 S–Au 是配位接触，N/Se 等非 S 锚'
+             '只报接触距离，均不适用'},
 
-    {'name': 't_ef_magnitude', 'kind': 'physical', 'gate': 'error', 'implemented': True,
-     'band': [0.03, 0.4], 'source': dict(THY, locator='p.13'),
-     'note': 'Au-BDT-Au 典型 ~0.1; 上下端点由该文 Ref.15(x3)/Ref.48(x4) 关系推得',
-     # 2026-10-24 第二刀: 绿带是 **Au-BDT-Au 理论标定包络**, 与 seebeck_sign 同属该族;
-     # 饱和烷烃二硫醇(C4)实测 T(E_F)~1.5e-2 G0, 低于下端点 2 倍 —— 那是通道不同
-     # (隧穿衰减), 不是对 H0 的否证。不适用时仍记实算值, 只不进 failed/inconclusive。
+    {'name': 't_ef_resonance_attribution', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
+     'band': [0.15, 1.0], 'source': dict(THY, locator='§V.2: 窄峰 -1.5/-1.0 eV, 宽峰 -3.0/+2.5 eV'),
+     'note': 'E_F±1.0 eV 内的显著透射峰按族归因(见 EXPECTED_RESONANCE): 无峰 -> pass; 峰落在'
+             '预期通道侧且 |ΔE|∈[0.15,1.0] eV -> pass(物理信号已归因); 侧别不符/距 E_F 过近/'
+             '通道未知 -> warn(需解释)。0.15 eV 下限取 PBE 半局域能级误差量级 0.1-0.3 eV'
+             '(Gulyaev 2026), 不是"允许的物理共振距离"; 该文最近峰恰在 -1.0 eV(余量为 0), '
+             '且 PBE 会把峰系统性推向 E_F(本管线 BDT -0.339 eV), 故不要求峰位复现文献值'},
+
+    {'name': 'g_in_theory_band', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
+     'band': [0.03, 0.4], 'source': dict(THY, locator='§V.2 + Fig.10 派生: 0.1 G0 x '
+                                                       '(Ref.15 的 1/3 ... Ref.48 的 4)'),
+     'evidence': 'derived',
+     'note': '**派生包络**(非原文区间): 0.1 G0 的 1/3-4 倍 = [0.033, 0.4]; 原文同时承认 BDT '
+             '理论电导比实验高 2-3 个数量级, 故只检验"是否落在 DFT-NEGF 理论族内", 不复现实验。'
+             '2026-11-15: 因派生故 gate 由 error 降为 warn(派生量不足以否证 H0)',
+     # 与 seebeck_sign 同一标定域(G/G0≈T(E_F), 300 K 费米窗窄); 适用域一并声明
      'applies_to': {'families': ('Au-BDT-Au',),
-                    'basis': ('绿带 0.03-0.40 G0 由 Thygesen 2005 p.13 的 Au-BDT-Au ~0.1 G0'
-                              ' 与其 Ref.15(x3)/Ref.48(x4) 关系推得, 是该族理论标定包络;'
-                              ' 换分子族(饱和烷烃/等)输运通道不同, 超带不构成对 H0 的否证'
-                              ' —— 2026-10-24 用户拍板, 与 seebeck_sign 同口径')}},
-
-    {'name': 't_ef_no_peak_near_ef', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
-     'band': [1.0, None], 'source': dict(THY, locator='p.12'),
-     'note': 'E_F 近旁应 >=1.0 eV 无透射峰; 依赖 HOMO 位置, 随泛函/几何有 ~0.5 eV 漂移'},
-
-    {'name': 'g_in_theory_band', 'kind': 'physical', 'gate': 'error', 'implemented': True,
-     'band': [0.03, 0.4], 'source': dict(THY, locator='p.13'),
-     'note': '任务卡 §4.2 四基准(Reed/Reddy/Lee/Thygesen)已登记',
-     # 与 t_ef_magnitude 同一绿带/同一标定域(G/G0≈T(E_F), 300 K 费米窗窄); 适用域一并声明
-     'applies_to': {'families': ('Au-BDT-Au',),
-                    'basis': ('同 t_ef_magnitude: 0.03-0.40 G0 是 Au-BDT-Au 理论标定包络'
-                              '(Thygesen 2005 p.13 及其 Ref.15/48 比例); 300 K 下 G/G0≈T(E_F),'
-                              ' 换分子族不作闸门 —— 2026-10-24 用户拍板')}},
+                    'basis': ('0.03-0.40 G0 是 Au-BDT-Au 理论标定包络(Thygesen 2005 §V.2 的 '
+                              '0.1 G0 与其 Ref.15/48 的 x3/x4 比例, 派生); 300 K 下 '
+                              'G/G0≈T(E_F), 换分子族不作闸门 —— 2026-10-24 用户拍板')}},
 
     {'name': 'seebeck_sign', 'kind': 'physical', 'gate': 'error', 'implemented': True,
      'band': [0, None], 'source': {'doi': '10.1126/science.1137149', 'locator': '摘要/正文'},
@@ -129,6 +139,13 @@ SYSTEM_FAMILIES = {
     # 硫醇盐标定; 硫醚接触的耦合强度与输运通道不同, 对它作闸门会把一次物理上
     # 正常的算例判成"否证 H0"。显式登记族名, 让这三条记"不适用"。
     'SME': 'Au-(1,4-bis(methylthio)benzene)-Au',
+    # 2026-11-17 2,6-双(乙酰硫基)芳烃(thioacetate, SAc): S 上无 H、不脱质子, 保留
+    # –C(=O)CH3 的配位型接触(与 SME 同类, 只是羰基取代甲基)。T(E_F)/G 绿带
+    # (0.03–0.40 G0)与 Seebeck 正号都来自 Au–BDT–Au 硫醇盐标定; 对硫酯接触作闸门
+    # 会把一次物理上正常的算例判成"否证 H0"。显式登记族名, 让这三条记"不适用"。
+    # 注意: 实验上 SAc 在 Au 上通常原位脱保护成硫醇盐; 本族模拟的是**保留乙酰基**
+    # 的对照臂, 脱保护形态等价于已跑的 SH 批(nap-sh / az-sh / ind-sh)。
+    'SAC': 'Au-(2,6-bis(acetylthio)arene)-Au',
     # 2026-11-15 烷烃二硫醇链长序列(HDT C6 / ODT C8 / DDT C10): 末端硫醇去质子成
     # 硫醇盐–Au, 输运走饱和 σ 链的隧穿通道, G 随碳数指数衰减(Xu & Tao 2003,
     # Science 301 1221, β≈1.0/碳)。T(E_F)/G 绿带(0.03–0.40 G0)与 Seebeck 正号都是
@@ -140,6 +157,60 @@ SYSTEM_FAMILIES = {
     'C6': 'Au-alkane-dithiol-Au',
     'C8': 'Au-alkane-dithiol-Au',
     'C10': 'Au-alkane-dithiol-Au',
+    # 2026-11-16 1,4-苯二胺(PPD / BDA, 本仓库 run 'ppd'): 锚定原子是 –NH2 的 N, 结为
+    # Au–NH2–C6H4–NH2–Au —— 配位型接触(N 孤对 -> Au), 两个 N–H 全部保留, 不是硫醇盐。
+    # T(E_F)/G 绿带(0.03–0.40 G0)与 Seebeck 正号都是 Au–BDT–Au 硫醇盐标定域; 对胺锚结
+    # 作闸门会把一次物理上正常的算例判成"否证 H0"(BDA 实验 G≈6.4e-3 G0 本就落在绿带外,
+    # Venkataraman 2006)。显式登记族名, 让这两条记"不适用"。
+    # 两个键: 'BDA' 是文献缩写(1,4-benzenediamine), 'PPD' 是 p-phenylenediamine 常用缩写。
+    'BDA': 'Au-(1,4-diaminobenzene)-Au',
+    'PPD': 'Au-(1,4-diaminobenzene)-Au',
+}
+
+
+# 2026-11-15: 共振归因族表 —— "E_F 近旁有峰"不再是错误信号, 而是**需要解释**的物理信号。
+# 只有这里登记了预期通道的家族才做"文献先验"归因; 未登记族(如 SME / 2CN, 尚无一手文献
+# 明确其近 E_F 通道归属)按实测 Seebeck 符号做自洽归因, detail 里标明这是自洽性检查而非
+# 文献先验 —— 不把"没查到源"包装成"有源"。通道依据见 docs/criteria-source-research.md §3。
+EXPECTED_RESONANCE = {
+    'Au-BDT-Au': {
+        'channel': 'HOMO',
+        'source': {'doi': '10.1126/science.1137149',
+                   'locator': '摘要: E_F 在 HOMO 上方 1.2 eV, S=+8.7+-2.1 uV/K, p 型'},
+        'note': 'BDT 的 HOMO 在 E_F 下方(Reddy 2007 摘要); Thygesen 2005 §V.2 的窄峰 '
+                '-1.5/-1.0 eV 为峰位佐证(PBE 级)',
+    },
+    "Au-(4,4'-bipyridine)-Au": {
+        'channel': 'LUMO',
+        'source': dict(WID, locator='Table 1(mol.4: 4,4-bipyridine, S=-9.5 uV/K)+正文'),
+        'note': '吡啶 N-Au 结走 LUMO(LUMO 在 E_F 上方约 1.47-1.53 eV); 实验 S<0 '
+                '(Widawsky 2012: pyridine-Au 负、amine-Au 正)',
+    },
+    'Au-(2,6-azulenedithiol)-Au': {
+        'channel': 'HOMO',
+        'source': {'doi': '10.1021/nl5010702',
+                   'locator': '正文 + Fig.4(GW): E_F<0 for thiochroman linkers; 连接位序 '
+                              '1,3 > 2,6 ~ 4,7 > 5,7'},
+        'note': '薁为非交替烃, 谱不对称; GW 模型取 E_F=-1.5 eV(绝对共振位未给, 故只登记'
+                '通道侧、不登记窗口); 本管线 S=+54.1 与 HOMO 侧一致',
+    },
+    'Au-alkane-dithiol-Au': {
+        'channel': None,
+        'source': {'doi': '10.1126/science.1087481',
+                   'locator': '摘要: beta_N=1.0+-0.1/碳; 宽 gap 隧穿, 无近 E_F 共振'},
+        'note': '饱和烷链 HOMO/LUMO 均远离 E_F; 出现近 E_F 峰即 warn(需解释)',
+    },
+    # 2026-11-16 1,4-苯二胺(胺锚 Au–NH2): 苯二胺系列的占据轨道离 Au E_F 最近, 输运是
+    # hole 隧穿(Venkataraman 2007 摘要), 即 HOMO 通道; 实验 Seebeck 取正值(Widawsky 2012
+    # 同时给出 pyridine-Au 负、amine-Au 正), 与 HOMO 侧自洽。
+    'Au-(1,4-diaminobenzene)-Au': {
+        'channel': 'HOMO',
+        'source': {'doi': '10.1021/nl062923j',
+                   'locator': '摘要: 苯二胺系列 "the occupied states are closest to the gold '
+                              'Fermi energy" + "hole tunneling"'},
+        'note': '胺锚 Au–NH2 结走 HOMO(hole 隧穿先验); 实验 S>0(Widawsky 2012: amine-Au 正、'
+                'pyridine-Au 负), 符号与本族 HOMO 侧自洽',
+    },
 }
 
 
@@ -259,7 +330,7 @@ def physics_verdict(checks) -> dict:
 # ---------------------------------------------------------------------------
 PEAK_PROMINENCE = 0.1   # 工程约定(**非物理判据**): 局部极大点的突出度门限。
 #   理由: 4001 点扫描中的数值抖动会制造无数"峰"; 不设突出度则"最近峰"恒为 ~0 eV。
-PEAK_SEARCH_WINDOW_EV = 1.0   # 与 t_ef_no_peak_near_ef 的比较窗一致(Thygesen 2005 p.12)
+PEAK_SEARCH_WINDOW_EV = 1.0   # 归因窗(与 t_ef_resonance_attribution 的 band 上端一致; Thygesen 2005 §V.2)
 
 
 def _check(name, value, ok, detail, applicable: bool = True, missing: bool = False):
@@ -342,53 +413,66 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None) -> l
         res = analyze_te(te, temperature=temperature)
         rows = read_te(te)
     except Exception as exc:                                    # 解析失败不静默
-        return [_check('t_ef_magnitude', None, False,
-                       'TE.dat 解析失败, 判据无法评估: %s' % exc)]
+        # 2026-11-15: t_ef_magnitude 取消后, 解析失败归到 te_present(存在但不可解析),
+        # 仍按"证据缺失"处理, 不得判 passed。
+        return [_check('te_present', None, False,
+                       'TE.dat 存在但解析失败, 物理判据无法评估: %s' % exc,
+                       missing=True)]
 
     checks = []
-    # ① T(E_F): 取最接近 E_F 的采样点(与 landauer 同口径)
-    near = res.get('fermi_nearest') or {}
-    t_ef = near.get('T')
-    spec = _spec('t_ef_magnitude') or {}
-    app_ = applies(spec, family)
-    lo, hi = _bf('t_ef_magnitude') or (None, None)
-    if t_ef is None:
-        checks.append(_check('t_ef_magnitude', None, False, 'TE.dat 无 E_F 附近采样点'))
-    else:
-        ok = (lo <= t_ef <= hi)
-        checks.append(_check('t_ef_magnitude', t_ef, ok,
-                             'T(E_F)=%.4f 带 %.2f-%.2f G0 (Thygesen 2005 p.13%s)%s'
-                             % (t_ef, lo, hi, ', 仅方向性' if ok else '',
-                                _applicability_tail(spec, app_, family)),
-                             applicable=app_))
-
-    # ② E_F 近旁是否落在透射峰上(Thygesen p.12: 最近特征 ~1.0 eV)
+    # ① E_F 近旁的显著透射峰: 按族归因(2026-11-15: "有峰"从错误信号改为需解释的物理信号)
     pk = [p for p in significant_peaks(rows) if abs(p[0]) <= PEAK_SEARCH_WINDOW_EV]
-    if pk:
-        dpk = min(pk, key=lambda p: abs(p[0]))
-        need = (_bf('t_ef_no_peak_near_ef') or [1.0])[0]
-        checks.append(_check('t_ef_no_peak_near_ef', round(abs(dpk[0]), 4),
-                             abs(dpk[0]) >= need,
-                             'E_F 近旁 %.4f eV 处有显著峰(T=%.4f); 基准要求 %.1f eV 内无峰 '
-                             '(Thygesen 2005 p.12; 突出度门限 %.2f 为工程约定)'
-                             % (dpk[0], dpk[1], need, PEAK_PROMINENCE)))
+    band_lo, band_hi = _bf('t_ef_resonance_attribution') or (0.15, 1.0)
+    entry = EXPECTED_RESONANCE.get(family) if family else None
+    s = res.get('S_uV_per_K')
+    if entry:
+        channel = entry.get('channel')
+        why = '族表(%s): %s' % (family, entry.get('note', ''))
+    elif s is None:
+        channel, why = None, '未登记族且无 Seebeck 可依'
+    elif s == 0:
+        channel, why = None, '未登记族且 S=0, 通道无法归因'
     else:
-        checks.append(_check('t_ef_no_peak_near_ef', None, True,
-                             'E_F 近旁 %.1f eV 内无显著峰(突出度门限 %.2f 为工程约定)'
+        channel = 'HOMO' if s > 0 else 'LUMO'
+        why = ('未登记族: 按实测 S=%+.1f uV/K 符号自洽归因'
+               '(自洽性检查, 非文献先验)' % s)
+    if not pk:
+        checks.append(_check('t_ef_resonance_attribution', None, True,
+                             'E_F±%.1f eV 内无显著峰(突出度门限 %.2f 为工程约定)'
                              % (PEAK_SEARCH_WINDOW_EV, PEAK_PROMINENCE)))
+    else:
+        dpk = min(pk, key=lambda p: abs(p[0]))
+        delta = dpk[0]
+        ok_side = (channel == 'HOMO' and delta < 0) or (channel == 'LUMO' and delta > 0)
+        ok_dist = band_lo <= abs(delta) <= band_hi
+        if channel is None:
+            checks.append(_check('t_ef_resonance_attribution', round(abs(delta), 4), False,
+                                 'E_F 近旁 %+.4f eV 处有显著峰(T=%.4f), 但通道无法归因(%s); 需解释'
+                                 % (delta, dpk[1], why)))
+        elif ok_side and ok_dist:
+            checks.append(_check('t_ef_resonance_attribution', round(abs(delta), 4), True,
+                                 'E_F 近旁 %+.4f eV 处有显著峰(T=%.4f), 在预期 %s 侧且 '
+                                 '|ΔE|∈[%.2f,%.1f] eV -> 已归因; %s'
+                                 % (delta, dpk[1], channel, band_lo, band_hi, why)))
+        else:
+            reason = (('侧别不符(预期 %s 侧)' % channel) if not ok_side
+                      else ('距 E_F 过近(<%.2f eV)' % band_lo))
+            checks.append(_check('t_ef_resonance_attribution', round(abs(delta), 4), False,
+                                 'E_F 近旁 %+.4f eV 处有显著峰(T=%.4f); %s; 需解释; %s'
+                                 % (delta, dpk[1], reason, why)))
 
-    # ③ G 落在理论带(G/G0 = L0)
+    # ② G 落在理论带(G/G0 = L0)
     g = res.get('L0')
     spec = _spec('g_in_theory_band') or {}
     app_ = applies(spec, family)
     glo, ghi = _bf('g_in_theory_band') or (None, None)
     if g is not None:
         checks.append(_check('g_in_theory_band', g, glo <= g <= ghi,
-                             'G=%.4f G0 带 %.2f-%.2f (任务卡 §4.2)%s'
+                             'G=%.4f G0 带 %.2f-%.2f (派生包络, Thygesen 2005 §V.2)%s'
                              % (g, glo, ghi, _applicability_tail(spec, app_, family)),
                              applicable=app_))
 
-    # ④ Seebeck 符号(铁律: Au-BDT-Au 为正) —— A(2026-10-24): 带适用域, 仅该族作闸门
+    # ③ Seebeck 符号(铁律: Au-BDT-Au 为正) —— A(2026-10-24): 带适用域, 仅该族作闸门
     s = res.get('S_uV_per_K')
     if s is not None:
         spec = _spec('seebeck_sign') or {}
@@ -397,7 +481,7 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None) -> l
                   + _applicability_tail(spec, app_, family))
         checks.append(_check('seebeck_sign', s, s > 0, detail, applicable=app_))
 
-    # ⑤ k_e / ZT_e 非负(来源待补, 故 warn)
+    # ④ k_e / ZT_e 非负(来源待补, 故 warn)
     ke, zt = res.get('k_e_pW_per_K'), res.get('ZT_electronic')
     if ke is not None and zt is not None:
         checks.append(_check('k_e_zt_order', {'k_e': ke, 'ZT_e': zt}, ke >= 0 and zt >= 0,

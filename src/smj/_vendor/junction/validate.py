@@ -174,7 +174,7 @@ COVALENT_RADII = {'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66,
                   'S': 1.05, 'Au': 1.36, 'Ag': 1.45, 'Cu': 1.32, 'Ni': 1.24,
                   'Pt': 1.36, 'Pd': 1.39, 'Al': 1.21}
 MIN_BOND_FACTOR = 0.7        # d < 0.7*(r_i+r_j) 判为重叠
-AU_S_BAND = (2.40, 2.49)     # 有源带: Thygesen 2005 p.12 dAu-S=2.40; Jackson 2009 2.42+-0.02
+AU_S_BAND = (2.40, 2.44)     # 实验锚点 Jackson 2009 S-Au=2.42+-0.02; Thygesen 2005 p.12 d(Au-S)=2.40 落带内
 #: 硫醚/硫醇等非硫醇盐锚定的 Au–S 接触上限。取 Au(1.66)+S(1.80) 的 vdW 和
 #: (~3.46 Å) 作“是否成接触”的几何门槛；这不是键长目标，不能与上面的有源带混用。
 AU_S_CONTACT_MAX = 3.50
@@ -337,7 +337,7 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
 
     # ④ 锚定几何: 锚定原子取自 metadata 的 linker 索引（append_au60 记录的"离 tip 最近的
     #    非 H 原子"），任意元素通用（S 硫醇盐/硫醚、N 胺/吡啶、Se …）。
-    #    先判锚定化学，再决定能否套 2.40–2.49 Å 的硫醇盐有源带：该带有源只对 S/Au 标定，
+    #    先判锚定化学，再决定能否套 2.40–2.44 Å 的硫醇盐有源带：该带有源只对 S/Au 标定，
     #    硫醚(-SCH3)的 S–金属 是配位接触；非 S 锚只报告接触距离，不套任何键长带（不臆造数值）。
     anchor_indices = [int(i) for i in (lk, rk) if i and 1 <= int(i) <= n]
     if not anchor_indices:      # 旧 metadata 没有 linker 索引时退回按 S 找锚（历史行为）
@@ -355,12 +355,12 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
         lo, hi = AU_S_BAND
         if anchor_el != 'S':
             checks.append(_ok('junction_geom_anchor_aus', value,
-                              '%s%d-%s%d = %.4f A；锚定原子为 %s（非 S），2.40–2.49 A 硫醇盐'
+                              '%s%d-%s%d = %.4f A；锚定原子为 %s（非 S），2.40–2.44 A 硫醇盐'
                               '有源带不适用（仅对 S 标定），本体系只报告接触距离、不作偏离判定'
                               % (anchor_el, si, element, ai, dmin, anchor_el)))
         elif element != 'Au':
             checks.append(_ok('junction_geom_anchor_aus', value,
-                              'S%d-%s%d = %.4f A；电极金属为 %s，2.40–2.49 A 硫醇盐有源带'
+                              'S%d-%s%d = %.4f A；电极金属为 %s，2.40–2.44 A 硫醇盐有源带'
                               '仅按 Au 标定，本体系只报告接触距离、不作偏离判定'
                               % (si, element, ai, dmin, element)))
         elif chemistry == 'thiolate':
@@ -377,7 +377,7 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
             if dmin <= AU_S_CONTACT_MAX:
                 checks.append(_ok('junction_geom_anchor_aus', value,
                                   'S%d-Au%d = %.4f A；锚定 S 为%s，Au–S 是配位接触，'
-                                  '2.40–2.49 A 的硫醇盐有源带不适用（不作偏离判定；'
+                                  '2.40–2.44 A 的硫醇盐有源带不适用（不作偏离判定；'
                                   '接触上限 %.2f A 取自 vdW 和）'
                                   % (si, ai, dmin, kind, AU_S_CONTACT_MAX)))
             else:

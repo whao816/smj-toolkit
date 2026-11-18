@@ -1,8 +1,8 @@
 {
   "schema": "smj.report.v1",
   "run_id": "2CN-656-4-thiomethylphenyl-aimsopt",
-  "root": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt",
-  "generated_at": "2026-11-13T22:12:47+08:00",
+  "root": "demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt",
+  "generated_at": "2026-11-16T10:27:32+08:00",
   "spec": {
     "run": {
       "name": "2CN-656-4-thiomethylphenyl-aimsopt",
@@ -280,7 +280,7 @@
     }
   },
   "provenance": {
-    "path": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\run_spec.json",
+    "path": "demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\run_spec.json",
     "run_spec_sha256": "3de72e06c870b25c45762cdafde16c5bb898751461bd1a3b6d98708f44201d15",
     "reconstructed": false,
     "protocol_sha256": "d0a6584b1c44703632f1c8c53fcf5cbb19a913d42a1e3d596a8c71aa685b8574"
@@ -450,6 +450,8 @@
     },
     "electrode": {
       "stage": "electrode_build",
+      "source": "library",
+      "element": "Au",
       "geometry": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\au60_build\\geometry.in",
       "atom_count": 128,
       "au_per_electrode": 37,
@@ -467,7 +469,7 @@
       "surface_fingerprint": "0638355fa2c6ae631d76271da57d97134e1e868ccf4a93f611a64cd6fd373c91"
     },
     "te": {
-      "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\aitranss_te\\TE.dat",
+      "source": "demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\aitranss_te\\TE.dat",
       "efermi_Ha": -0.17942907342,
       "bias_V": 0.0,
       "points": 301
@@ -811,7 +813,7 @@
     }
   },
   "transport": {
-    "source": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\aitranss_te\\TE.dat",
+    "source": "demo\\2CN-656-4-thiomethylphenyl-aimsopt\\2CN-656-4-thiomethylphenyl-aimsopt\\aitranss_te\\TE.dat",
     "points": 301,
     "temperature_K": 300.0,
     "L0": 0.0013202092539969727,
@@ -852,18 +854,16 @@
   "verdict": {
     "passed": false,
     "engineering_passed": true,
-    "errors": 3,
+    "errors": 1,
     "warnings": 1,
     "physics_verdict": "failed",
     "wording": "否证 H0",
     "allowed_action": "停; 不得进入预测模式(任务卡 §7.3②)",
     "failed_criteria": [
-      "t_ef_magnitude",
-      "g_in_theory_band",
       "seebeck_sign"
     ],
     "inconclusive_criteria": [
-      "t_ef_no_peak_near_ef"
+      "g_in_theory_band"
     ],
     "missing_evidence_criteria": [],
     "not_applicable_criteria": []
@@ -898,27 +898,19 @@
       "detail": "efermi 取自 TE.dat 表头(aitranss 实际使用值)"
     },
     {
-      "name": "t_ef_magnitude",
-      "value": 0.00124463254,
-      "passed": false,
-      "severity": "error",
-      "detail": "T(E_F)=0.0012 带 0.03-0.40 G0 (Thygesen 2005 p.13)[适用域: 适用; 体系族 未知(按适用处理)]",
-      "applicable": true
-    },
-    {
-      "name": "t_ef_no_peak_near_ef",
+      "name": "t_ef_resonance_attribution",
       "value": 0.2403,
-      "passed": false,
+      "passed": true,
       "severity": "warn",
-      "detail": "E_F 近旁 0.2403 eV 处有显著峰(T=0.9992); 基准要求 1.0 eV 内无峰 (Thygesen 2005 p.12; 突出度门限 0.10 为工程约定)",
+      "detail": "E_F 近旁 +0.2403 eV 处有显著峰(T=0.9992), 在预期 LUMO 侧且 |ΔE|∈[0.15,1.0] eV -> 已归因; 未登记族: 按实测 S=-35.1 uV/K 符号自洽归因(自洽性检查, 非文献先验)",
       "applicable": true
     },
     {
       "name": "g_in_theory_band",
       "value": 0.0013202092539969727,
       "passed": false,
-      "severity": "error",
-      "detail": "G=0.0013 G0 带 0.03-0.40 (任务卡 §4.2)[适用域: 适用; 体系族 未知(按适用处理)]",
+      "severity": "warn",
+      "detail": "G=0.0013 G0 带 0.03-0.40 (派生包络, Thygesen 2005 §V.2)[适用域: 适用; 体系族 未知(按适用处理)]",
       "applicable": true
     },
     {

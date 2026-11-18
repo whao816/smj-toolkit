@@ -210,9 +210,21 @@ def compare_reference(result: Mapping[str, Any], reference: Mapping[str, Any], *
 # --------------------------------------------------------------------------- #
 # 出图（可选依赖）
 # --------------------------------------------------------------------------- #
+#: T(E) 图纵轴一律对数；T<=0 的点压到这个下限，避免 log(0) 丢整条曲线。
+T_LOG_FLOOR = 1e-12
+
+
+def _log_floor(values: list[float]) -> float:
+    """对数纵轴下界：最小正值的一半（不低于 :data:`T_LOG_FLOOR`）。"""
+    positive = [float(v) for v in values if float(v) > 0.0]
+    if not positive:
+        return 1.0
+    return max(min(positive) * 0.5, T_LOG_FLOOR)
+
+
 def plot_transmission(te_path: str | Path, result: Mapping[str, Any],
                       out_png: str | Path, *, title: str | None = None) -> dict:
-    """T(E) 曲线（E-E_F vs T）；需要 matplotlib（extra ``plot``），缺失即抛错。"""
+    """T(E) 曲线（E-E_F vs T，**纵轴对数**）；需要 matplotlib（extra ``plot``），缺失即抛错。"""
     import matplotlib  # lazy: optional dependency
 
     matplotlib.use("Agg")
@@ -223,24 +235,30 @@ def plot_transmission(te_path: str | Path, result: Mapping[str, Any],
     rows = read_te(te_path)
     e_ev = [r[1] for r in rows]
     trans = [r[2] for r in rows]
+    floor = _log_floor(trans)
+    clipped = [max(float(v), floor) for v in trans]
     target = Path(out_png)
     target.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(7.2, 4.2))
-    ax.plot(e_ev, trans, color="#1f4e9c", lw=1.2, label="T(E) per spin")
+    ax.plot(e_ev, clipped, color="#1f4e9c", lw=1.2, label="T(E) per spin")
     nearest = result.get("fermi_nearest") or {}
     e_f = nearest.get("E_minus_Ef_eV")
     if e_f is not None:
         ax.axvline(0.0, color="#999999", lw=0.8, ls="--", label="E_F")
-        ax.plot([e_f], [nearest.get("T", 0.0)], "o", color="#c02020", ms=4,
-                label="nearest to E_F")
+        ax.plot([e_f], [max(float(nearest.get("T", 0.0)), floor)], "o",
+                color="#c02020", ms=4, label="nearest to E_F")
+    ax.set_yscale("log")
+    ax.set_ylim(floor, max(max(clipped) * 1.15, floor * 10.0))
     ax.set_xlabel("E - E_F (eV)")
-    ax.set_ylabel("T(E) [G0]")
-    ax.set_title(title or "transmission %s" % Path(te_path).name)
+    ax.set_ylabel("T(E) (G0)")
+    ax.set_title(title or "transmission %s (log scale)" % Path(te_path).name)
+    ax.grid(alpha=0.25, which="both")
     ax.legend(fontsize=8, frameon=False)
     fig.tight_layout()
     fig.savefig(target, dpi=150)
     plt.close(fig)
-    return {"path": str(target), "points": len(rows)}
+    return {"path": str(target), "points": len(rows), "log_scale": True,
+            "floor": floor}
 
 
 # --------------------------------------------------------------------------- #

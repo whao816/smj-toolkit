@@ -4,6 +4,61 @@
 
 ## 未发布
 
+### tip 放置方向 `electrode.tip_direction`（2026-11-18）
+
+- 新增 `electrode.tip_direction: axis | lone_pair`，默认 `axis`——旧行为逐字节不变。
+  `lone_pair` 沿锚原子的孤对方向外推 tip（S 为例：C–S–C 角平分线的反向），用于
+  S···S 连线与 S–C(Me) 近共线的间位取代硫醚：沿 `axis` 外推会把金属放到甲基一侧，
+  而不是锚原子的孤对一侧。
+- `aims_tip_relax` 在写输入前校验：锚原子必须恰有 2 个 1.95 Å 内近邻，否则
+  `StageError`（fail-closed，不猜方向）；两键共线导致方向退化也直接拒绝。
+  `input_summary.json` 记录 `left_direction` / `right_direction`（`axis` 时为 `auto`），
+  prepare 的 note 同时给出本次 `direction=` 口径。
+- `provenance` 的 protocol 只在非默认值（`lone_pair`）时写入 `tip_direction`，
+  历史 run 不会因新增默认键集体判 `provenance_drift`。
+- 新增 `tests/test_tip_direction.py`（7 例：默认值/大小写归一化/非法值、`axis` 不动几何、
+  `lone_pair` 方向与单位长、近邻数不足与未知 mode 均 fail-closed）；全量 267 passed。
+
+### T(E) 绘图纵轴改为对数（2026-11-16）
+
+- `smj.analysis.plot_transmission`：纵轴 `log`。新增 `T_LOG_FLOOR = 1e-12` 与 `_log_floor()`，
+  下限取「最小正值 × 0.5」再夹到 `T_LOG_FLOOR`，`T≤0` 的点在下限处截断而不是丢点/炸轴；
+  `ylim = (floor, max(max(T) × 1.15, floor × 10))`。返回 dict 增加 `log_scale`/`floor`，
+  `analysis.json` 的 `plot` 键随之带出。纵轴标签统一为 `T(E) (G0)`，对数信息写在标题里
+  （`transmission TE.dat (log scale)`）——标签保持 ASCII：DejaVu Sans 无 CJK 字形，
+  中文标签会出方框（`Glyph 65288 missing`）。
+- 同口径其余出图：`scripts/compare_controls.py` 两个 T(E) 面板（网格收敛差值面板保持线性）、
+  `demo/azulene-26-dithiol/plot_results.py` 上方面板（−dT/dE 面板保持线性）、
+  `runs/azo_compare.py` 的 E/Z 叠加图（图例由 `azo-e (E)` / `azo-z (Z)` 改为 `E (trans)` /
+  `Z (cis)`，去掉与 run 名重复的异构体标注）。
+- 顺带修 `demo/azulene-26-dithiol/plot_results.py`：`analysis.json` v1 的 `max_transmission`
+  已是 dict（`{E_Hartree,E_minus_Ef_eV,T}`），旧代码 `float(dict)` 直接 `TypeError`，
+  现按 `T` 取值。该 script 自 schema 变更后一直跑不起来。
+- 新增 `tests/test_analysis_plot.py`（4 例：`_log_floor` 退化输入、log 轴元数据、全零 T(E)、
+  `analyze_te(plot=True)` 落盘），全量 260 passed。
+
+### 判据口径修订：共振归因、删 `t_ef_magnitude`、收窄 Au–S 带（2026-11-15）
+
+- `t_ef_no_peak_near_ef` → `t_ef_resonance_attribution`：E_F±1.0 eV 内的显著峰不再直接判
+  `inconclusive`，改为按族归因——无峰 `pass`；峰在预期通道侧（HOMO 占据侧 / LUMO 空侧）
+  且 `0.15≤|ΔE|≤1.0 eV` → `pass`（detail 记「物理信号已归因」）；侧别不符 / 距 E_F 过近 /
+  通道未知 → `warn`（需解释）。新增 `EXPECTED_RESONANCE` 族表（BDT=HOMO、BPY=LUMO、
+  AZ=HOMO 侧、烷烃=无近 E_F 共振，均带 `source{doi,locator}`）；未登记族（2CN、SME…）
+  按实测 Seebeck 符号自洽回退，不自称文献先验；0.15 eV 是 PBE 能级误差量级的工程容差。
+- 删除 `t_ef_magnitude`：0.03–0.40 G0 并非 Thygesen 2005 原文区间（原文只给 around 0.1 G0
+  与「比 Ref.48 小 4 倍、比 Ref.15 大 3 倍」），按「无一手源则取消」规则删除；派生包络并入
+  `g_in_theory_band`，其 gate 由 `error` 降为 `warn` 并标 `evidence=derived`。
+- `au_s_bond` 带 2.40–2.49 → **2.40–2.44 Å**：上端 2.49 无一手源；实验锚点为 Jackson 2009
+  摘要 S–Au=2.42±0.02 Å（Au(111)(√3×√3)R30–CH₃S atop，NIXSW+S1s PhD）；Thygesen 2005 §V.2
+  的 2.40 Å 是采用 Stokbro 2003 的模型输入，note 已写明；`validate.py` 的 `AU_S_BAND` 与
+  4 处 detail 文案同步。
+- `te_present`：`TE.dat` 存在但不可解析时也记 `missing`（原先只在文件缺失时记）。
+- 证据与派生过程见新增的 [`docs/criteria-source-research.md`](docs/criteria-source-research.md)
+  （Thygesen 2005 §V.2 与 Jackson 2009 原文核验、各族通道一手来源）；新增
+  `tests/test_resonance_attribution.py`（9 个用例），全量 256 passed。
+- 0.2.0 三体系在新口径下：BDT / AZ / 2CN 均 `passed`；`bdt-anchor24` 因 S=−22.2 µV/K 对
+  BDT 族判 `seebeck_sign` failed。
+
 ### 分子弛豫的 SCF 精度与自旋固定
 
 - `control_relax.in` 之前只写几何相关的键，FHI-aims 会打印
