@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 from .config import RunConfig
 from .context import StageContext
+from .engines import engine_for_config
 from .errors import SmjError, StageError
 from .provenance import ensure_run_spec, hash_stage_inputs, hash_stage_outputs
 from .remote import (
@@ -223,7 +224,9 @@ class StageRunner:
         except SmjError:
             stage = None
         attr = getattr(stage, "script", None) if stage is not None else None
-        return attr or default_stage_script(name)
+        # 旧 run 没有 prepared.script：优先用兼容表的回退值（molecule_opt 是
+        # sub_g16.sh，历史 gaussian_opt 目录），再退到阶段类的缺省脚本。
+        return default_stage_script(name) or attr
 
     def _reject_unconfigured(self, name: str, script: str, stage_dir: str | Path) -> None:
         """脚本里仍有 ``UNCONFIGURED`` 占位时拒绝提交（2026-11-11 本地补丁 F3）。
@@ -497,14 +500,11 @@ class StageRunner:
             self._log("[%s] 回取产物 ..." % key)
             names = None
             if key == "molecule_opt":
-                engine = str(getattr(getattr(self.config, "molecule", None),
-                                     "opt_engine", "aims") or "aims")
-                if engine.lower() == "aims":
-                    # vendored retrieval_plan 的 gaussian_opt 条目是 Gaussian 口径
-                    # （mol.gjf/mol.log/sub_g16.sh）；aims 引擎的产物名不同，显式给出。
-                    names = ["geometry.in", "control.in", "sub_aims.sh",
-                             "input_summary.json", "aims.out",
-                             "geometry.in.next_step", ".dsh_done"]
+                # 回取清单由引擎声明；None = 沿用 vendored 的 gaussian_opt 计划
+                # （mol.gjf/mol.log/sub_g16.sh，Gaussian 口径）。
+                remote_files = engine_for_config(self.config).remote_files
+                if remote_files is not None:
+                    names = list(remote_files)
             download = self._session().download(key, stage_dir, names=names)
             self.state.set(
                 key, download_fetched=download["fetched"],

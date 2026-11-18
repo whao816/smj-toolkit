@@ -38,6 +38,7 @@ from typing import Any, Callable
 
 from . import __version__
 from .config import DEFAULT_CONFIG_NAME, MODES, RunConfig, load_config, write_default_config
+from .engines import engine_for_config
 from .errors import SmjError, TransportError
 from .remote import SMJ_STAGE_SCRIPTS
 from .resources import hhmmss
@@ -553,8 +554,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
         meta = _stage_meta(name, getattr(args, "stage_getter", None))
         script = meta["script"] or "-"
         if name == "molecule_opt":
-            engine = str(getattr(config.molecule, "opt_engine", "aims") or "aims").lower()
-            script = "sub_aims.sh" if engine == "aims" else "sub_g16.sh"
+            # 脚本名由引擎声明（缺省引擎 aims），不再在这里写引擎分支。
+            script = engine_for_config(config).script
         rows.append({
             "stage": name,
             "kind": meta["kind"],

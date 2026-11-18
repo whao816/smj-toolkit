@@ -132,6 +132,8 @@ class StageContext:
         # 用户显式 env 先行：后面只用估算值补缺，不覆盖用户值。
         env.update({k: v for k, v in cluster.env.items() if v is not None})
 
+        # Gaussian 引擎用这一段；aims 引擎经 engines.aims.env_anchor 借
+        # aims_tip_relax 段（molecule_opt 传入 stage='aims_tip_relax'）。
         if stage == "molecule_opt":
             env.setdefault("ntasks", cluster.ntasks or 1)
             env.setdefault("nproc", cluster.ntasks or 8)

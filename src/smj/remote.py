@@ -41,8 +41,9 @@ from .transport import CommandResult, Transport, remote_join
 
 #: 阶段 -> 远端作业脚本（与主仓 SMJ_STAGE_SCRIPTS 一致）
 SMJ_STAGE_SCRIPTS: dict[str, str] = {
-    # 2026-11-13：规范名 molecule_opt；远端脚本由 prepared.script 决定，
-    # 这里保留映射供 build_stage_script/detect_stage_script 使用。
+    # 2026-11-13：规范名 molecule_opt；远端脚本由 prepared.script 决定。
+    # 这里的值是**旧 run 的回退**（历史 gaussian_opt 目录没有 prepared.script）；
+    # 新 run 一律按引擎写进 state 的脚本名（aims → sub_aims.sh）。
     "molecule_opt": "sub_g16.sh",
     "gaussian_opt": "sub_g16.sh",
     "aims_tip_relax": "sub_aims.sh",

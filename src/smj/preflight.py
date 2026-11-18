@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .engines import engine_for_config
+from .errors import SmjError
 from .resources import MEM_CAP_GIB, WALLTIME_CAP_S, check_smj_budget, estimate_smj_resources
 from .state import RunLayout
 
@@ -389,12 +391,10 @@ def _resource_check(result: PreflightResult, config: Any, run_dir: Path,
             result.add("warning", "resource_skipped",
                        "%s: 无原子数（结构产物未就绪），资源估算跳过" % name)
             continue
+        # 资源锚点由引擎声明：aims 借 aims_tip_relax 的 PBE 标定，Gaussian 用本阶段。
         estimator = name
         if name == "molecule_opt":
-            engine = str(getattr(getattr(config, "molecule", None), "opt_engine", "aims"))
-            if engine.lower() == "aims":
-                # 分子预优化已改为 FHI-aims PBE/NAO，预算按 AIMS 标定而不是 Gaussian。
-                estimator = "aims_tip_relax"
+            estimator = engine_for_config(config).resource_anchor
         estimate = estimate_smj_resources(estimator, int(n))
         budget = check_smj_budget(estimate)
         result.estimates[name] = {**estimate, "budget": budget}
@@ -464,12 +464,12 @@ def _cluster_check(result: PreflightResult, config: Any, transport: Any,
 
 
 def _needs_gaussian_check(config: Any) -> bool:
-    """0.2.0rc1：只有 Gaussian 分子优化才检查 Gaussian 路径/许可。
+    """引擎的 ``probes`` 里声明了 gaussian 时才检查 Gaussian 路径/许可。
 
     ``opt_engine=aims`` 时分子优化走 FHI-aims，G16ROOT/G16_MODULE 缺失不应
     阻断预检（真实 BDT run 曾被这条误伤）。
     """
-    return getattr(getattr(config, "molecule", None), "opt_engine", "gaussian") == "gaussian"
+    return "gaussian" in engine_for_config(config).probes
 
 
 def _env_check(result: PreflightResult, config: Any, mode: str,
@@ -481,15 +481,20 @@ def _env_check(result: PreflightResult, config: Any, mode: str,
                    "（提交前在目标机器上再跑一次非 dry-run 预检）")
         return
     from smj._vendor.junction import preflight as vendored  # lazy: vendored
-    probes = [
-        ("aims_unavailable", "FHI-aims", vendored.aims_executable),
-        ("aitranss_unavailable", "aitranss", vendored.aitranss_binary),
-    ]
-    if _needs_gaussian_check(config):
-        probes.insert(1, ("gaussian_unavailable", "Gaussian", vendored.gaussian_license))
-    else:
-        result.add("info", "gaussian_not_required",
-                   "opt_engine=aims：分子优化走 FHI-aims，跳过 Gaussian 路径/许可检查")
+    engine = engine_for_config(config)
+    extra_probes = {
+        "gaussian": ("gaussian_unavailable", "Gaussian", vendored.gaussian_license),
+    }
+    probes = [("aims_unavailable", "FHI-aims", vendored.aims_executable)]
+    for probe in engine.probes:
+        if probe not in extra_probes:
+            raise SmjError(
+                "引擎 %s 声明的预检项 %r 未在 smj.preflight 登记"
+                % (engine.name, probe))
+        probes.append(extra_probes[probe])
+    probes.append(("aitranss_unavailable", "aitranss", vendored.aitranss_binary))
+    if engine.skip_probe_note:
+        result.add("info", "gaussian_not_required", engine.skip_probe_note)
     for code, name, func in probes:
         try:
             report = func(merged)

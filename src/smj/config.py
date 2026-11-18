@@ -489,9 +489,13 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         opt_force_threshold=_as_str(
             data.get("opt_force_threshold") or "1.e-2", "molecule.opt_force_threshold"),
     )
-    if cfg.opt_engine not in ("aims", "gaussian"):
+    from .engines import engine_names  # lazy: 避免配置模块顶层拉进产物解析依赖
+
+    valid = engine_names()
+    if cfg.opt_engine not in valid:
         raise ConfigError(
-            "molecule.opt_engine 应为 aims 或 gaussian，实际是 %r" % cfg.opt_engine)
+            "molecule.opt_engine 应为 %s，实际是 %r"
+            % (" 或 ".join(valid), cfg.opt_engine))
     try:
         threshold = float(cfg.opt_force_threshold)
     except ValueError:

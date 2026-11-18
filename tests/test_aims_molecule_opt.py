@@ -351,9 +351,25 @@ def test_config_rejects_force_threshold_above_cap(workdir):
 def test_config_rejects_non_numeric_force_threshold(workdir):
     with pytest.raises(ConfigError, match="opt_force_threshold"):
         load_config(_write_config(workdir, "loose"))
+
+
+def test_gaussian_prepare_uses_gaussian_engine_files(workdir):
+    """opt_engine=gaussian 走插件分支：只落 mol.gjf/sub_g16.sh，不写 aims 输入。"""
+    ctx = _ctx(workdir, engine="gaussian")
+    stage_dir = workdir / "run" / "molecule_opt"
+    prepared = MoleculeOptStage().prepare(ctx, stage_dir)
+
+    assert prepared.script == "sub_g16.sh"
+    assert (stage_dir / "mol.gjf").exists()
+    assert (stage_dir / "sub_g16.sh").exists()
+    assert not (stage_dir / "geometry.in").exists()
+    route = (stage_dir / "mol.gjf").read_text(encoding="utf-8")
+    assert "opt freq b3lyp/6-31g(d)" in route
+
+
 def _fake_gaussian_log(monkeypatch, geometry: str):
     """把 parse_gaussian_log 换掉：只验证 collect 的几何闸门接线，不碰真日志。"""
-    from smj.stages import molecule_opt as module
+    from smj.engines import gaussian as module
 
     def fake_parse(log, xyz_path, summary_path):
         Path(xyz_path).write_text(geometry, encoding="utf-8")

@@ -2,6 +2,19 @@
 
 本项目遵循语义化版本（0.x 阶段：次版本可含不兼容变更；rc 视为发布候选）。
 
+## 未发布
+
+### 引擎插件层（2026-11-18）
+
+- 新增 `smj.engines` 注册表：`Engine` 协议声明脚本名、产物、资源/环境锚点、预检探测项、
+  远端回取清单；`aims` 与 `gaussian` 两个插件分别负责写输入与解析产物，
+  `molecule_opt` 只保留电子态校验、`check_geometry` 与 dispatch。
+- 收拢 6 处引擎分派：`molecule.opt_engine` 白名单由 `engine_names()` 派生；
+  `plan` / `preflight` / `runner` 分别从插件取脚本名、资源锚点与预检项、远端回取名。
+  未知引擎在 config 解析阶段即报错，不再等到 prepare。
+- 行为不变：默认仍是 FHI-aims PBE/light；旧 `gaussian_opt` 目录仍回退 `sub_g16.sh`。
+  新增 `tests/test_engine_registry.py`（8 例）与 Gaussian prepare 用例；全量 276 passed。
+
 ## 0.2.1rc1 — 2026-11-18
 
 0.2.0 之后的累积改进（rc 版，未重跑真实集群全链；三体系验证沿用 2026-11-15 的
