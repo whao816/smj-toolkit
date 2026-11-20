@@ -4,6 +4,23 @@
 
 ## 未发布
 
+### 复核修复 R2/R3：能量窗必须跨 E_F，"无适用闸门"不再判通过（2026-11-20）
+
+- **问题**：`transport.energy_window`（eV 口径）只校验 `eend > ener`，不要求窗口跨越 E_F；
+  整窗落在 E_F 一侧时 `criteria` 仍判 `physics_verdict=passed`（`g_in_theory_band` /
+  `seebeck_sign` 都 `applicable=False`，等于没有任何闸门被真正评估）。
+- **上游/本包口径**：新增 `te_window_covers_efermi`（physical / error）：`E−E_F` 必须
+  `min <= 0 <= max`，否则 `failed`；`physics_verdict` 在所有带 `applies_to` 的族闸门都
+  `applicable=False` 时返回 `inconclusive`（`inconclusive_criteria` 含 `no_applicable_gate`），
+  不再落到 `passed`。
+- **本包守卫**：`aitranss_te.prepare` 在解析出 `efermi` 后校验窗口含 E_F，不含则
+  `StageBlocked`（不生成 `tcontrol`），错误信息给出相对窗与 `efermi`。
+- **测试**：新增 `tests/test_verdict_gates.py`（7 例：窗口在 E_F 上方/下方/跨 0、AZ 常数谱
+  → inconclusive、BDT 有适用闸门、S≈0 不判通过）；`tests/test_energy_window.py` 增
+  `test_prepare_blocks_window_not_covering_fermi`。
+- **VENDOR 维护**：`criteria.py` 新增本地补丁 `F-RECHECK-2026-11-20-window`
+  （VENDOR.json 现 36 文件 / 12 条补丁）。
+
 ### 复核修复 R1：TE 谱行序不再影响 Seebeck 符号（2026-11-20）
 
 - **问题**：`analyze_te` 按 `TE.dat` 行序直接梯形积分，`L1` 有符号而 `L0/L2` 取绝对值；

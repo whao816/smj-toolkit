@@ -72,6 +72,18 @@ class AitranssTeStage(Stage):
         except ValueError as exc:
             raise StageBlocked(self.name, "能量窗无法换算成 Ha 绝对窗口: %s" % exc,
                                [str(scf_dir)]) from exc
+        # 2026-11-20 复核 P1-2: 能量窗必须跨 E_F。整窗落在 E_F 一侧时费米窗权重全在同
+        # 一侧，L0/L1/L2 不是 E_F 处的展开，S 的符号/量级都没有意义。这里在**生成输入前**
+        # 拦住，不把无意义的谱跑出来再靠判据兜底。
+        if efermi is not None and not (ener <= efermi <= eend):
+            rel = transport.relative_window()
+            raise StageBlocked(
+                self.name,
+                "能量窗未覆盖 E_F：E−E_F ∈ [%+.3f, %+.3f] eV，efermi=%r Ha。"
+                "费米窗积分要求窗口跨越 E_F（默认 E_F±2 eV）；请改 "
+                "transport.energy_window 或 energy_window_unit"
+                % (rel[0], rel[2], efermi),
+                [str(scf_dir)])
         nlayers = self._resolve_nlayers(ctx.config.electrode.nlayers, metadata)
         # 自旋极化 SCF 不写 mos.aims（改写成 alpha.aims/beta.aims），
         # make_tcontrol 没法自动探 nsaos，必须显式传。

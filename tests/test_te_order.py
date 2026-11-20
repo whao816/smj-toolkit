@@ -55,10 +55,10 @@ def _reference_integral(rows, temperature: float = 300.0) -> dict:
             "S_uV_per_K": 1e6 * (-l1) / (abs(l0) * temperature)}
 
 
-def test_descending_te_matches_ascending(tmp_path: Path) -> None:
+def test_descending_te_matches_ascending(workdir: Path) -> None:
     rows = _spectrum()
-    asc = landauer.analyze_te(_write(tmp_path / "asc.dat", rows))
-    desc = landauer.analyze_te(_write(tmp_path / "desc.dat", list(reversed(rows))))
+    asc = landauer.analyze_te(_write(workdir / "asc.dat", rows))
+    desc = landauer.analyze_te(_write(workdir / "desc.dat", list(reversed(rows))))
 
     for key in S_KEYS:
         assert desc[key] == pytest.approx(asc[key], rel=1e-9, abs=1e-12), key
@@ -70,12 +70,12 @@ def test_descending_te_matches_ascending(tmp_path: Path) -> None:
     assert any("升序" in w for w in desc["warnings"])
 
 
-def test_unsorted_te_is_sorted_before_integration(tmp_path: Path) -> None:
+def test_unsorted_te_is_sorted_before_integration(workdir: Path) -> None:
     rows = _spectrum()
     shuffled = list(rows)
     random.Random(20261120).shuffle(shuffled)
-    base = landauer.analyze_te(_write(tmp_path / "asc.dat", rows))
-    messy = landauer.analyze_te(_write(tmp_path / "shuffled.dat", shuffled))
+    base = landauer.analyze_te(_write(workdir / "asc.dat", rows))
+    messy = landauer.analyze_te(_write(workdir / "shuffled.dat", shuffled))
 
     for key in S_KEYS:
         assert messy[key] == pytest.approx(base[key], rel=1e-9, abs=1e-12), key
@@ -83,13 +83,13 @@ def test_unsorted_te_is_sorted_before_integration(tmp_path: Path) -> None:
     assert messy["reordered"] is True
 
 
-def test_seebeck_matches_order_invariant_reference(tmp_path: Path) -> None:
+def test_seebeck_matches_order_invariant_reference(workdir: Path) -> None:
     """符号由谱本身决定：峰在 E_F 上方 → S<0；倒序文件不得翻转它。"""
     rows = _spectrum(center=0.30)
     reference = _reference_integral(rows)
     assert reference["S_uV_per_K"] < 0.0
-    asc = landauer.analyze_te(_write(tmp_path / "asc.dat", rows))
-    desc = landauer.analyze_te(_write(tmp_path / "desc.dat", list(reversed(rows))))
+    asc = landauer.analyze_te(_write(workdir / "asc.dat", rows))
+    desc = landauer.analyze_te(_write(workdir / "desc.dat", list(reversed(rows))))
     assert asc["S_uV_per_K"] == pytest.approx(reference["S_uV_per_K"], rel=1e-10)
     assert desc["S_uV_per_K"] == pytest.approx(reference["S_uV_per_K"], rel=1e-10)
 
@@ -102,12 +102,12 @@ def test_independent_check_is_order_invariant() -> None:
         assert desc[key] == pytest.approx(asc[key], rel=1e-9, abs=1e-15), key
 
 
-def test_analysis_surfaces_reorder_warning(tmp_path: Path) -> None:
+def test_analysis_surfaces_reorder_warning(workdir: Path) -> None:
     """wrapper 不得把 vendored 的排序告警清空（旧实现 ``result["warnings"]=[]``）。"""
     from smj.analysis import analyze_te
 
     rows = _spectrum()
-    result = analyze_te(_write(tmp_path / "TE.dat", list(reversed(rows))),
+    result = analyze_te(_write(workdir / "TE.dat", list(reversed(rows))),
                         independent=False)
     assert result["input_energy_order"] == "descending"
     assert result["reordered"] is True

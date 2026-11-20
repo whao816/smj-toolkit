@@ -147,6 +147,19 @@ LOCAL_PATCHES = [
                   "tests/test_criteria_failopen.py"],
     },
     {
+        "id": "F-RECHECK-2026-11-20-window",
+        "commit": "2026-11-20",
+        "files": ["criteria.py"],
+        "what": "新增 physical/error 判据 te_window_covers_efermi（E−E_F 必须跨 0）；"
+                "physics_verdict 增加闸门覆盖判定：所有带 applies_to 的族闸门都 "
+                "applicable=False 时判 inconclusive（inconclusive_criteria 记 "
+                "no_applicable_gate），不再因为「没有闸门可判」而 passed。",
+        "why": "复核 P1-2：整窗在 E_F 一侧的合成谱、以及族闸门全部不适用的体系（如薁），"
+               "原实现给出 physics_verdict=passed / 支持 H0，属于把「没有证据」包装成"
+               "「证据支持」。",
+        "tests": ["tests/test_verdict_gates.py"],
+    },
+    {
         "id": "F-UPSTREAM-PENDING-2026-11-20",
         "commit": "2026-11-20",
         "files": ["fixtures.py", "molecules.py", "surface_index.py", "tcontrol.py",
