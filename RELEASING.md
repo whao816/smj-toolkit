@@ -6,7 +6,7 @@ DoD 已满足；本文以 `vX.Y.Z` 代指目标版本。
 ## 0. 前置
 
 - 工作树干净（`git status`）。
-- Python ≥ 3.10 环境可跑测试：`python -m pytest -q`（当前基线 125 passed）。
+- Python ≥ 3.10 环境可跑测试：`python -m pytest -q`（当前基线 397 passed）。
 - 能访问 FHI-aims / aitranss 的验证环境（集群），或至少能完成 `smj verify` + `init` + `plan` 冒烟。
 - 若从沙箱内操作：git-over-ssh 与 GitHub 凭证不可用，**push / tag 推送须在用户自己的终端执行**。
 
@@ -46,7 +46,7 @@ python -m venv .tmp/venv-release
 # Windows: .tmp\venv-release\Scripts\activate ；Linux: source .tmp/venv-release/bin/activate
 python -m pip install dist/smj_toolkit-<ver>-py3-none-any.whl
 smj --version           # 应为 <ver>
-smj verify              # 六项 ok
+smj verify              # 七项 ok
 mkdir .tmp/smoke && cd .tmp/smoke
 smj init --name smoke --xyz ../molecule.xyz
 smj plan

@@ -8,6 +8,7 @@
 - [计算 benchmark 表](benchmark-research-computational.md) —— 12 个文献计算行（BDT/BDA/BDCN/BP/HDA/C60/SMePh 等）+ smj 0.2.0 实测对齐口径
 - [实验 benchmark 表](benchmark-research-experimental.md) —— 单分子结电导/热电势的实验值、分布与可比性说明
 - [0.2.0 验证记录](validation-0.2.0.md) —— Slurm 三体系真实运行数据
+- [0.2.2rc1 验证记录](validation-0.2.2rc1.md) —— 复核修复后的可验证状态：397 项测试、七项自检、demo 数值基线与产物 sha256
 - [旧 run 重评记录（2026-11-16）](runs-reverdict-2026-11-16.md) —— 当前判据口径下全部既有 run 的 manifest/report 重算、新旧判定对照与 fail-safe 说明
 - [外部评审报告的逐条复核（2026-11-20）](review-recheck-2026-11-20.md) —— 对 `0f7b3c4` 评审报告 7 条问题 / 3 条后续 / 验证范围声明的核实：成立与不成立、证据与复现、原报告说轻或说重之处，以及复核新增发现
 - [复核问题修复计划（2026-11-20）](fix-plan-2026-11-20.md) —— 依据复核报告落地的 13 项修复（R1–R13）：分层（上游同步 / 本包 wrapper）、阶段与依赖、逐项验收标准、测试清单、兼容性与需要拍板的 5 个决策点

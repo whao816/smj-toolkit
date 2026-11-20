@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smj-toolkit"
-version = "0.2.1rc1"
+version = "0.2.2rc1"
 description = "Single-molecule junction transport workflow (standalone)"
 readme = "README.md"
 license = { text = "MIT" }
