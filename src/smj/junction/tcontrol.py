@@ -74,6 +74,31 @@ def _spin_moment_line(spin_moment: float | None) -> str:
     return "  fixed_spin_moment  %g" % float(spin_moment)
 
 
+def _extra_output_lines(names) -> str:
+    """``transport.extra_outputs`` -> control.in 里紧跟 ``output mulliken`` 的行。
+
+    ``hirshfeld`` 让 SCF 打印分原子 Hirshfeld 电荷/磁矩（不默认打印）；
+    ``spin_density`` 是 FHI-aims 文档化的共线自旋密度 cube（``spin_density.cube``）。
+    未知名字直接报错——写坏的 ``output`` 行会被 FHI-aims 静默忽略，那会把
+    "我有自旋密度"变成一个假假设。
+    """
+    lines = []
+    for name in names or ():
+        try:
+            lines.append(_EXTRA_OUTPUT_LINES[str(name)])
+        except KeyError:
+            raise ValueError(
+                "未知 extra_outputs 取值 %r: 只支持 %s"
+                % (name, " / ".join(sorted(_EXTRA_OUTPUT_LINES)))) from None
+    return "".join("\n" + line for line in lines)
+
+
+_EXTRA_OUTPUT_LINES = {
+    "hirshfeld": "  output hirshfeld",
+    "spin_density": "  output cube spin_density",
+}
+
+
 def make_control(
     geometry_path: str | Path,
     output_path: str | Path,
@@ -89,6 +114,7 @@ def make_control(
     states: list[int] | None = None,
     vdw: str | None = None,
     spin_moment: float | None = None,
+    extra_outputs: tuple[str, ...] | list[str] | None = None,
 ) -> None:
     atoms = read_aims_geometry(geometry_path)
     if mode == "relax":
@@ -115,6 +141,7 @@ def make_control(
         spin_moment_line=_spin_moment_line(spin_moment),
         species_blocks=species_blocks(atoms, species_dir),
         vdw_line=vdw_line(vdw),
+        extra_outputs=_extra_output_lines(extra_outputs),
         **extra,
     )
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

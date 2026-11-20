@@ -126,13 +126,26 @@ def parse_gaussian_log(log_path: str | Path, xyz_path: str | Path | None = None,
     imaginary = [f for f in freq_values if f < 0]
     normal_termination = "Normal termination" in text
     atoms = parse_standard_orientation(text)
+    # 2026-11-20 复核 P1：SCF 是否真的收敛、开壳层的自旋纯度。
+    # Gaussian 在每次 SCF/稳定性分析后打印 "S**2 before annihilation X, after Y"，
+    # 取**最后一段**（最终解）；没有该行说明是闭壳层单重态或没做自旋分析。
+    s2_pairs = re.findall(
+        r"S\*\*2\s+before annihilation\s+([-+]?\d+\.\d+)\s*,\s*after\s+([-+]?\d+\.\d+)",
+        text)
+    s2_before = float(s2_pairs[-1][0]) if s2_pairs else None
+    s2_after = float(s2_pairs[-1][1]) if s2_pairs else None
+    converged = bool(scf) and "Convergence failure" not in text
     summary = {
         "log": str(log_path),
         "normal_termination": normal_termination,
+        "scf_converged": converged,
+        "scf_done_blocks": len(scf),
         "final_scf_energy_hartree": float(scf[-1]) if scf else None,
         "imaginary_frequency_count": len(imaginary),
         "imaginary_frequencies_cm-1": imaginary,
         "atom_count": len(atoms),
+        "s2_before_annihilation": s2_before,
+        "s2_after_annihilation": s2_after,
     }
     if xyz_path:
         write_xyz(xyz_path, atoms, comment=f"extracted from {log_path}")

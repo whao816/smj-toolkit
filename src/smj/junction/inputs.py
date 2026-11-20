@@ -96,7 +96,8 @@ def _write(path: Path, text: str) -> None:
 def make_gaussian_input(xyz_path: str | Path, outdir: str | Path, name: str,
                         charge: int = 0, multiplicity: int = 1,
                         method: str = 'b3lyp', basis: str = '6-31g(d)',
-                        env: dict | None = None) -> dict:
+                        env: dict | None = None,
+                        stable_check: bool = False) -> dict:
     """分子 XYZ -> Gaussian opt+freq 输入(gjf + sub_g16.sh)。"""
     e = _env(env)
     atoms = read_xyz(xyz_path)
@@ -107,7 +108,8 @@ def make_gaussian_input(xyz_path: str | Path, outdir: str | Path, name: str,
     _write(gjf,
         read_template('gaussian_opt_freq.gjf').format(
             name=name, nproc=e['nproc'], method=method, basis=basis,
-            charge=charge, multiplicity=multiplicity, coordinates=coordinates))
+            charge=charge, multiplicity=multiplicity, coordinates=coordinates,
+            route_extra=' Stable=Opt' if stable_check else ''))
     sub = out / 'sub_g16.sh'
     # 高斯加载方式: env.g16_module(如 Gaussian/g16.c02)非空 -> module load;
     # 否则回退 g16root 路径方式(兼容既有测试/无 module 系统环境)。
@@ -371,7 +373,8 @@ def make_aims_scf_input(geometry_in: str | Path, outdir: str | Path,
                         xc: str = 'pbe', spin: str = 'none', charge: float = 0.0,
                         fixed_spin_moment: float = 0.0, occupation_width: float = 0.01,
                         sc_iter_limit: int = 500, env: dict | None = None,
-                        vdw: str | None = None) -> dict:
+                        vdw: str | None = None,
+                        extra_outputs: tuple[str, ...] | list[str] | None = None) -> dict:
     """消费 au60_build 的 geometry.in -> control_scf.in(aitranss 输出) + sub_aims.sh。"""
     e = _env(env)
     if not species_dir:
@@ -382,7 +385,8 @@ def make_aims_scf_input(geometry_in: str | Path, outdir: str | Path,
     out = Path(outdir)
     make_control(geom, out / 'control.in', 'scf', species_dir,
                  xc=xc, spin=spin, charge=charge, occupation_width=occupation_width,
-                 fixed_spin_moment=fixed_spin_moment, sc_iter_limit=sc_iter_limit, vdw=vdw)
+                 fixed_spin_moment=fixed_spin_moment, sc_iter_limit=sc_iter_limit, vdw=vdw,
+                 extra_outputs=tuple(extra_outputs or ()))
     sub = out / 'sub_aims.sh'
     _write(sub, _render_aims_sub(e, e['ntasks']))
     summary = {'species_dir': str(species_dir), 'xc': xc, 'spin': spin, 'charge': charge,
@@ -391,6 +395,7 @@ def make_aims_scf_input(geometry_in: str | Path, outdir: str | Path,
                'partition': e['partition'],
                'aims_gpus': str(e.get('aims_gpus') or '').strip() or 'cpu',
                'vdw': str(vdw or ''),
+               'extra_outputs': list(extra_outputs or ()),
                'atom_count': len(read_aims_geometry(geom))}
     _write(out / 'input_summary.json', json.dumps(summary, indent=2, ensure_ascii=False))
     return {'control': str(out / 'control.in'), 'submit_script': str(sub), 'summary': summary}

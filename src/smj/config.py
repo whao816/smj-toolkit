@@ -155,6 +155,9 @@ class MoleculeConfig:
     # 仅 aims：写进 `relax_geometry bfgs <值>`；FHI-aims 口径是**最大力分量**，
     # 单位 eV/Å（不是 Hartree/Bohr）。默认 1.e-2 eV/Å ≈ 1.9e-4 Ha/Bohr，已经偏紧。
     opt_force_threshold: str = "1.e-2"
+    #: 仅 Gaussian 分支：开壳层优化加 ``Stable=Opt``（先做波函数稳定性检查再优化），
+    #: 用于怀疑当前解不是最低能量自旋态时。默认关闭——它让每次优化多一遍稳定性分析。
+    stable_check: bool = False
 
 
 @dataclass
@@ -206,6 +209,12 @@ HARTREE_EV = 27.211386245988
 WINDOW_UNITS = ("eV", "Hartree")
 
 
+#: ``transport.extra_outputs`` 的白名单（键名 -> 由 ``junction.tcontrol`` 翻成
+#: ``control.in`` 里的 ``output`` 行）。``spin_density`` 只对共线自旋（开壳层）有意义，
+#: 由 ``aims_scf`` 阶段再校验。两份清单必须一致，测试 ``test_extra_outputs_*`` 守着。
+EXTRA_OUTPUTS = ("hirshfeld", "spin_density")
+
+
 @dataclass
 class TransportConfig:
     """透射谱 / Landauer 分析参数。
@@ -229,6 +238,10 @@ class TransportConfig:
     #: collect 时是否要求 aitranss 主输出 ``te.out`` 存在（结果可复核的一部分）。
     #: 仅外部/历史 run 才应显式设为 false 豁免；不改变物理结果，故不进 protocol。
     require_te_out: bool = True
+    #: 额外请求的 FHI-aims 输出（静态 SCF，``aims_scf``）：``hirshfeld``、``spin_density``。
+    #: 开壳层判据要"自旋是否留在分子上"的第一手证据时才打开；默认关闭，避免所有 run
+    #: 产物变重。只影响产物、不影响求解参数，故与 ``require_te_out`` 一样**不进** protocol。
+    extra_outputs: tuple[str, ...] = ()
 
     def relative_window(self) -> tuple[float, float, float]:
         """相对 E_F 的 eV 三元组（仅 ``energy_window_unit: eV`` 口径）。"""
@@ -438,6 +451,7 @@ _MOLECULE_KEYS = {
     "xyz", "charge", "multiplicity", "initial_moments", "fixed_spin_moment",
     "method", "basis", "family",
     "opt_engine", "opt_functional", "opt_basis", "opt_force_threshold",
+    "stable_check",
 }
 _ELECTRODE_KEYS = {
     "au_per_electrode", "left_anchor", "right_anchor", "au_tip_distance",
@@ -446,7 +460,7 @@ _ELECTRODE_KEYS = {
     "relax", "relax_force_threshold", "relax_freeze",
 }
 _TRANSPORT_KEYS = {"temperature", "energy_window", "energy_window_unit",
-                   "ener", "estep", "eend", "require_te_out"}
+                   "ener", "estep", "eend", "require_te_out", "extra_outputs"}
 _CLUSTER_KEYS = {
     "host", "user", "port", "key", "remote_root", "partition", "ntasks", "gres",
     "account", "qos", "species_dir", "poll_seconds", "timeout_hours", "env",
@@ -534,6 +548,7 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         opt_basis=_as_str(data.get("opt_basis") or "light", "molecule.opt_basis"),
         opt_force_threshold=_as_str(
             data.get("opt_force_threshold") or "1.e-2", "molecule.opt_force_threshold"),
+        stable_check=_as_bool(data.get("stable_check", False), "molecule.stable_check"),
     )
     from .engines import engine_names  # lazy: 避免配置模块顶层拉进产物解析依赖
 
@@ -662,10 +677,39 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
         eend=_as_float(data["eend"], "transport.eend") if data.get("eend") is not None else None,
         require_te_out=_as_bool(data.get("require_te_out", True),
                                 "transport.require_te_out"),
+        extra_outputs=_parse_extra_outputs(data.get("extra_outputs")),
     )
     if cfg.temperature <= 0:
         raise ConfigError("transport.temperature 应 > 0 K，实际是 %s" % cfg.temperature)
     return cfg
+
+
+def _parse_extra_outputs(raw: Any) -> tuple[str, ...]:
+    """``transport.extra_outputs`` -> 去重、保序的白名单元组。
+
+    只接受已知关键字：写错的键必须在校验期报错，而不是让 FHI-aims 在远端静默
+    忽略一行 ``output``（那会让"我有自旋密度"变成一个假假设）。
+    """
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        items: list[Any] = [raw]
+    elif isinstance(raw, (list, tuple)):
+        items = list(raw)
+    else:
+        raise ConfigError(
+            "transport.extra_outputs 应为字符串列表（%s），实际是 %r"
+            % (" / ".join(EXTRA_OUTPUTS), raw))
+    result: list[str] = []
+    for item in items:
+        name = _as_str(item, "transport.extra_outputs[]").strip().lower()
+        if name not in EXTRA_OUTPUTS:
+            raise ConfigError(
+                "transport.extra_outputs 只支持 %s（FHI-aims 静态 SCF 的额外输出），"
+                "实际是 %r" % (" / ".join(EXTRA_OUTPUTS), item))
+        if name not in result:
+            result.append(name)
+    return tuple(result)
 
 
 def _parse_window_unit(raw: Any, ener: float, eend: float,
@@ -843,6 +887,7 @@ molecule:
   opt_force_threshold: 1.e-2
   method: b3lyp             # 仅 opt_engine=gaussian
   basis: 6-31g(d)           # 仅 opt_engine=gaussian
+  stable_check: false       # 仅 gaussian：加 Stable=Opt（先做波函数稳定性检查再优化）
   family: null              # 判据标定族（AZ/BDT/…）；未登记体系按"全部判据适用"处理
 
 electrode:
@@ -871,6 +916,7 @@ transport:
   energy_window: [-2.0, 0.005, 2.0]  # [起点, 步长, 终点] eV，相对 E_F（默认 E_F ±2 eV，步长 5 meV = 801 点）
   energy_window_unit: eV    # eV（默认）= 相对费米能级；Hartree = 旧口径（Ha 绝对能量三元组）
   require_te_out: true      # false = 允许缺 te.out 的外部/历史 run（显式豁免，不建议）
+  # extra_outputs: [hirshfeld, spin_density]   # 开壳层证据：Hirshfeld 磁矩 + 自旋密度 cube
 
 cluster:
   host: null                # ~/.ssh/config 别名，如 cluster

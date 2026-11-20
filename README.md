@@ -566,6 +566,15 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `smj review` 对 `multiplicity>1` 记 `open_shell_uncalibrated` 告警并在
   `review.json` 里给 `spin` 块——这两处都不改数值判定，只保证"这是开壳层、
   自旋占多少、判据未校准"不需要翻 results.json 才能看见。
+  第一手证据（2026-11-20，默认关闭）：`transport.extra_outputs: [hirshfeld,
+  spin_density]` 会让 `aims_scf` 的 `control.in` 写出 `output hirshfeld` /
+  `output cube spin_density`，collect 核验 `spin_density.cube` 非空、
+  `aims.out` 里确有 Hirshfeld 段——请求了却没产出会拒绝 `collected`。闭壳层
+  要 `spin_density` 直接报错（没有共线自旋密度可写）。该关键字组合在 FHI-aims
+  221103 上尚未实测，首次使用请在小体系确认；Gaussian 分支可用
+  `molecule.stable_check: true` 加 `Stable=Opt`，`mol.log` 的
+  `S**2 before annihilation … after …` 与 SCF 收敛状态会进
+  `results.gaussian`（⟨S²⟩ 偏离 S(S+1) 超过 0.1 会在 notes 里点名自旋污染）。
 
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。

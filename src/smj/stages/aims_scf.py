@@ -60,11 +60,24 @@ class AimsScfStage(Stage):
         natoms = self.count_aims_atoms(geometry)
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)
+        # 额外输出（默认空）：只有开壳层才允许要自旋密度——闭壳层没有自旋密度可写，
+        # 静默接受会让人以为"自旋密度已产出"。
+        extra_outputs = tuple(getattr(getattr(ctx.config, "transport", None), "extra_outputs", ()) or ())
+        if "spin_density" in extra_outputs and not state.open_shell:
+            raise StageError(
+                "transport.extra_outputs 含 spin_density，但 molecule.multiplicity=%d "
+                "是闭壳层：FHI-aims 没有共线自旋密度可写"
+                % int(getattr(ctx.config.molecule, "multiplicity", 1) or 1))
+        if extra_outputs:
+            notes.append(
+                "额外输出：%s（control.in 已写对应 output 行；collect 会核验产物真的出现，"
+                "缺件拒绝 collected）" % " / ".join(extra_outputs))
         written = make_aims_scf_input(
             geometry, stage_dir, species_dir=species, env=env,
             spin=state.spin, charge=float(state.charge),
             fixed_spin_moment=state.fixed_spin_moment,
             vdw=vdw_mode(ctx.config.electrode.vdw),
+            extra_outputs=extra_outputs,
         )
         # scf 模板已带 fixed_spin_moment 行；这里只补 FHI-aims 必需的初猜。
         control = Path(written["control"])
@@ -189,6 +202,30 @@ class AimsScfStage(Stage):
                     % reason)
             observed[name] = info
 
+        # 额外输出（2026-11-20 复核 P1）：请求了就必须真的产出，不能"我开了开关"就算数。
+        # spin_density 的产物文件名是 FHI-aims 文档化的 ``spin_density.cube``；
+        # hirshfeld 打印在 aims.out（不是文件），这里只核验分析段确实出现。
+        requested = tuple(getattr(getattr(ctx.config, "transport", None),
+                                 "extra_outputs", ()) or ())
+        extra = {"extra_outputs": list(requested)}
+        if "spin_density" in requested:
+            cube = stage_dir / "spin_density.cube"
+            if not cube.is_file() or cube.stat().st_size <= 0:
+                raise StageError(
+                    "请求了 spin_density（control.in 有 'output cube spin_density'），"
+                    "但 spin_density.cube 缺失或为空；拒绝把没有自旋密度证据的 run "
+                    "标成 collected")
+            extra["spin_density_cube_bytes"] = cube.stat().st_size
+        if "hirshfeld" in requested:
+            # 控制文件回显里也有 "vdw_correction_hirshfeld"，先扣掉再数。
+            echo = text.lower().count("vdw_correction_hirshfeld")
+            mentions = text.lower().count("hirshfeld") - echo
+            if mentions <= 0:
+                raise StageError(
+                    "请求了 hirshfeld（control.in 有 'output hirshfeld'），但 aims.out "
+                    "里没有 Hirshfeld 分析段；可能是该二进制不接受这个关键字")
+            extra["hirshfeld_mentions"] = mentions
+
         notes: list[str] = []
         software = parse_aims_versions(text)
         if software:
@@ -213,11 +250,13 @@ class AimsScfStage(Stage):
                 "wavefunction_bytes": observed[wavefunction]["bytes"],
                 "log_bytes": len(text.encode("utf-8", "replace")),
                 "software": software or None,
+                **extra,
             }
         }
         artifacts = [name for name in ("aims.out", "control.in", "geometry.in",
                                        "basis-indices.out", "omat.aims",
-                                       "mos.aims", "alpha.aims", "beta.aims")
+                                       "mos.aims", "alpha.aims", "beta.aims",
+                                       "spin_density.cube")
                      if (stage_dir / name).is_file()]
         return self.collected(
             ctx, stage_dir,

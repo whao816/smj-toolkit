@@ -22,7 +22,7 @@
   # eigenvalues). Serial keeps the standard triangular overlap layout.
   KS_method serial
   output aitranss
-  output mulliken
+  output mulliken{extra_outputs}
   restart aims.restart
 
 ################################################################################

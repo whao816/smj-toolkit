@@ -274,6 +274,9 @@ def _protocol_config(config: Any) -> dict[str, Any]:
             transport[key] = float(value)
     # 这是"缺 te.out 是否拒绝"的验证策略，不改变物理结果，不进 protocol。
     transport.pop("require_te_out", None)
+    # 额外输出只决定"多存哪些证据文件"，不改 SCF/输运的任何求解参数；与
+    # require_te_out 同理不进 protocol，否则给老 run 打开开关就会集体判为漂移。
+    transport.pop("extra_outputs", None)
     return {"molecule": molecule, "electrode": electrode, "transport": transport}
 
 

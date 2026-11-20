@@ -4,6 +4,28 @@
 
 ## 未发布
 
+### 新增：开壳层的第一手证据（P1，2026-11-20）
+
+P0 让报告"说出了"自旋通道，但证据仍只有 `TE.dat` 的两列透射谱：没有分原子磁矩、
+没有自旋密度，也没有 Gaussian 一侧的自旋纯度。本次补两条数据链，默认全部关闭：
+
+- `transport.extra_outputs: [hirshfeld, spin_density]`（白名单校验，写错即 `ConfigError`）：
+  `aims_scf` 的 `control.in` 追加 `output hirshfeld` / `output cube spin_density`；
+  collect 核验 `spin_density.cube` 非空、`aims.out` 确有 Hirshfeld 分析段（扣掉
+  `vdw_correction_hirshfeld` 的回显），请求了却没产出就拒绝 `collected`；
+  `results.aims_scf` 记录 `extra_outputs`/`spin_density_cube_bytes`/`hirshfeld_mentions`。
+  闭壳层（`multiplicity=1`）要 `spin_density` 直接 `StageError`——FHI-aims 没有
+  共线自旋密度可写。该关键字组合在 221103 上**尚未实测**，首次使用请在小体系确认。
+- `molecule.stable_check: true`（仅 Gaussian）：route 追加 `Stable=Opt`；
+  `parse_gaussian_log` 解析最后的 `S**2 before annihilation … after …`、
+  `SCF Done` 次数与 `Convergence failure`；`results.gaussian` 记录
+  `scf_converged`/`multiplicity`/`s2_before_annihilation`/`s2_after_annihilation`/
+  `s2_expected`/`spin_contamination`，⟨S²⟩ 偏离 S(S+1) 超过 0.1 时在 notes 里点名
+  自旋污染，缺成功 SCF 时也会点名。
+- 两项都**不进** `protocol_sha256`（只决定多存哪些证据文件，不改求解参数）；
+  默认配置的 `control.in`/`.gjf` 逐字节不变。新增 `tests/test_extra_outputs.py`（18 例）
+  与 `tests/test_gaussian_spin.py`（10 例）。
+
 ### 新增：开壳层结果进入报告与复核（P0 展示层，2026-11-20）
 
 此前 `report.py`/`review.py` 里 0 处提及自旋：P(E)、α/β 通道与「判据族未校准开壳层」

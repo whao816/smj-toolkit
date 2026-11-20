@@ -34,6 +34,7 @@ class GaussianEngine(Engine):
             xyz, stage_dir, name="mol",
             charge=molecule.charge, multiplicity=molecule.multiplicity,
             method=molecule.method, basis=molecule.basis, env=env,
+            stable_check=bool(getattr(molecule, "stable_check", False)),
         )
         gjf = Path(written["gjf"])
         ctx.log("molecule_opt: 已写 %s（%d 原子，%s/%s）"
@@ -94,6 +95,22 @@ class GaussianEngine(Engine):
         notes.extend(check["warnings"])
         if imaginary:
             notes.append("Gaussian 虚频 %d 个：优化可能停在鞍点，请人工确认" % imaginary)
+        # 2026-11-20 复核 P1：开壳层的 ⟨S²⟩ 是"这个解是不是纯自旋态"的第一手证据。
+        # 未做湮灭（annihilation）时 Gaussian 也会打印 before/after 两栏，取最后一段。
+        multiplicity = int(getattr(ctx.config.molecule, "multiplicity", 1) or 1)
+        s2_expected = ((multiplicity - 1) / 2.0) * ((multiplicity + 1) / 2.0)
+        s2 = summary.get("s2_after_annihilation")
+        contamination = None
+        if s2 is not None and multiplicity > 1:
+            contamination = float(s2) - s2_expected
+            if abs(contamination) > 0.1:
+                notes.append(
+                    "Gaussian 自旋污染：<S^2>=%.4f，理想值 %.4f（多重度 %d），偏差 %+.4f；"
+                    "该解混入了更高自旋态，能量与几何都需谨慎"
+                    % (float(s2), s2_expected, multiplicity, contamination))
+        if not summary.get("scf_converged", True):
+            notes.append("mol.log 里没有成功的 SCF（缺 \"SCF Done\" 或出现 "
+                         "\"Convergence failure\"）：能量/几何不可信")
         results = {
             "gaussian": {
                 "normal_termination": True,
@@ -101,6 +118,12 @@ class GaussianEngine(Engine):
                 "imaginary_frequency_count": imaginary,
                 "atom_count": summary.get("atom_count"),
                 "geometry_check": check,
+                "scf_converged": bool(summary.get("scf_converged", False)),
+                "multiplicity": multiplicity,
+                "s2_before_annihilation": summary.get("s2_before_annihilation"),
+                "s2_after_annihilation": s2,
+                "s2_expected": s2_expected,
+                "spin_contamination": contamination,
             }
         }
         if prev is not None:

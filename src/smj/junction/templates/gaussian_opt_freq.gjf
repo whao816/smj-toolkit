@@ -1,6 +1,6 @@
 %chk={name}.chk
 %nprocshared={nproc}
-# opt freq {method}/{basis} scf=(xqc,maxcycle=512) int=ultrafine fchk
+# opt freq {method}/{basis} scf=(xqc,maxcycle=512) int=ultrafine fchk{route_extra}
 
 {name}
 
