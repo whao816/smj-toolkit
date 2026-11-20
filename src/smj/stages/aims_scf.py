@@ -188,10 +188,28 @@ class AimsScfStage(Stage):
 
         # tcontrol 的 $basis/$read_omat 两个口径共用；$scfmo 在自旋极化 SCF 里
         # 被 alpha.aims + beta.aims 取代——二选一缺了就 fail-closed。
-        has_mos = (stage_dir / "mos.aims").is_file()
-        has_alpha = (stage_dir / "alpha.aims").is_file()
-        has_beta = (stage_dir / "beta.aims").is_file()
-        if not has_mos and not (has_alpha and has_beta):
+        #
+        # 2026-11-20 复审 P1-4（自旋通道）：必需波函数由**实际自旋模式**决定，
+        # 并且逐个 probe。旧实现只看 is_file()、只 probe 一个波函数文件，
+        # 零字节/截断的 beta.aims 因此被放行，tcontrol 读到的是一份空的自旋
+        # 下降通道。配置声明 multiplicity>1 但磁盘上只有 mos.aims 同样拒绝——
+        # 不得静默降级成闭壳层。
+        present = {name: (stage_dir / name).is_file()
+                   for name in ("mos.aims", "alpha.aims", "beta.aims")}
+        spin_expected = bool(spin_state(ctx.config).open_shell
+                             or present["alpha.aims"] or present["beta.aims"])
+        if spin_expected:
+            missing = [name for name in ("alpha.aims", "beta.aims")
+                       if not present[name]]
+            if missing:
+                raise StageError(
+                    "FHI-aims SCF 产物不完整：自旋极化 SCF 需要 alpha.aims + beta.aims "
+                    "两份波函数（缺 %s）；aitranss_te 的 tcontrol 需要完整自旋通道"
+                    % "、".join(missing))
+            required_wf: tuple[str, ...] = ("alpha.aims", "beta.aims")
+        elif present["mos.aims"]:
+            required_wf = ("mos.aims",)
+        else:
             raise StageError(
                 "FHI-aims SCF 产物不完整：既没有 mos.aims（闭壳层），也没有 "
                 "alpha.aims + beta.aims（自旋极化 SCF 会把 mos.aims 拆成两份）；"
@@ -203,9 +221,8 @@ class AimsScfStage(Stage):
                 "FHI-aims SCF 产物不完整（缺 %s）；aitranss_te 的 tcontrol 需要 "
                 "basis-indices.out + omat.aims" % "、".join(missing))
         # 存在 ≠ 可用：零字节/截断文件会让 tcontrol 读到空矩阵。
-        wavefunction = "mos.aims" if has_mos else "alpha.aims"
         observed: dict[str, dict] = {}
-        for name in ("basis-indices.out", "omat.aims", wavefunction):
+        for name in ("basis-indices.out", "omat.aims", *required_wf):
             info = probe(stage_dir / name)
             reason = problem(info)
             if reason is not None:
@@ -213,6 +230,9 @@ class AimsScfStage(Stage):
                     "aims_scf 产物不可用：%s；tcontrol 需要真实的 basis/omat/波函数文件"
                     % reason)
             observed[name] = info
+        has_mos = "mos.aims" in observed
+        has_alpha = "alpha.aims" in observed
+        has_beta = "beta.aims" in observed
 
         # 额外输出（2026-11-20 复核 P1）：请求了就必须真的产出，不能"我开了开关"就算数。
         # spin_density 的产物文件名是 FHI-aims 文档化的 ``spin_density.cube``；
@@ -259,7 +279,9 @@ class AimsScfStage(Stage):
                 "basis_functions": observed["basis-indices.out"]["size_value"],
                 "omat_bytes": observed["omat.aims"]["bytes"],
                 "omat_nsaos": observed["omat.aims"]["size_value"],
-                "wavefunction_bytes": observed[wavefunction]["bytes"],
+                "wavefunction_files": list(required_wf),
+                "wavefunction_bytes": sum(observed[name]["bytes"]
+                                          for name in required_wf),
                 "log_bytes": len(text.encode("utf-8", "replace")),
                 "software": software or None,
                 **extra,

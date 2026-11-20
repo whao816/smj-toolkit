@@ -82,8 +82,13 @@ def _prepare_case(workdir: Path, *, molecule: list[str]):
     (scf / "aims.out").write_text(
         "| Chemical potential (Fermi level):   %.12f Ha\n" % EFERMI, encoding="utf-8")
     write_scf_sidecars(scf)
-    (scf / "alpha.aims").write_text("nsaos = 4210\n", encoding="utf-8")
-    (scf / "beta.aims").write_text("nsaos = 4210\n", encoding="utf-8")
+    # 2026-11-20 复审 P1-4：开壳层波函数要能通过头部校验（见 _aims_artifacts）。
+    (scf / "alpha.aims").write_text(
+        "$uhfmo_alpha.aims   iteration:    1   format(4d20.14)\n"
+        "     1  a      eigenvalue=-.3256D+04   nsaos=  4210\n", encoding="utf-8")
+    (scf / "beta.aims").write_text(
+        "$uhfmo_beta.aims   iteration:    1   format(4d20.14)\n"
+        "     1  b      eigenvalue=-.3256D+04   nsaos=  4210\n", encoding="utf-8")
     metadata = {
         "left_surface_indices": [1, 2, 3],
         "right_surface_indices": [5, 6, 7],

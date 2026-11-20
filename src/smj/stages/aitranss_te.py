@@ -254,6 +254,16 @@ class AitranssTeStage(Stage):
                 "（FHI-aims 在 spin collinear 下不再写 mos.aims）；缺 %s"
                 % "、".join(missing),
                 [str(alpha), str(beta)])
+        # 2026-11-20 复审 P1-4：is_file() 不等于可用；零字节/截断的通道会被
+        # tcontrol 当成空矩阵读进去，这里按头部再验一遍（不依赖上游已验）。
+        for path in (alpha, beta):
+            info = probe(path)
+            reason = problem(info)
+            if reason is not None:
+                raise StageBlocked(
+                    self.name,
+                    "开壳层 SCF 波函数不可用：%s；tcontrol 会读到空的自旋通道" % reason,
+                    [str(path), str(alpha), str(beta)])
         try:
             return int(parse_mos_nsaos(alpha))
         except (OSError, ValueError) as exc:

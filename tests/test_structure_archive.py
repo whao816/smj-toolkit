@@ -271,3 +271,48 @@ def test_electrode_build_collect_archives_junction(workdir):
     assert (run / ARCHIVE_DIRNAME / entry["file"]).read_bytes() == (
         stage_dir / "geometry.in").read_bytes()
     assert any("结构已归档" in note for note in collected.notes)
+
+
+# --------------------------------------------------------------------------- #
+# 2026-11-20 复审 P1-5：manifest 损坏后不得从头编号、更不得覆盖既有结构
+# --------------------------------------------------------------------------- #
+def test_corrupt_manifest_does_not_overwrite_first_structure(workdir):
+    run = workdir / "run"
+    first_src = workdir / "first.xyz"
+    first_src.write_text(XYZ, encoding="utf-8")
+    second_src = workdir / "second.xyz"
+    second_src.write_text("1\nsecond\nH 0 1 0\n", encoding="utf-8")
+
+    first = archive_structure(run, first_src, stage="molecule_opt", kind="input")
+    root = run / ARCHIVE_DIRNAME
+    first_path = root / first["file"]
+    before = first_path.read_bytes()
+
+    (root / "manifest.json").write_text("not json\n", encoding="utf-8")
+    second = archive_structure(run, second_src, stage="molecule_opt", kind="input")
+
+    assert first_path.read_bytes() == before, "首份结构被覆盖了"
+    assert second["file"] != first["file"]
+    assert second["seq"] > first["seq"], "清单损坏后必须从现存快照续号"
+
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    seqs = [entry["seq"] for entry in manifest["entries"]]
+    assert first["seq"] in seqs, "恢复时应把现存快照重新登记"
+    assert second["seq"] in seqs
+
+
+def test_archive_never_overwrites_existing_structure_file(workdir):
+    """清单缺条目但文件已占号（如崩溃残留）：换号，不覆盖。"""
+    run = workdir / "run"
+    src = workdir / "a.xyz"
+    src.write_text(XYZ, encoding="utf-8")
+    first = archive_structure(run, src, stage="molecule_opt", kind="input")
+    root = run / ARCHIVE_DIRNAME
+
+    occupied = root / "0002_molecule_opt_input.xyz"
+    occupied.write_text("sentinel\n", encoding="utf-8")
+
+    second = archive_structure(run, src, stage="molecule_opt", kind="input")
+    assert occupied.read_text(encoding="utf-8") == "sentinel\n"
+    assert second["seq"] == 3 and second["file"].startswith("0003_")
+    assert first["file"].startswith("0001_")

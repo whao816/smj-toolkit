@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -26,6 +27,9 @@ from typing import Any, Mapping
 ARCHIVE_DIRNAME = "saved_structures"
 MANIFEST_NAME = "manifest.json"
 SCHEMA = 1
+
+#: 快照文件名前缀的序号（``0001_molecule_opt_input.xyz``）。
+_SEQ_RE = re.compile(r"^(\d{4})_")
 
 #: 结果快照里保留的标量键（其余结构如 geometry_check/scf 仍留在快照文件里）。
 _SUMMARY_KEYS = (
@@ -65,20 +69,99 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     tmp.replace(path)
 
 
+def _recover_entries(root: Path) -> list[dict[str, Any]]:
+    """清单缺失/损坏时，从 ``saved_structures/`` 里的现存快照重建条目。
+
+    2026-11-20 复审 P1-5：旧实现把损坏清单改名 ``.bad`` 后直接 ``entries=[]``，
+    于是下一次归档又从 ``0001`` 开始并覆盖首份结构。恢复只重建**能确定**的字段
+    （序号/文件名/哈希/原子数/格式），``stage`` 等无法还原的字段留 ``None``，
+    并标记 ``recovered: True``——审计意义是"文件还在"，不是凭空补元数据。
+    """
+    entries: list[dict[str, Any]] = []
+    for path in sorted(root.glob("*")):
+        match = _SEQ_RE.match(path.name)
+        if match is None or not path.is_file():
+            continue
+        fmt = {".xyz": "xyz", ".in": "aims"}.get(path.suffix)
+        if fmt is None:
+            continue  # .results.json / .bad 等不属于结构快照
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        entries.append({
+            "seq": int(match.group(1)),
+            "stage": None,
+            "kind": None,
+            "engine": None,
+            "format": fmt,
+            "file": path.name,
+            "sha256": _sha256_bytes(data),
+            "natoms": _atom_count(path, fmt),
+            "source": None,
+            "created_at": None,
+            "results_file": None,
+            "results_sha256": None,
+            "summary": {},
+            "recovered": True,
+        })
+    return entries
+
+
 def _load_manifest(path: Path) -> dict[str, Any]:
+    root = path.parent
     if not path.is_file():
-        return {"schema": SCHEMA, "entries": []}
+        return {"schema": SCHEMA, "entries": _recover_entries(root)}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        # 损坏的 manifest 不阻塞归档：另存一份 .bad 再重建，保留现场。
+        # 损坏的 manifest 不阻塞归档：另存一份 .bad 再**从现存快照**重建，
+        # 保证序号只增不减、已有结构不被覆盖。
         path.replace(path.with_name(path.name + ".bad"))
-        return {"schema": SCHEMA, "entries": []}
+        return {"schema": SCHEMA, "entries": _recover_entries(root)}
     if not isinstance(data, dict) or not isinstance(data.get("entries"), list):
         path.replace(path.with_name(path.name + ".bad"))
-        return {"schema": SCHEMA, "entries": []}
+        return {"schema": SCHEMA, "entries": _recover_entries(root)}
     data.setdefault("schema", SCHEMA)
     return data
+
+
+def _next_seq(entries: list[dict[str, Any]], root: Path) -> int:
+    """下一个可用序号：清单登记值与目录里现存文件名一起取 max+1。
+
+    只看 ``len(entries)`` 会在"清单回滚/丢条目/上次写盘中断"时重号，
+    因此现存文件名也是事实来源。
+    """
+    seqs: list[int] = []
+    for entry in entries:
+        try:
+            seqs.append(int(entry.get("seq")))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    for path in root.glob("*"):
+        match = _SEQ_RE.match(path.name)
+        if match is not None:
+            seqs.append(int(match.group(1)))
+    return max(seqs, default=0) + 1
+
+
+def _claim_exclusive(path: Path, data: bytes) -> Path:
+    """排他创建 ``path``；已存在时抛 ``FileExistsError``（绝不覆盖）。"""
+    with path.open("xb") as handle:
+        handle.write(data)
+    return path
+
+
+def _claim_with_suffix(root: Path, stem: str, suffix: str, data: bytes) -> Path:
+    """``stem+suffix`` 被占用时追加 ``.N`` 再试，绝不覆盖既有文件。"""
+    candidate = root / (stem + suffix)
+    attempt = 1
+    while True:
+        try:
+            return _claim_exclusive(candidate, data)
+        except FileExistsError:
+            attempt += 1
+            candidate = root / ("%s.%d%s" % (stem, attempt, suffix))
 
 
 def _atom_count(structure: Path, fmt: str = "xyz") -> int:
@@ -176,12 +259,19 @@ def archive_structure(
     manifest_path = root / MANIFEST_NAME
     manifest = _load_manifest(manifest_path)
     entries = manifest["entries"]
-    seq = len(entries) + 1
-    stem = "%04d_%s_%s" % (seq, stage, kind)
-    dest = root / (stem + _FORMAT_SUFFIX[fmt])
-
     data = src.read_bytes()
-    dest.write_bytes(data)
+
+    # 2026-11-20 复审 P1-5：序号从"清单登记 + 现存文件名"一起续起，
+    # 且用 "xb" 排他创建——清单损坏/条目丢失/并发归档都不会覆盖既有结构。
+    seq = _next_seq(entries, root)
+    while True:
+        stem = "%04d_%s_%s" % (seq, stage, kind)
+        dest = root / (stem + _FORMAT_SUFFIX[fmt])
+        try:
+            _claim_exclusive(dest, data)
+            break
+        except FileExistsError:
+            seq += 1
     atom_count = natoms if natoms is not None else _atom_count(dest, fmt)
 
     entry: dict[str, Any] = {
@@ -202,8 +292,7 @@ def archive_structure(
     if results is not None:
         payload = (json.dumps(dict(results), indent=2, ensure_ascii=False,
                               sort_keys=True) + "\n").encode("utf-8")
-        snapshot = root / (stem + ".results.json")
-        snapshot.write_bytes(payload)
+        snapshot = _claim_with_suffix(root, stem, ".results.json", payload)
         entry["results_file"] = snapshot.name
         entry["results_sha256"] = _sha256_bytes(payload)
         entry["summary"] = summarize_results(results, stage=stage)

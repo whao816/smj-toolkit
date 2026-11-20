@@ -38,13 +38,13 @@ class _Ctx:
         return path
 
 
-def _seed(stage_dir: Path, *, converged: bool = True) -> None:
+def _seed(stage_dir: Path, *, converged: bool = True, spin: bool = False) -> None:
     stage_dir.mkdir(parents=True, exist_ok=True)
     (stage_dir / "geometry.in").write_text(_GEOMETRY, encoding="utf-8")
     log = ("  FHI-aims version      : 221103\n"
            + (SCF_CONVERGED if converged else "Have a nice day.\n"))
     (stage_dir / "aims.out").write_text(log, encoding="utf-8")
-    write_scf_artifacts(stage_dir)
+    write_scf_artifacts(stage_dir, spin=spin)
 
 
 def _collect(workdir: Path, *, converged: bool = True):
@@ -129,3 +129,64 @@ def test_stage_and_report_agree_on_unconverged_log(workdir: Path):
     checks = [c for c in validate_junction_run(run_dir)["checks"] if c["name"] == "aims_scf"]
     assert len(checks) == 1 and checks[0]["passed"] is False
     assert checks[0]["severity"] == "error"
+
+
+# --------------------------------------------------------------------------- #
+# 2026-11-20 复审 P1-4（自旋通道）：两份波函数都要验，不能只看 is_file()
+# --------------------------------------------------------------------------- #
+def _spin_run(workdir: Path) -> tuple[object, Path]:
+    run_dir = workdir / "run"
+    stage_dir = run_dir / "aims_scf"
+    _seed(stage_dir, spin=True)  # 只写 alpha + beta，没有 mos
+    ctx = _Ctx(run_dir)
+    ctx.config = SimpleNamespace(molecule=SimpleNamespace(multiplicity=2))
+    return ctx, stage_dir
+
+
+def test_spin_scf_rejects_empty_beta_aims(workdir: Path):
+    ctx, stage_dir = _spin_run(workdir)
+    (stage_dir / "beta.aims").write_bytes(b"")
+    with pytest.raises(StageError, match=r"beta\.aims"):
+        AimsScfStage().collect(ctx, stage_dir)
+
+
+def test_spin_scf_rejects_truncated_beta_aims(workdir: Path):
+    ctx, stage_dir = _spin_run(workdir)
+    (stage_dir / "beta.aims").write_bytes(b"1234567890")
+    with pytest.raises(StageError, match=r"beta\.aims"):
+        AimsScfStage().collect(ctx, stage_dir)
+
+
+def test_spin_scf_collect_records_both_channels(workdir: Path):
+    ctx, stage_dir = _spin_run(workdir)
+    payload = AimsScfStage().collect(ctx, stage_dir).results["aims_scf"]
+    assert payload["has_alpha"] is True and payload["has_beta"] is True
+    assert payload["has_mos"] is False and payload["spin_unpolarized"] is False
+    assert payload["wavefunction_files"] == ["alpha.aims", "beta.aims"]
+    assert payload["wavefunction_bytes"] == sum(
+        (stage_dir / name).stat().st_size for name in ("alpha.aims", "beta.aims"))
+
+
+def test_open_shell_without_spin_wavefunctions_is_rejected(workdir: Path):
+    """multiplicity>1 但只有闭壳层 mos.aims：不得静默降级成闭壳层。"""
+    run_dir = workdir / "run"
+    stage_dir = run_dir / "aims_scf"
+    _seed(stage_dir)
+    ctx = _Ctx(run_dir)
+    ctx.config = SimpleNamespace(molecule=SimpleNamespace(multiplicity=3))
+    with pytest.raises(StageError, match=r"alpha\.aims"):
+        AimsScfStage().collect(ctx, stage_dir)
+
+
+def test_aitranss_te_rejects_empty_beta_wavefunction(workdir: Path):
+    """下游 tcontrol 自己也要验：不能指望上游 collect 永远先跑过。"""
+    from _aims_fixtures import ALPHA
+    from smj.stages.aitranss_te import AitranssTeStage
+
+    scf_dir = workdir / "run" / "aims_scf"
+    scf_dir.mkdir(parents=True)
+    (scf_dir / "alpha.aims").write_text(ALPHA, encoding="utf-8")
+    (scf_dir / "beta.aims").write_bytes(b"")
+
+    with pytest.raises(StageBlocked, match=r"beta\.aims"):
+        AitranssTeStage()._spin_nsaos(scf_dir)
