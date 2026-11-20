@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping
 from .config import RunConfig
 from .context import StageContext
 from .engines import engine_for_config
-from .errors import SmjError, StageError
+from .errors import ActiveJobError, SmjError, StageError
 from .provenance import ensure_run_spec, hash_stage_inputs, hash_stage_outputs
 from .remote import (
     SMJ_SCRIPT_ARGS,
@@ -272,7 +272,9 @@ class StageRunner:
         force = self.force if force is None else bool(force)
         if not force:
             if status in ("submitted", "waiting"):
-                raise StageError(
+                # 2026-11-20 复核 P1-5：用 ActiveJobError 区分"作业还在跑"与
+                # "阶段失败"。run_stage 的兜底 except 不能再把它写成 failed。
+                raise ActiveJobError(
                     "阶段 %s 正在远端运行（status=%s）；确认要重来请加 --force"
                     % (key, status))
             if status in ("finished", "collected"):
@@ -605,6 +607,15 @@ class StageRunner:
             outcome.status = "collected"
             outcome.ok = True
             return outcome
+        except ActiveJobError as exc:
+            # 2026-11-20 复核 P1-5：作业还在远端跑不是失败。保留
+            # submitted/waiting 与 job_id，否则下一次 run 的保护失效、会重复提交。
+            outcome.ok = False
+            outcome.status = self.state.status(key)
+            outcome.message = str(exc)
+            self._log("[%s] 作业仍在远端运行（status=%s），未重来"
+                      % (key, outcome.status))
+            return outcome
         except SmjError as exc:
             self.state.set(key, status="failed", error=str(exc),
                            note=str(exc).splitlines()[0][:300])
@@ -613,6 +624,37 @@ class StageRunner:
             outcome.status = self.state.status(key)
             outcome.message = str(exc)
             self._log("[%s] 失败: %s" % (key, outcome.message.splitlines()[0]))
+            return outcome
+
+    def _resume_active(self, key: str, *, waited: bool) -> StageOutcome:
+        """阶段的作业已在远端：只等待/补 collect，不重新提交。
+
+        ``waited=False`` 用于 ``finished``（远端已结束，只差收尾）。
+        """
+        outcome = StageOutcome(stage=key, action="resume")
+        try:
+            if waited:
+                outcome.wait = self.wait(key)
+                if outcome.wait.get("failed"):
+                    outcome.status = "failed"
+                    outcome.message = outcome.wait.get("note") or "作业失败"
+                    return outcome
+                if not outcome.wait.get("finished"):
+                    outcome.status = "waiting"
+                    outcome.message = (outcome.wait.get("note")
+                                       or "等待超时，作业可能仍在运行")
+                    return outcome
+            outcome.collected = self.collect(key)
+            outcome.status = "collected"
+            outcome.ok = True
+            outcome.message = "作业已结束，补 collect 完成"
+            return outcome
+        except SmjError as exc:
+            self.state.set(key, status="failed", error=str(exc),
+                           note=str(exc).splitlines()[0][:300])
+            self._save()
+            outcome.status = "failed"
+            outcome.message = str(exc)
             return outcome
 
     def run(self, start: str | None = None, end: str | None = None, *,
@@ -641,21 +683,18 @@ class StageRunner:
                     message="已标记 skipped，跳过（--force 可重跑）"))
                 self._log("[%s] 已跳过，跳过" % key)
                 continue
-            if not force and status == "finished":
-                # 远端已结束但还没 collect：只补收尾，不重跑。
-                try:
-                    payload = self.collect(key)
-                except SmjError as exc:
-                    self.state.set(key, status="failed", error=str(exc))
-                    self._save()
-                    outcomes.append(StageOutcome(
-                        stage=key, status="failed", ok=False, message=str(exc)))
+            if not force and status in ("submitted", "waiting", "finished"):
+                # 2026-11-20 复核 P1-5：远端已有作业（或已结束待收尾）时只
+                # 等待/补 collect，绝不重新 prepare+submit。旧实现只处理
+                # "finished"，"waiting" 会掉进 run_stage → prepare 抛错 →
+                # 被标 failed → 下一次 run 保护失效、重复提交。
+                out = self._resume_active(key, waited=status != "finished")
+                outcomes.append(out)
+                if not out.ok:
+                    if out.status == "waiting":
+                        break
                     if not keep:
                         break
-                    continue
-                outcomes.append(StageOutcome(
-                    stage=key, status="collected", ok=True,
-                    message="作业已结束，补 collect 完成", collected=payload))
                 continue
 
             outcome = self.run_stage(key, force=force)

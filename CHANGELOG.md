@@ -4,6 +4,19 @@
 
 ## 未发布
 
+### 复核修复 R6：远端仍在跑的作业不再被"重跑"打成 failed（2026-11-20）
+
+- **问题**：`state=waiting` + `job_id` 时执行 `run`/`run_stage`，`prepare` 抛
+  "正在远端运行"的保护异常，被 `run_stage` 的兜底 `except SmjError` 写成
+  `status=failed`；下一次 `run` 于是重新 `prepare`+`sbatch`，在集群上留下第二个
+  作业（复核实测新作业 424242 覆盖 12345 的登记）。
+- **改法**：新增 `ActiveJobError(StageError)`；`prepare` 抛它，`run_stage` 单独
+  捕获——**不改状态**，返回 `StageOutcome(status="waiting", ok=False)`，保留
+  `job_id`。`run()` 对 `submitted`/`waiting` 走新的 `_resume_active()`：先
+  `wait()`，结束再 `collect()`；`finished` 仍只补 collect；`--force` 语义不变。
+- **测试**：`tests/test_rerun_active_job.py`（4 例）——活跃作业保留状态且不重复
+  提交、`run` 走 resume 分支、`--force` 仍重跑、等待超时保持 `waiting`。
+
 ### 复核修复 R4/R5：弛豫与 SCF 必须"真收敛、真产物"（2026-11-20）
 
 - **问题**：`aims_tip_relax.collect` 只判 `geometry.in.next_step` 存在，从不打开
