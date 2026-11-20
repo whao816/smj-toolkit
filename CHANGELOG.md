@@ -2,6 +2,28 @@
 
 本项目遵循语义化版本（0.x 阶段：次版本可含不兼容变更；rc 视为发布候选）。
 
+## 未发布
+
+### 新增：开壳层结果进入报告与复核（P0 展示层，2026-11-20）
+
+此前 `report.py`/`review.py` 里 0 处提及自旋：P(E)、α/β 通道与「判据族未校准开壳层」
+只躺在 `junction_analyze/results.json` 和图里，评审者从 `report.md`/`review.json`
+看不出"这是开壳层、自旋占多少、解是否可信"。本次只做展示层，不改任何数值判定：
+
+- 新增 `src/smj/spin_summary.py`：合并 `run_spec` 的 molecule 块与 `results.json` 的
+  `spin` 块，`report`/`review` 共用同一份字段与三条 caveat（判据族未校准、固定总自旋
+  只证明约束被满足、单列 TE.dat 无法恢复自旋极化）。
+- `report.md`：§2 新增「电荷 / 多重度」与开壳层「总自旋约束」；§4 末尾新增
+  `### 4.1 自旋通道（开壳层）`（通道数、Tα/Tβ(E_F)、P(E_F)、P(L0)、Gα/Gβ/G_total），
+  并显式写明总 G、S、k_e、ZT 仍是双通道均值。manifest 的 `transport.spin` 同步保留。
+- `smj review`：新增 `open_shell_uncalibrated`（multiplicity>1，warning）、
+  `spin_fixed_constraint`（info）、`spin_channels_missing`（开壳层却单列谱，warning）、
+  `spin_channels_undeclared`（旧 run 有两列谱但无 multiplicity，info）；
+  `review.json` 新增 `spin` 块。前两条 warning 把 `review.status` 降为 `warning`
+  （不阻断，`ok` 仍为 true）。
+- 新增 `tests/test_spin_surface.py`（6 例）。全量 `pytest -q` → 406 passed；
+  `smj verify` 七项全 ok。
+
 ## 0.2.2rc1（2026-11-20）
 
 ### 修复：换行一致性导致 CI 变红（2026-11-20）

@@ -41,6 +41,7 @@ from typing import Any
 from .config import ReviewConfig
 from .provenance import load_run_spec, protocol_sha256
 from .errors import SmjError
+from .spin_summary import findings as spin_findings, normalize as normalize_spin
 from .state import RunLayout, normalize_stage, now_iso
 
 REVIEW_SCHEMA = "smj.review.v1"
@@ -76,6 +77,7 @@ class ReviewResult(Mapping):
     issues: list[dict] = field(default_factory=list)
     connection_check: dict | None = None
     structure: dict | None = None
+    spin: dict | None = None
     run_id: str | None = None
     accepted: bool = False
     review_path: str | None = None
@@ -110,6 +112,8 @@ class ReviewResult(Mapping):
 
         连接核对门的 warning（缺记录但未要求、显式接受偏差、审计异常）才把整体
         状态降为 ``warning``；``geometry_missing`` 这类"复核无法执行"也算 warning。
+        开壳层的 ``open_shell_uncalibrated``/``spin_channels_missing`` 同样降为
+        ``warning``（判据族对该体系未校准，结论可信度必须显示出来），但不阻断。
         """
         if any(i["severity"] == "error" for i in self.issues):
             self.status = "blocked"
@@ -120,7 +124,8 @@ class ReviewResult(Mapping):
                 or str(i.get("code", "")).startswith("a2_")
                 or str(i.get("code", "")).startswith("provenance_")
                 or i.get("code") in ("geometry_missing", "geometry_metadata_missing",
-                                     "geometry_metadata_unreadable", "geometry_check_failed"))
+                                     "geometry_metadata_unreadable", "geometry_check_failed",
+                                     "open_shell_uncalibrated", "spin_channels_missing"))
             for i in self.issues)
         self.status = "warning" if gate_warning else "passed"
         return self
@@ -146,6 +151,7 @@ class ReviewResult(Mapping):
             "warnings": self.warnings,
             "connection_check": self.connection_check,
             "structure": self.structure,
+            "spin": self.spin,
             "review_path": self.review_path,
             "written": self.written,
         }
@@ -590,6 +596,64 @@ def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None
                     run_spec_protocol=stored, current_protocol=current)
 
 
+def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
+    """开壳层的可读性：多重度、是否钉住总自旋、α/β 通道是否还在。
+
+    只产出展示字段与 WARN/INFO，不改任何数值判定 —— 判据族对开壳层未校准，
+    这一点本身要作为 warning 让评审者看到，而不是藏在 results.json 里。
+    """
+    molecule = getattr(config, "molecule", None)
+    multiplicity = getattr(molecule, "multiplicity", None)
+    charge = getattr(molecule, "charge", None)
+    fixed = getattr(molecule, "fixed_spin_moment", None)
+    if multiplicity is None or charge is None:
+        spec_mol = ((load_run_spec(run_dir) or {}).get("config") or {}).get("molecule") or {}
+        if multiplicity is None:
+            multiplicity = spec_mol.get("multiplicity")
+        if charge is None:
+            charge = spec_mol.get("charge")
+        if fixed is None:
+            fixed = spec_mol.get("fixed_spin_moment")
+    try:
+        multiplicity = int(multiplicity) if multiplicity is not None else None
+    except (TypeError, ValueError):
+        multiplicity = None
+    if fixed is None:
+        # provenance 把默认值 True 省掉了，缺省即按 True 解释。
+        fixed = True
+    te = run_dir / "aitranss_te" / "TE.dat"
+    te_present = te.is_file()
+    channels = None
+    if te_present:
+        try:
+            from .landauer_spin import read_te_channels
+            _, channels = read_te_channels(te)
+        except (OSError, ValueError) as exc:
+            result.add("info", "spin_te_unreadable",
+                       "TE.dat 自旋通道不可读，自旋占比不可得: %s" % exc)
+    raw: Any = None
+    results_path = run_dir / "junction_analyze" / "results.json"
+    if results_path.is_file():
+        try:
+            payload = json.loads(results_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            result.add("info", "spin_results_unreadable",
+                       "junction_analyze/results.json 不可解析，自旋块不可得: %s" % exc)
+            payload = None
+        if isinstance(payload, Mapping):
+            raw = payload.get("spin")
+    if raw is None and channels is not None:
+        raw = {"channels": channels, "source": str(te)} if te_present else None
+    summary = normalize_spin(raw, multiplicity=multiplicity, charge=charge,
+                             fixed_spin_moment=fixed if (multiplicity or 1) > 1 else None)
+    if summary is not None:
+        result.spin = summary
+    for item in spin_findings(summary, multiplicity=multiplicity, te_present=te_present):
+        extra = {k: v for k, v in item.items()
+                 if k not in ("severity", "code", "message")}
+        result.add(item["severity"], item["code"], item["message"], **extra)
+
+
 # --------------------------------------------------------------------------- #
 # 主入口
 # --------------------------------------------------------------------------- #
@@ -664,6 +728,7 @@ def review_run(target: Any, *, force: bool = True,
     _structure_review(result, build_dir, geometry=geometry, metadata=metadata)
     _connection_check_review(result, build_dir, review_cfg)
     _provenance_review(result, run_dir, cfg)
+    _spin_review(result, run_dir, cfg)
     result.finalize()
     # 供 Mapping 接口（CLI 的 _as_mapping 走 dict(result)）拿到本次实际配置。
     result.config_used = review_cfg

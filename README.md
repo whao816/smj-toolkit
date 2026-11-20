@@ -561,6 +561,11 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   后的解"作为对照，现在可用 `molecule.fixed_spin_moment: false` 直接跑；逐条对照
   与缺口清单见
   [自由基单分子结：实现对照与开发规划](docs/自由基单分子结-实现对照与开发规划.md)。
+  展示层（2026-11-20）：`smj report` 在 `results.json` 有 `spin` 时输出 §4.1
+  自旋通道小节（Tα/Tβ(E_F)、P(E_F)、P(L0)，并注明总 G/S 仍是双通道均值）；
+  `smj review` 对 `multiplicity>1` 记 `open_shell_uncalibrated` 告警并在
+  `review.json` 里给 `spin` 块——这两处都不改数值判定，只保证"这是开壳层、
+  自旋占多少、判据未校准"不需要翻 results.json 才能看见。
 
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。

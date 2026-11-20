@@ -35,6 +35,7 @@ from .provenance import (
     run_spec_sha256,
 )
 from .resources import check_smj_budget, estimate_smj_resources
+from .spin_summary import SPIN_CAVEAT, normalize as normalize_spin, percent as spin_percent
 from .state import STAGE_ORDER, RunLayout, RunState, now_iso
 
 REPORT_SCHEMA = "smj.report.v1"
@@ -240,6 +241,23 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
         "electrode": None,
         "te": None,
     }
+    # 自旋/电荷是开壳层判读的前提：闭壳层 multiplicity=1，开壳层 >1。
+    # run_spec 里固定总自旋为 True（默认）时该键被省略，故缺省按 True 解释。
+    molecule_cfg = dict(effective_spec.get("molecule") or {})
+    multiplicity = molecule_cfg.get("multiplicity")
+    try:
+        multiplicity = int(multiplicity) if multiplicity is not None else None
+    except (TypeError, ValueError):
+        multiplicity = None
+    fixed_spin = molecule_cfg.get("fixed_spin_moment")
+    fixed_spin = True if fixed_spin is None else bool(fixed_spin)
+    spin_meta: dict[str, Any] = {
+        "charge": molecule_cfg.get("charge"),
+        "multiplicity": multiplicity,
+        "fixed_spin_moment": fixed_spin if (multiplicity or 1) > 1 else None,
+    }
+    if molecule_cfg.get("initial_moments"):
+        spin_meta["initial_moments"] = molecule_cfg.get("initial_moments")
     # 分子结构：优先 molecule_opt/opt.xyz（旧 run 回退 gaussian_opt），否则 run 根的 xyz。
     molecule_xyz = RunLayout(run_dir).artifact("molecule_opt", "opt.xyz")
     if not molecule_xyz.is_file():
@@ -254,6 +272,9 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
         molecule_meta = (run_spec or {}).get("molecule") or {}
         if molecule_meta.get("sha256"):
             inputs["molecule"]["run_input_sha256"] = molecule_meta["sha256"]
+    if multiplicity is not None or molecule_cfg:
+        inputs["molecule"] = {**(inputs["molecule"] or {"path": None, "atom_count": None}),
+                              **spin_meta}
 
     # 电极：electrode_build/electrode_metadata.json 的既有键（不补造）。
     build = _find_build_dir(run_dir)
@@ -331,16 +352,45 @@ _TRANSPORT_KEYS = (
 )
 
 
+def _spin_block(spin: Any, molecule: Mapping[str, Any]) -> dict | None:
+    """给 ``spin`` 块补上配置侧信息（多重度/电荷/是否钉住总自旋）。"""
+    if not isinstance(spin, Mapping):
+        return None
+    return normalize_spin(
+        spin,
+        multiplicity=molecule.get("multiplicity"),
+        charge=molecule.get("charge"),
+        fixed_spin_moment=molecule.get("fixed_spin_moment"),
+    )
+
+
 def _transport_summary(run_dir: Path, state: RunState, temperature: float | None,
-                       warnings: list[str]) -> dict | None:
-    analysis_path = run_dir / "junction_analyze" / "analysis.json"
-    if analysis_path.is_file():
+                       warnings: list[str], *,
+                       molecule: Mapping[str, Any] | None = None) -> dict | None:
+    """输运摘要，含开壳层的自旋通道块。
+
+    优先 ``junction_analyze/results.json`` —— 它是该阶段的正式产物，开壳层时
+    还带 ``spin`` 块（α/β 通道积分与 P(E)）。旧 run 可能只有 ``analysis.json``；
+    两者都没有时再从 ``aitranss_te/TE.dat`` 现算（开壳层顺带解析双通道）。
+    """
+    molecule = dict(molecule or {})
+    for name in ("results.json", "analysis.json"):
+        candidate = run_dir / "junction_analyze" / name
+        if not candidate.is_file():
+            continue
         try:
-            payload = json.loads(analysis_path.read_text(encoding="utf-8"))
-            return {"source": str(analysis_path),
-                    **{k: payload.get(k) for k in _TRANSPORT_KEYS}}
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            warnings.append("analysis.json 不可解析: %s" % exc)
+            warnings.append("%s 不可解析: %s" % (name, exc))
+            continue
+        if not isinstance(payload, dict):
+            continue
+        transport = {"source": str(candidate),
+                     **{k: payload.get(k) for k in _TRANSPORT_KEYS}}
+        spin = _spin_block(payload.get("spin"), molecule)
+        if spin is not None:
+            transport["spin"] = spin
+        return transport
     te = run_dir / "aitranss_te" / "TE.dat"
     if not te.is_file():
         return None
@@ -355,6 +405,17 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
     recorded = dict(state.stage("aitranss_te").results or {})
     if recorded:
         payload["state_results"] = recorded
+    if (molecule.get("multiplicity") or 1) > 1:
+        try:
+            from .landauer_spin import analyze_te_spin
+            spin = _spin_block(
+                analyze_te_spin(te, temperature=float(temperature or 300.0)),
+                molecule)
+        except (OSError, ValueError) as exc:
+            warnings.append("自旋通道解析失败（TE.dat 可能只有一列）: %s" % exc)
+        else:
+            if spin is not None:
+                payload["spin"] = spin
     return payload
 
 
@@ -429,7 +490,8 @@ def build_manifest(target: Any, *, run_id: str | None = None,
                            else discover_stages(run_dir))
     resources = _resource_summary(run_dir, state, warnings)
     transport = _transport_summary(run_dir, state,
-                                   input_summary.get("temperature_K"), warnings)
+                                   input_summary.get("temperature_K"), warnings,
+                                   molecule=input_summary.get("molecule"))
     failures = _failure_summary(state)
 
     totals = {
@@ -520,6 +582,45 @@ def _cell(value: Any) -> str:
     """Markdown 表格单元：压平换行与竖线，避免破坏表结构。"""
     text = "—" if value is None else str(value)
     return text.replace("|", "/").replace("\n", " ").strip()
+
+
+def _render_spin_section(lines: list[str], spin: Mapping[str, Any]) -> None:
+    """§4.1 自旋通道：只补 α/β 分量与极化度，不改总 G/S 口径。"""
+    lines.append("")
+    lines.append("### 4.1 自旋通道（开壳层）")
+    lines.append("")
+    lines.append("> 上表的 G、S、k_e、ZT 是**双通道均值**（landauer 口径 "
+                 "T(E) = (Tα+Tβ)/2）；本小节只补分量与自旋极化度，不重算 S。")
+    lines.append("")
+    lines.append("| 量 | 值 |")
+    lines.append("|---|---|")
+    if spin.get("multiplicity") is not None:
+        lines.append("| 多重度 / 电荷 | %s / %s |" % (
+            _cell(spin.get("multiplicity")), _cell(spin.get("charge"))))
+    fixed = spin.get("fixed_spin_moment")
+    if fixed is not None:
+        lines.append("| 总自旋约束 | %s |" % (
+            "fixed_spin_moment（钉住 2S = M−1）" if fixed
+            else "未钉住（release 解，自旋可离域到电极）"))
+    lines.append("| TE.dat 通道数 | %s |" % _cell(spin.get("channels")))
+    lines.append("| Tα(E_F) / Tβ(E_F) [G0] | %s / %s |" % (
+        _fmt(spin.get("T_alpha_at_ef"), "%.6f"),
+        _fmt(spin.get("T_beta_at_ef"), "%.6f")))
+    lines.append("| P(E_F) = (Tα−Tβ)/(Tα+Tβ) | %s |"
+                 % spin_percent(spin.get("spin_polarization_at_ef")))
+    lines.append("| P(L0) 积分极化 | %s |"
+                 % spin_percent(spin.get("spin_polarization_L0")))
+    if spin.get("g_over_g0_total") is not None:
+        lines.append("| Gα / Gβ / G_total [G0] | %s / %s / %s |" % (
+            _fmt(spin.get("g_over_g0_alpha"), "%.6f"),
+            _fmt(spin.get("g_over_g0_beta"), "%.6f"),
+            _fmt(spin.get("g_over_g0_total"), "%.6f")))
+    lines.append("")
+    lines.append("- %s" % SPIN_CAVEAT)
+    if spin.get("fixed_constraint_caveat"):
+        lines.append("- %s" % spin["fixed_constraint_caveat"])
+    if spin.get("note"):
+        lines.append("- 数据提示：%s" % _cell(spin.get("note")))
 
 
 def render_report(manifest: Mapping[str, Any]) -> str:
@@ -633,6 +734,14 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     molecule = inputs.get("molecule") or {}
     lines.append("| 分子结构 | %s |" % _cell(molecule.get("path")))
     lines.append("| 分子原子数 | %s |" % _cell(molecule.get("atom_count")))
+    if molecule.get("multiplicity") is not None:
+        lines.append("| 电荷 / 多重度 | %s / %s |" % (
+            _cell(molecule.get("charge")), _cell(molecule.get("multiplicity"))))
+        if (molecule.get("multiplicity") or 1) > 1:
+            fixed = molecule.get("fixed_spin_moment")
+            lines.append("| 总自旋约束 | %s |" % (
+                "fixed_spin_moment（钉住 2S = M−1）" if fixed
+                else "未钉住（release 解，自旋可离域到电极）"))
     electrode = inputs.get("electrode") or {}
     lines.append("| 建结阶段 | %s |" % _cell(electrode.get("stage")))
     lines.append("| 结原子数 | %s |" % _cell(electrode.get("atom_count")))
@@ -685,6 +794,8 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         lines.append("| 来源 | `%s` |" % _cell(transport.get("source")))
     else:
         lines.append("- 无 TE.dat / analysis.json，输运结果不可得。")
+    if isinstance(transport, Mapping) and isinstance(transport.get("spin"), Mapping):
+        _render_spin_section(lines, transport["spin"])
     lines.append("")
 
     lines.append("## 5. 失败原因")
