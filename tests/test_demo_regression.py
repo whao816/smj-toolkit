@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -28,6 +29,16 @@ SCALAR_KEYS = ("log10_G_over_G0_like", "S_uV_per_K", "k_e_pW_per_K", "ZT_electro
 
 def _reference() -> dict:
     return json.loads(REFERENCE.read_text(encoding="utf-8"))
+
+
+def _demo_script():
+    """按文件路径加载 ``scripts/gen_demo_reference.py``（它不在包里，不能 import）。"""
+    path = ROOT / "scripts" / "gen_demo_reference.py"
+    spec = importlib.util.spec_from_file_location("gen_demo_reference_under_test", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _entries() -> list[tuple[str, dict]]:
@@ -150,3 +161,14 @@ def test_reference_values_are_actually_reproducible():
     item = report["items"][0]
     assert item["ok"] is False
     assert "limit" in item
+
+def test_reference_check_tolerates_crlf(workdir):
+    """2026-11-20：Windows 检出会把参考值写成 CRLF，Linux CI 的 --check 曾因此变红。
+
+    参考值文件的换行不应影响判定：仓库层由 .gitattributes 统一 LF，脚本层再兜一层。
+    """
+    script = _demo_script()
+    target = workdir / "demo-reference.json"
+    text = script.render(script.build_reference())
+    target.write_text(text.replace("\n", "\r\n"), encoding="utf-8", newline="")
+    assert script.main(["--check", "--output", str(target)]) == 0

@@ -4,6 +4,21 @@
 
 ## 0.2.2rc1（2026-11-20）
 
+### 修复：换行一致性导致 CI 变红（2026-11-20）
+
+首次推送后 CI 有两类失败，都不是数值逻辑问题：
+
+- **Windows 三个版本全红**：`actions/checkout` 在 Windows 上按 `core.autocrlf=true`
+  检出，内核 `.py` 与 `TE.dat` 被转成 CRLF，`PROVENANCE.json` 与
+  `demo-reference.json` 里的 sha256 对不上（6 个用例失败）。
+- **`demo` job 红**：`demo/demo-reference.json` 曾以 CRLF 提交，Linux 上
+  `gen_demo_reference.py --check` 直接比对文本 → 必然不一致。
+
+处理：新增 `.gitattributes`（`* text=auto eol=lf`，`*.dat -text`），全仓
+`git add --renormalize`；`gen_demo_reference.py` 写文件固定 LF、`--check` 按换行
+归一化后再比；新增 CRLF 容忍用例。修复后本地与两种检出模拟（autocrlf=true/false）
+均 398 passed。
+
 ### A 方案：junction 内核改由本仓维护（2026-11-20）
 
 复核后的结论是「运行时早就独立、维护模型还假装是镜像」：13 条本地补丁覆盖

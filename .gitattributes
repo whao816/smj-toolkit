@@ -1,0 +1,20 @@
+# 换行与文本属性（2026-11-20：CI 在 Windows / Linux 之间因换行不一致而红）
+#
+# 背景：内核台账（PROVENANCE.json）与 demo 基线（demo-reference.json）用 sha256
+# 记录文件字节，任何自动换行转换都会让哈希漂移。统一要求：检出到工作区的文本
+# 一律 LF，数值数据不做转换。
+* text=auto eol=lf
+
+# 谱数据/数值基线：内容本身就是正文，禁做换行转换
+*.dat -text
+*.csv -text
+
+# 二进制资源
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.whl binary
+*.gz binary
+*.zip binary

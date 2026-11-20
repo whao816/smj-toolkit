@@ -96,7 +96,9 @@ def main(argv: list[str] | None = None) -> int:
             print("缺少参考值文件: %s" % target, file=sys.stderr)
             return 1
         current = target.read_text(encoding="utf-8")
-        if current != text:
+        # 2026-11-20：Windows 检出曾把参考值写成 CRLF，导致 Linux CI 直接比对失败。
+        # 这里按换行归一化后再比，仓库层再由 .gitattributes 统一成 LF。
+        if current.replace("\r\n", "\n") != text:
             print(
                 "demo 参考值与当前代码/谱文件不一致: %s\n"
                 "（谱被改动，或积分口径变了。确认是有意修改后运行 "
@@ -108,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
+    target.write_text(text, encoding="utf-8", newline="\n")
     print("写入 %s（%d 份谱）" % (target, len(te_files())))
     return 0
 
