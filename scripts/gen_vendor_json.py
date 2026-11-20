@@ -146,6 +146,21 @@ LOCAL_PATCHES = [
         "tests": ["tests/test_resonance_attribution.py", "tests/test_family.py",
                   "tests/test_criteria_failopen.py"],
     },
+    {
+        "id": "F-UPSTREAM-PENDING-2026-11-20",
+        "commit": "2026-11-20",
+        "files": ["fixtures.py", "molecules.py", "surface_index.py", "tcontrol.py",
+                  "templates/control_relax.in", "templates/gaussian_opt_freq.gjf",
+                  "templates/sub_g16.sh"],
+        "what": "副本与主仓工作区一致、但与主仓 HEAD（26c197b）不同：tcontrol 的 "
+                "_spin_moment_line、surface_index.pick_surface_triple(away=…)、三份模板的 "
+                "SCF 精度/scratch 目录/spin 行、fixtures 的 2026-11-15 判据注记，都是主仓"
+                "尚未提交的改动；molecules.py 是等价实现（按 cid 逐个取 conformer）。",
+        "why": "副本当年是从主仓**工作区**同步的，主仓这些改动一直没提交，导致 "
+               "sync_core --check 每次都报漂移。先登记避免 CI 永久红；主仓提交后应用 "
+               "sync_core.py 全量同步并删除本条。",
+        "tests": ["scripts/sync_core.py --check"],
+    },
 ]
 
 

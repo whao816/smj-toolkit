@@ -4,6 +4,20 @@
 
 ## 未发布
 
+### 复核修复 R1：TE 谱行序不再影响 Seebeck 符号（2026-11-20）
+
+- **问题**：`analyze_te` 按 `TE.dat` 行序直接梯形积分，`L1` 有符号而 `L0/L2` 取绝对值；
+  能量列写成降序时 L1 反号 → Seebeck 静默变成反号（demo 薁谱 +25.94 ↔ −25.94 µV/K）。
+- **上游修复**（`agenticdft/agenticdft/tools/junction/landauer.py`）：新增
+  `energy_order(rows)`；`analyze_te` 发现非升序时按 `E−E_F` 排序后再积分，并返回
+  `input_energy_order` / `reordered` / `warnings`。`independent_check.l0_l1_l2` 同口径排序。
+- **本包**：`src/smj/analysis.py` 保留 vendored 的 `warnings`（旧实现直接清空，等于把
+  "已被静默排序"这条唯一提示也吞掉）；`aitranss_te.collect` 记 `energy_order`，非升序时
+  在 notes 里写明。新增 `tests/test_te_order.py`（5 例，含顺序无关参考积分对照）。
+- **VENDOR 维护**：`scripts/sync_core.py` 落地（`--check`/`--list`/`--files`，
+  默认跳过已登记补丁的文件）；`VENDOR.json` 新增 `F-UPSTREAM-PENDING-2026-11-20`
+  条目，登记 7 个"副本领先于主仓 HEAD"的文件；CI 增加 `gen_vendor_json.py --check`。
+
 ### 结级自旋初猜与释放约束（2026-11-19）
 
 - `molecule.initial_moments` 现在会映射到结几何：`aims_tip_relax`/`aims_scf`

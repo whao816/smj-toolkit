@@ -36,6 +36,18 @@ jobs:
       - name: Run test suite
         run: python -m pytest -q
 
+  vendor:
+    name: vendor manifest (VENDOR.json sha256 + local patches)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: VENDOR.json must match vendored files on disk
+        run: python scripts/gen_vendor_json.py --check
+
   dist:
     name: build wheel + sdist, install smoke
     runs-on: ubuntu-latest

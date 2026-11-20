@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .._vendor.junction.geometry import read_aims_geometry
 from .._vendor.junction.inputs import make_aitranss_input
-from .._vendor.junction.landauer import read_te
+from .._vendor.junction.landauer import energy_order, read_te
 from .._vendor.junction.self_energy import make_self_energy
 from .._vendor.junction.tcontrol import parse_efermi, parse_mos_nsaos
 from ..errors import StageBlocked, StageError
@@ -176,12 +176,18 @@ class AitranssTeStage(Stage):
             _, channels = read_te_channels(te)
         except ValueError:
             channels = 1
+        order = energy_order(rows)
+        if order != "ascending":
+            notes.append(
+                "TE.dat 能量列非升序(%s)：分析时已按 E-E_F 升序排序，S 符号不受行序影响"
+                % order)
         results = {
             "aitranss_te": {
                 "points": len(rows),
                 "te_bytes": te.stat().st_size,
                 "max_transmission": max(row[2] for row in rows),
                 "transmission_channels": channels,
+                "energy_order": order,
                 "has_te_out": te_out.is_file(),
                 "require_te_out": require_te_out,
                 "software": software or None,

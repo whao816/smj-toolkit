@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
-  "repo_commit": "8eaa8fb925870cfeb0ed83d25fe25a01323b9987",
+  "repo_commit": "21127a2730362c6ef5f4c83f5f060c89d1e45a89",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -54,8 +54,8 @@
       "bytes": 10168
     },
     "independent_check.py": {
-      "sha256": "76dac0d97a8c5f5ae8bebc9cb091afd2da3d2158b8324ed266ff4b91bfe772b4",
-      "bytes": 7952
+      "sha256": "8307da56896ae27fe293232da7999d82ccf06a31bd9eb1998d900e46f035638f",
+      "bytes": 8216
     },
     "inputs.py": {
       "sha256": "7128fdefe5a36740080e296f52287635a3e1aaec7a82be337aa3ab58d081d255",
@@ -66,8 +66,8 @@
       "bytes": 9557
     },
     "landauer.py": {
-      "sha256": "607b0cc502aa890eaa9b4da0ed214d057eada8bad13ddd6ae7c917539d4fce0c",
-      "bytes": 4202
+      "sha256": "e8b781d90aff457ba4e2ee9aabb6ece284876ce76caaededb37a8ee8ef2a73bd",
+      "bytes": 5676
     },
     "manifest.py": {
       "sha256": "ab9071810cbbf550a3b0d82cfa6bad5bfb770f9bcf228efe3f4b1603f0645446",
@@ -290,6 +290,24 @@
         "tests/test_resonance_attribution.py",
         "tests/test_family.py",
         "tests/test_criteria_failopen.py"
+      ]
+    },
+    {
+      "id": "F-UPSTREAM-PENDING-2026-11-20",
+      "commit": "2026-11-20",
+      "files": [
+        "fixtures.py",
+        "molecules.py",
+        "surface_index.py",
+        "tcontrol.py",
+        "templates/control_relax.in",
+        "templates/gaussian_opt_freq.gjf",
+        "templates/sub_g16.sh"
+      ],
+      "what": "副本与主仓工作区一致、但与主仓 HEAD（26c197b）不同：tcontrol 的 _spin_moment_line、surface_index.pick_surface_triple(away=…)、三份模板的 SCF 精度/scratch 目录/spin 行、fixtures 的 2026-11-15 判据注记，都是主仓尚未提交的改动；molecules.py 是等价实现（按 cid 逐个取 conformer）。",
+      "why": "副本当年是从主仓**工作区**同步的，主仓这些改动一直没提交，导致 sync_core --check 每次都报漂移。先登记避免 CI 永久红；主仓提交后应用 sync_core.py 全量同步并删除本条。",
+      "tests": [
+        "scripts/sync_core.py --check"
       ]
     }
   ],

@@ -490,10 +490,18 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 
 - **主仓是权威源**：`src/smj/_vendor/junction/` 是 `agenticdft/agenticdft/tools/junction/`
   的副本（含模板），算法改动一律先改主仓，再同步；不要随意手改 vendored 文件。
-- **本仓库的来历**：由 0.1.0 wheel 还原成源码树（wheel 本身不含 `scripts/`、`tests/`、
-  `VENDOR.json`），因此**没有** `sync_core.py` 可用；0.1.1 的本地补丁都登记在
-  `src/smj/_vendor/junction/VENDOR.json` 的 `local_patch` 字段里（逐条写明文件、原因、
-  过了哪条测试），便于日后回迁主仓。
+- **本仓库的来历**：由 0.1.0 wheel 还原成源码树（wheel 本身不含 `scripts/`、`tests/`），
+  0.2.x 起补回了 `scripts/gen_vendor_json.py` 与 `scripts/sync_core.py`。日常两条命令：
+  - `python scripts/sync_core.py --check`：逐字节比对副本与主仓。**带本地补丁的文件不
+    计漂移**（会打印跳过清单），否则 CI 会永久红、失去信号；`--files a.py,b.py` 只同步
+    点名的文件，`--list` 看受管文件与补丁状态。
+  - `python scripts/gen_vendor_json.py --check`：校验 `VENDOR.json` 的 sha256 台账与磁盘
+    一致（改过 vendored 文件必须重跑它，否则 `smj verify`/CI 报哈希过期）。
+  - 主仓默认位置是同级目录 `../AgenticDFT/agenticdft/agenticdft/tools/junction`，可用
+    `--source` 或环境变量 `SMJ_CANONICAL_JUNCTION` 覆盖。
+- 本地补丁逐条登记在 `src/smj/_vendor/junction/VENDOR.json` 的 `local_patches` 字段
+  （id / commit / files / what / why / tests），由 `gen_vendor_json.py` 的 `LOCAL_PATCHES`
+  生成，便于日后回迁主仓；回迁后删掉对应条目再重新 sync。
 - 主仓的 VASP 运行根（`agenticdft/work/`）与本包无关；本包的 run 产物落在
   `run.dir/run.name/`（默认是 `smj.yaml` 所在目录下的 `./<name>/`），不写主仓 `results.db`。
 

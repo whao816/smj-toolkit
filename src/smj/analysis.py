@@ -273,7 +273,9 @@ def analyze_te(te_path: str | Path, *, temperature: float = 300.0,
     result: dict[str, Any] = dict(core)
     result["schema"] = ANALYSIS_SCHEMA
     result["source"] = str(te)
-    result["warnings"] = []
+    # 保留 vendored 的口径告警（如 TE.dat 行序非升序被排序），不要在这里清空：
+    # 旧实现直接覆盖成 []，会让"倒序谱被静默排序"这条唯一提示消失。
+    result["warnings"] = list(core.get("warnings") or [])
 
     if independent:
         try:
