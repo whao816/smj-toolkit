@@ -23,13 +23,19 @@ from pathlib import Path
 
 _HEAD_BYTES = 4096
 
-#: 文件名 → 必须出现在头部的标识串。
-HEADERS = {
-    "basis-indices.out": "$basis.indices.aims",
-    "omat.aims": "$omat.aims",
-    "mos.aims": "$scfmo.aims",
-    "alpha.aims": "$scfmo.aims",
-    "beta.aims": "$scfmo.aims",
+#: 文件名 → 可接受的头部标识（任一命中即通过）。
+#:
+#: 2026-11-20 修：自旋极化 SCF（spin collinear）时 FHI-aims 221103 写的是
+#: ``alpha.aims`` / ``beta.aims``，头部标识分别是 ``$uhfmo_alpha.aims`` /
+#: ``$uhfmo_beta.aims``（不是 ``$scfmo.aims``）；旧表只认 ``$scfmo.aims``，
+#: 于是任何开壳层结在 collect 时都会被判成"文件被截断"，链在这里断掉。
+#: 少数版本/历史夹具仍写 ``$scfmo.aims``，两者都接受。
+HEADERS: dict[str, tuple[str, ...]] = {
+    "basis-indices.out": ("$basis.indices.aims",),
+    "omat.aims": ("$omat.aims",),
+    "mos.aims": ("$scfmo.aims",),
+    "alpha.aims": ("$uhfmo_alpha.aims", "$scfmo.aims"),
+    "beta.aims": ("$uhfmo_beta.aims", "$scfmo.aims"),
 }
 
 _BASIS_COUNT = re.compile(r"#\s*amount of basis functions used:\s*(\d+)")
@@ -49,7 +55,7 @@ def probe(path: str | Path) -> dict:
     expected = HEADERS.get(path.name)
     header_ok = True
     if expected is not None:
-        header_ok = expected in text
+        header_ok = any(marker in text for marker in expected)
     size_value = None
     if path.name == "basis-indices.out":
         match = _BASIS_COUNT.search(text)
@@ -63,7 +69,7 @@ def probe(path: str | Path) -> dict:
         "name": path.name,
         "path": str(path),
         "bytes": size,
-        "header": expected,
+        "header": " / ".join(expected) if expected else None,
         "header_ok": header_ok,
         "size_value": size_value,
     }

@@ -243,6 +243,17 @@ class TransportConfig:
     #: 产物变重。只影响产物、不影响求解参数，故与 ``require_te_out`` 一样**不进** protocol。
     extra_outputs: tuple[str, ...] = ()
 
+    # -- 静态 SCF 的收敛参数（aims_scf）--------------------------------------- #
+    #: ``occupation_type gaussian`` 的展宽宽度（eV）。默认 0.01 是分子口径；有限 Au
+    #: 团簇的近 E_F 态很密，0.01 eV 下占据数逐迭代跳变，配合 fixed_spin_moment 常
+    #: 落进 limit cycle（实测 152 原子 IFS 结 40 次迭代 Δρ 卡在 0.02-0.08）。金属
+    #: 电极结给 0.05（ttf-fixed 先例：88 原子结 85 次迭代收敛）。
+    occupation_width: float = 0.01
+    #: ``charge_mix_param``：Pulay 混合步长。金属 + 固定自旋时 0.2 会震荡，0.05 稳定。
+    charge_mix_param: float = 0.2
+    #: ``n_max_pulay``：Pulay 历史长度。加到 20-30 通常能救回缓慢收敛的金属结。
+    n_max_pulay: int = 10
+
     def relative_window(self) -> tuple[float, float, float]:
         """相对 E_F 的 eV 三元组（仅 ``energy_window_unit: eV`` 口径）。"""
         if self.energy_window_unit != "eV":
@@ -460,7 +471,8 @@ _ELECTRODE_KEYS = {
     "relax", "relax_force_threshold", "relax_freeze",
 }
 _TRANSPORT_KEYS = {"temperature", "energy_window", "energy_window_unit",
-                   "ener", "estep", "eend", "require_te_out", "extra_outputs"}
+                   "ener", "estep", "eend", "require_te_out", "extra_outputs",
+                   "occupation_width", "charge_mix_param", "n_max_pulay"}
 _CLUSTER_KEYS = {
     "host", "user", "port", "key", "remote_root", "partition", "ntasks", "gres",
     "account", "qos", "species_dir", "poll_seconds", "timeout_hours", "env",
@@ -678,9 +690,22 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
         require_te_out=_as_bool(data.get("require_te_out", True),
                                 "transport.require_te_out"),
         extra_outputs=_parse_extra_outputs(data.get("extra_outputs")),
+        occupation_width=_as_float(data.get("occupation_width", 0.01),
+                                   "transport.occupation_width"),
+        charge_mix_param=_as_float(data.get("charge_mix_param", 0.2),
+                                   "transport.charge_mix_param"),
+        n_max_pulay=_as_int(data.get("n_max_pulay", 10), "transport.n_max_pulay"),
     )
     if cfg.temperature <= 0:
         raise ConfigError("transport.temperature 应 > 0 K，实际是 %s" % cfg.temperature)
+    if not 0.0 < cfg.occupation_width <= 0.5:
+        raise ConfigError("transport.occupation_width 应在 (0, 0.5] eV，实际是 %s"
+                          % cfg.occupation_width)
+    if not 0.0 < cfg.charge_mix_param <= 1.0:
+        raise ConfigError("transport.charge_mix_param 应在 (0, 1]，实际是 %s"
+                          % cfg.charge_mix_param)
+    if cfg.n_max_pulay < 0:
+        raise ConfigError("transport.n_max_pulay 应 >= 0，实际是 %s" % cfg.n_max_pulay)
     return cfg
 
 
@@ -917,6 +942,9 @@ transport:
   energy_window_unit: eV    # eV（默认）= 相对费米能级；Hartree = 旧口径（Ha 绝对能量三元组）
   require_te_out: true      # false = 允许缺 te.out 的外部/历史 run（显式豁免，不建议）
   # extra_outputs: [hirshfeld, spin_density]   # 开壳层证据：Hirshfeld 磁矩 + 自旋密度 cube
+  occupation_width: 0.01    # 静态 SCF 的 gaussian 展宽(eV)；金属电极结建议 0.05（0.01 常令 fixed_spin_moment 震荡）
+  charge_mix_param: 0.2     # Pulay 混合步长；金属 + 固定自旋建议 0.05
+  n_max_pulay: 10           # Pulay 历史长度；难收敛的金属结可加到 20-30
 
 cluster:
   host: null                # ~/.ssh/config 别名，如 cluster

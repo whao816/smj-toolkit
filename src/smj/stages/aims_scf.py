@@ -62,7 +62,8 @@ class AimsScfStage(Stage):
         env = ctx.stage_env(self.name, estimate)
         # 额外输出（默认空）：只有开壳层才允许要自旋密度——闭壳层没有自旋密度可写，
         # 静默接受会让人以为"自旋密度已产出"。
-        extra_outputs = tuple(getattr(getattr(ctx.config, "transport", None), "extra_outputs", ()) or ())
+        transport = getattr(ctx.config, "transport", None)
+        extra_outputs = tuple(getattr(transport, "extra_outputs", ()) or ())
         if "spin_density" in extra_outputs and not state.open_shell:
             raise StageError(
                 "transport.extra_outputs 含 spin_density，但 molecule.multiplicity=%d "
@@ -78,6 +79,9 @@ class AimsScfStage(Stage):
             fixed_spin_moment=state.fixed_spin_moment,
             vdw=vdw_mode(ctx.config.electrode.vdw),
             extra_outputs=extra_outputs,
+            occupation_width=float(getattr(transport, "occupation_width", 0.01)),
+            charge_mix_param=float(getattr(transport, "charge_mix_param", 0.2)),
+            n_max_pulay=int(getattr(transport, "n_max_pulay", 10)),
         )
         # scf 模板已带 fixed_spin_moment 行；这里只补 FHI-aims 必需的初猜。
         control = Path(written["control"])
@@ -132,6 +136,14 @@ class AimsScfStage(Stage):
                 % (sorted(moments), sorted(written_moments),
                    "、".join("原子 %d=%.3g μB" % (index, value)
                             for index, value in written_moments.items())))
+        scf_tuning = (float(getattr(transport, "occupation_width", 0.01)),
+                      float(getattr(transport, "charge_mix_param", 0.2)),
+                      int(getattr(transport, "n_max_pulay", 10)))
+        if scf_tuning != (0.01, 0.2, 10):
+            notes.append(
+                "静态 SCF 收敛参数偏离默认：occupation_width=%g eV、"
+                "charge_mix_param=%g、n_max_pulay=%d（默认 0.01 / 0.2 / 10）"
+                % scf_tuning)
         if state.charge:
             notes.append(
                 "电荷 %+d：geometry.in 已按原子数均分写 per-atom initial_charge"

@@ -374,6 +374,7 @@ def make_aims_scf_input(geometry_in: str | Path, outdir: str | Path,
                         fixed_spin_moment: float = 0.0, occupation_width: float = 0.01,
                         sc_iter_limit: int = 500, env: dict | None = None,
                         vdw: str | None = None,
+                        charge_mix_param: float = 0.2, n_max_pulay: int = 10,
                         extra_outputs: tuple[str, ...] | list[str] | None = None) -> dict:
     """消费 au60_build 的 geometry.in -> control_scf.in(aitranss 输出) + sub_aims.sh。"""
     e = _env(env)
@@ -386,11 +387,13 @@ def make_aims_scf_input(geometry_in: str | Path, outdir: str | Path,
     make_control(geom, out / 'control.in', 'scf', species_dir,
                  xc=xc, spin=spin, charge=charge, occupation_width=occupation_width,
                  fixed_spin_moment=fixed_spin_moment, sc_iter_limit=sc_iter_limit, vdw=vdw,
+                 charge_mix_param=charge_mix_param, n_max_pulay=n_max_pulay,
                  extra_outputs=tuple(extra_outputs or ()))
     sub = out / 'sub_aims.sh'
     _write(sub, _render_aims_sub(e, e['ntasks']))
     summary = {'species_dir': str(species_dir), 'xc': xc, 'spin': spin, 'charge': charge,
                'fixed_spin_moment': fixed_spin_moment, 'occupation_width': occupation_width,
+               'charge_mix_param': charge_mix_param, 'n_max_pulay': n_max_pulay,
                'sc_iter_limit': sc_iter_limit, 'ntasks': e['ntasks'],
                'partition': e['partition'],
                'aims_gpus': str(e.get('aims_gpus') or '').strip() or 'cpu',

@@ -29,8 +29,9 @@ OMAT = (
 )
 
 MOS = "$scfmo.aims   iteration    1\n  1.00000000000000E+00\n"
-ALPHA = "$scfmo.aims   alpha spin channel\n  1.00000000000000E+00\n"
-BETA = "$scfmo.aims   beta spin channel\n  1.00000000000000E+00\n"
+# 自旋极化：FHI-aims 221103 实际写的是 $uhfmo_alpha.aims / $uhfmo_beta.aims
+ALPHA = "$uhfmo_alpha.aims   iteration:    1   format(4d20.14)\n  1.00000000000000E+00\n"
+BETA = "$uhfmo_beta.aims   iteration:    1   format(4d20.14)\n  1.00000000000000E+00\n"
 
 SCF_CONVERGED = "Self-consistency cycle converged.\nHave a nice day.\n"
 RELAX_CONVERGED = "Present geometry is converged.\nHave a nice day.\n"

@@ -9,8 +9,8 @@
 
   occupation_type    gaussian {occupation_width}
   mixer              pulay
-  n_max_pulay        10
-  charge_mix_param   0.2
+  n_max_pulay        {n_max_pulay}
+  charge_mix_param   {charge_mix_param}
   sc_accuracy_rho    1E-5
   sc_accuracy_eev    1E-3
   sc_accuracy_etot   1E-6
