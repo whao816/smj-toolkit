@@ -67,6 +67,27 @@ def energy_order(rows: list[tuple[float, float, float]]) -> str:
     return "unsorted"
 
 
+def sort_by_energy(rows: Iterable[tuple]) -> list[tuple]:
+    """按 ``E−E_F``（第 2 列）升序排序，3 列/4 列行元组通用。
+
+    单一出口：积分、峰检测、绘图都从同一套有序行出发 —— 2026-11-20 复审 P1-3
+    的根因正是"积分自己排了序，峰检测又按文件行序读了一遍"。
+    """
+    return sorted(rows, key=lambda row: row[1])
+
+
+def read_te_ordered(path: str | Path) -> tuple[list[tuple[float, float, float]], str]:
+    """TE.dat -> (按 ``E−E_F`` 升序的行, 原始行序)。
+
+    行序不是物理量（见 :func:`energy_order`），但峰检测、绘图、窗口判据都依赖
+    "相邻行 = 相邻能量"这一前提，故统一从这里取数。返回的 ``order`` 是**文件
+    原始**行序，供下游记录"是否被纠正过"。
+    """
+    rows = read_te(path)
+    order = energy_order(rows)
+    return (sort_by_energy(rows) if order != "ascending" else rows), order
+
+
 def minus_fermi_derivative(e_ev: float, temperature: float) -> float:
     x = e_ev / (2.0 * KB_EV_PER_K * temperature)
     if abs(x) > 50:
@@ -75,15 +96,44 @@ def minus_fermi_derivative(e_ev: float, temperature: float) -> float:
     return 1.0 / (4.0 * KB_EV_PER_K * temperature * c * c)
 
 
+def fermi(e_ev: float, temperature: float) -> float:
+    """费米-狄拉克占据 ``f(E)``，``E`` 为 ``E − E_F``（eV）。"""
+    x = e_ev / (KB_EV_PER_K * temperature)
+    if x > 50.0:
+        return 0.0
+    if x < -50.0:
+        return 1.0
+    return 1.0 / (1.0 + math.exp(x))
+
+
+def thermal_window(rows: Iterable[tuple], temperature: float) -> dict:
+    """费米窗覆盖：端点占据差 ``f(E_min) − f(E_max)`` 与端点相对 kBT 的位置。
+
+    这是"截窗积分有没有代表性"的唯一直接量（2026-11-20 复审 P1-1）：
+    覆盖≈1 时 ``∫T·(−∂f/∂E)dE`` 才是 E_F 附近的展开；覆盖 << 1 时 G 被系统性
+    低估、S 的符号可被端点截断带偏。判据不是它本身，而是 ``coverage`` 是否
+    超过 ``criteria.MIN_THERMAL_COVERAGE``。
+    """
+    energies = [r[1] for r in rows]
+    e_min, e_max = min(energies), max(energies)
+    kbt = KB_EV_PER_K * temperature
+    return {
+        "e_min_ev": e_min,
+        "e_max_ev": e_max,
+        "kbt_ev": kbt,
+        "lower_kbt": e_min / kbt,
+        "upper_kbt": e_max / kbt,
+        "coverage": fermi(e_min, temperature) - fermi(e_max, temperature),
+    }
+
+
 def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path | None = None) -> dict:
-    rows = read_te(path)
-    order = energy_order(rows)
+    rows, order = read_te_ordered(path)
     warnings: list[str] = []
     if order != "ascending":
         # 行序不是物理量: 排序后积分, 让升序/降序/乱序给出**同一**物理结果。
         # 不排序时梯形积分随 x 方向整体变号, 只有带符号的 L1 没被 abs 吸收,
         # 于是倒序 TE.dat 会静默把 S 反号(2026-11-20 复核 P1-1)。
-        rows = sorted(rows, key=lambda r: r[1])
         warnings.append(
             "TE.dat 的能量列不是升序(%s); 已按 E-E_F 升序排序后积分" % order)
     e_ev = [r[1] for r in rows]
@@ -107,6 +157,7 @@ def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path 
         "k_e_pW_per_K": 1.60217733e-7 * (l2 - (l1 * l1) / l0) * 2.0 / (H_EV_S * temperature) if l0 else None,
         "ZT_electronic": 1.0 / ((l0 * l2) / (l1 * l1) - 1.0) if l1 else None,
         "fermi_nearest": nearest_energy(rows, 0.0),
+        "thermal_window": thermal_window(rows, temperature),
         "max_transmission": max(({"E_Hartree": r[0], "E_minus_Ef_eV": r[1], "T": r[2]} for r in rows), key=lambda x: x["T"]),
         # 行序观测: 让下游能区分"本来就是升序"与"被脚本纠正过"。
         "input_energy_order": order,

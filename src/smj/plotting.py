@@ -149,10 +149,16 @@ def read_curve(path: str | Path) -> dict[str, Any]:
     调用不变）；``t_alpha``/``t_beta`` 是分通道曲线，单列文件里两者相等且
     ``channels == 1``。支持 D 指数、跳过注释。
     """
+    from .junction.landauer import energy_order, sort_by_energy
     from .landauer_spin import read_te_channels
 
     te = resolve_te(path)
     rows, channels = read_te_channels(te)
+    order = energy_order(rows)
+    if order != "ascending":
+        # 2026-11-20 复审 P1-3: 曲线与峰检测/积分共用同一能量序, 乱序文件
+        # 不再把"文件相邻行"画成"能量相邻点"。
+        rows = sort_by_energy(rows)
     alpha = [max(float(r[2]), 0.0) for r in rows]
     beta = [max(float(r[3]), 0.0) for r in rows]
     return {
@@ -162,6 +168,7 @@ def read_curve(path: str | Path) -> dict[str, Any]:
         "t_alpha": alpha,
         "t_beta": beta,
         "channels": channels,
+        "energy_order": order,
     }
 
 

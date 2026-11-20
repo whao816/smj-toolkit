@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .junction.landauer import minus_fermi_derivative, trapz
+from .junction.landauer import energy_order, minus_fermi_derivative, sort_by_energy, trapz
 
 
 def read_te_channels(path: str | Path) -> tuple[list[tuple[float, float, float, float]], int]:
@@ -59,6 +59,12 @@ def _max_transmission(rows, index: int) -> dict:
 def analyze_te_spin(path: str | Path, temperature: float = 300.0) -> dict:
     """双通道 Landauer 量：每通道 L0 / G/G0、E_F 处与积分后的自旋极化率。"""
     rows, channels = read_te_channels(path)
+    # 2026-11-20 复审 P1-2: 行序不是物理量。旧实现按文件行序做 trapz, 乱序 TE.dat
+    # 会得到与升序完全不同的 L0α/L0β(实测 0.541327 vs 0.249782)而总 L0 恰好不变,
+    # 于是 results.json 里 "total 自洽、通道不自洽"。与 analyze_te 共用同一套排序。
+    input_order = energy_order(rows)
+    if input_order != "ascending":
+        rows = sort_by_energy(rows)
     e_ev = [row[1] for row in rows]
     alpha = [max(row[2], 0.0) for row in rows]
     beta = [max(row[3], 0.0) for row in rows]
@@ -75,6 +81,7 @@ def analyze_te_spin(path: str | Path, temperature: float = 300.0) -> dict:
         "channels": channels,
         "temperature_K": temperature,
         "points": len(rows),
+        "input_energy_order": input_order,
         "L0_alpha": l0_alpha,
         "L0_beta": l0_beta,
         "g_over_g0_alpha": 0.5 * l0_alpha,

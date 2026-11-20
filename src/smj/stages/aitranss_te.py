@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..junction.geometry import read_aims_geometry
 from ..junction.inputs import make_aitranss_input
-from ..junction.landauer import energy_order, read_te
+from ..junction.landauer import read_te_ordered
 from ..junction.self_energy import make_self_energy
 from ..junction.tcontrol import parse_efermi, parse_mos_nsaos
 from ..errors import StageBlocked, StageError
@@ -169,7 +169,7 @@ class AitranssTeStage(Stage):
         stage_dir = Path(stage_dir)
         te = ctx.require_stage_file(self.name, "TE.dat")
         try:
-            rows = read_te(te)
+            rows, order = read_te_ordered(te)
         except ValueError as exc:
             raise StageError("aitranss_te 无法解析 TE.dat: %s" % exc) from exc
 
@@ -200,7 +200,7 @@ class AitranssTeStage(Stage):
             _, channels = read_te_channels(te)
         except ValueError:
             channels = 1
-        order = energy_order(rows)
+        # 2026-11-20 复审 P1-3: rows 已按 E−E_F 升序, order 是文件原始行序。
         if order != "ascending":
             notes.append(
                 "TE.dat 能量列非升序(%s)：分析时已按 E-E_F 升序排序，S 符号不受行序影响"

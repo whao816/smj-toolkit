@@ -12,7 +12,7 @@ from pathlib import Path
 import json
 import re
 from .geometry import Atom, write_xyz
-from .landauer import nearest_energy, read_te
+from .landauer import nearest_energy, read_te_ordered
 
 
 # ---- 完整周期表(1-92, 含常见 f 区; 超出报错而非 X{编号} 静默回退) ----
@@ -59,7 +59,9 @@ def match_orbital(
     target_e_ev: float | None = None,
     output: str | Path | None = None,
 ) -> dict:
-    te_rows = read_te(te_path)
+    # 2026-11-20 复审 P1-3: 统一走 read_te_ordered; peak 模式下 max() 虽与行序
+    # 无关, 但"取第几行"必须与绘图/峰检测口径一致。
+    te_rows, _ = read_te_ordered(te_path)
     if mode == "fermi":
         target = nearest_energy(te_rows, 0.0)
     elif mode == "peak":

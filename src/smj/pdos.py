@@ -403,14 +403,11 @@ def energy_grid(te_path: str | Path) -> dict[str, Any]:
     """从 TE.dat 取能量轴（``E − E_F`` eV，已按升序）与 ``efermi``。"""
     from smj.analysis import te_header  # 表头口径与 report/analysis 共用
     from smj.junction.landauer import analyze_te as _analyze  # 复用已排序、已校验的读取
+    from smj.junction.landauer import read_te_ordered
 
     rows = _analyze(te_path)
-    from smj.junction.landauer import read_te
-
-    data = read_te(te_path)
+    data, _ = read_te_ordered(te_path)      # 2026-11-20 复审 P1-3: 单一能量序
     grid = [float(row[1]) for row in data]
-    order = sorted(range(len(grid)), key=lambda i: grid[i])
-    grid = [grid[i] for i in order]
     header = te_header(te_path)
     return {
         "te_path": str(te_path),
@@ -586,10 +583,10 @@ def plot_pdos(result: Mapping[str, Any], te_path: str | Path, target: str | Path
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from smj.junction.landauer import read_te
+    from smj.junction.landauer import read_te_ordered
 
     grid = list(result["grid_eV"])
-    rows = read_te(te_path)
+    rows, _ = read_te_ordered(te_path)
     by_energy = {float(row[1]): float(row[2]) for row in rows}
     transmission = [by_energy.get(energy) for energy in grid]
 

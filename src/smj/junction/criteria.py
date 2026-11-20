@@ -31,6 +31,13 @@ THY = {'doi': '10.1016/j.chemphys.2005.05.032'}
 JAC = {'doi': '10.1016/j.susc.2009.01.022'}
 WID = {'doi': '10.1021/nl203634m'}
 
+# 费米窗覆盖门限 f(E_min)-f(E_max)。0.95 ≈ E_F ± 3.66 kBT（300 K 时 ±0.095 eV）。
+# 这是**数值约定**（截窗积分的有代表性程度），不是文献物理常数 —— 也因此该判据
+# 在 KNOWN_GAPS 里登记为"无一手源"。取 0.95 而不是 0.99 的理由: 现有 52 份 run
+# 全部 >=0.9999（2026-11-20 实测），0.95 只拦截真正的窄窗，且 ±3.66 kBT 已覆盖
+# 费米窗 99% 以上的权重。
+MIN_THERMAL_COVERAGE = 0.95
+
 # kind: physical(物理判据, 须有源) | engineering(程序/接口语义, 免源但须标注)
 # gate: error(阻断) | warn(告警) | info(仅报告)
 CRITERIA = [
@@ -98,6 +105,13 @@ CRITERIA = [
      'note': '2026-11-20 复核 P1-2: TE.dat 的 E-E_F 必须跨 0(min<=0<=max)。整窗落在 E_F '
              '一侧时费米窗权重全在同一侧, L0/L1/L2 不是 E_F 处展开, S 无物理意义 -> failed'},
 
+    {'name': 'te_thermal_window_coverage', 'kind': 'physical', 'gate': 'error', 'implemented': True,
+     'band': [MIN_THERMAL_COVERAGE, 1.0], 'source': None,
+     'note': '2026-11-20 复审 P1-1: 窗口跨 0 还不够 —— 覆盖权重 f(E_min)-f(E_max) 也必须 ≥0.95'
+             '(≈ E_F ±3.66 kBT)。窄窗(实测 [-0.025,+0.001] eV, 覆盖 0.234)下截窗积分仍给出数, '
+             '但 G 被低估(~4x)、S 的符号可被端点带偏; 这是数值约定而非物理常数, 故登记在 '
+             'KNOWN_GAPS; 未过按"证据不足"(missing)归约 inconclusive, 不写成否证 H0'},
+
     {'name': 'k_e_zt_order', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
      'band': None, 'source': None,
      'note': '2026-11-20 复核 R12: 评估器确实会 emit 该判据(κe≥0 与 ZT 量级常识), '
@@ -106,7 +120,7 @@ CRITERIA = [
 ]
 
 # 已登记缺口(ratchtet): 只允许这些无源/未实现的 physical 判据存在, 新增即 lint 失败
-KNOWN_GAPS = frozenset({'k_e_zt_order'})
+KNOWN_GAPS = frozenset({'k_e_zt_order', 'te_thermal_window_coverage'})
 
 # ---------------------------------------------------------------------------
 # A (2026-10-24, 用户拍板"窄口径"): 判据**适用域**。
@@ -452,7 +466,7 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
     multiplicity: 分子多重度; >1 即开壳层, 按族标定的判据一律不作闸门（判据族
     只针对闭壳层标定过）。
     """
-    from .landauer import analyze_te, read_te
+    from .landauer import analyze_te, read_te_ordered
     family = system_family(system)
     open_shell = is_open_shell(multiplicity)
     d = Path(run_dir)
@@ -463,7 +477,9 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
                        missing=True)]
     try:
         res = analyze_te(te, temperature=temperature)
-        rows = read_te(te)
+        # 2026-11-20 复审 P1-3: 峰检测/窗口判据必须与积分共用同一套升序行 ——
+        # 旧实现这里又按文件行序读了一遍, 乱序谱的"相邻行"不是"相邻能量"。
+        rows, order = read_te_ordered(te)
     except Exception as exc:                                    # 解析失败不静默
         # 2026-11-15: t_ef_magnitude 取消后, 解析失败归到 te_present(存在但不可解析),
         # 仍按"证据缺失"处理, 不得判 passed。
@@ -482,7 +498,28 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
         'te_window_covers_efermi', [round(lo_ev, 6), round(hi_ev, 6)], covers,
         '能量窗 E-E_F ∈ [%+.4f, %+.4f] eV %s 0: %s'
         % (lo_ev, hi_ev, '跨越' if covers else '**未跨越**',
-           '正常' if covers else '整窗在 E_F 一侧, Seebeck/ZT 无物理意义')))
+           '正常' if covers else '整窗在 E_F 一侧, Seebeck/ZT 无物理意义')
+        + ('' if order == 'ascending'
+           else ' [输入行序 %s, 已按 E 升序校验]' % order)))
+
+    # ⓪b 费米窗覆盖(2026-11-20 复审 P1-1, 本地补丁 F-RECHECK-coverage):
+    # 跨 0 只是必要条件。窗口窄到端点占据差远小于 1 时, ∫T·(-∂f/∂E)dE 放弃了大
+    # 部分费米窗权重: G 被系统性低估, S 的符号由端点截断决定。这是**证据不足**
+    # (missing) 而不是物理否证, 故归约 inconclusive 而非 failed。
+    window = res.get('thermal_window') or {}
+    coverage = float(window.get('coverage', 0.0))
+    covered = coverage >= MIN_THERMAL_COVERAGE
+    checks.append(_check(
+        'te_thermal_window_coverage', round(coverage, 6), covered,
+        '温度 %.0f K, kBT=%.2f meV: 能量窗 [%+.4f, %+.4f] eV = [%+.2f, %+.2f] kBT; '
+        '费米窗覆盖 f(E_min)-f(E_max)=%.4f (门限 %.2f)%s'
+        % (temperature, 1000.0 * window.get('kbt_ev', 0.0),
+           window.get('e_min_ev', lo_ev), window.get('e_max_ev', hi_ev),
+           window.get('lower_kbt', 0.0), window.get('upper_kbt', 0.0),
+           coverage, MIN_THERMAL_COVERAGE,
+           '' if covered else '; 覆盖不足: 截窗积分低估 G, S 符号可被端点带偏'
+                              ' -> 证据不足, 不判 passed'),
+        missing=not covered))
     # ① E_F 近旁的显著透射峰: 按族归因(2026-11-15: "有峰"从错误信号改为需解释的物理信号)
     pk = [p for p in significant_peaks(rows) if abs(p[0]) <= PEAK_SEARCH_WINDOW_EV]
     band_lo, band_hi = _bf('t_ef_resonance_attribution') or (0.15, 1.0)

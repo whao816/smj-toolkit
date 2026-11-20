@@ -348,7 +348,7 @@ def _resource_summary(run_dir: Path, state: RunState,
 _TRANSPORT_KEYS = (
     "points", "temperature_K", "L0", "L1", "L2", "log10_G_over_G0_like",
     "S_uV_per_K", "k_e_pW_per_K", "ZT_electronic", "fermi_nearest",
-    "max_transmission",
+    "max_transmission", "thermal_window",
 )
 
 
@@ -800,6 +800,12 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         lines.append("| k_e (pW/K) | %s |" % _fmt(transport.get("k_e_pW_per_K"), "%.4f"))
         lines.append("| ZT_electronic | %s |" % _fmt(transport.get("ZT_electronic"), "%.6f"))
         lines.append("| 数据点 | %s |" % _cell(transport.get("points")))
+        window = transport.get("thermal_window")
+        if isinstance(window, Mapping):
+            lines.append("| 费米窗覆盖 | %s |" % _fmt(window.get("coverage"), "%.4f"))
+            if all(k in window for k in ("e_min_ev", "e_max_ev")):
+                lines.append("| 能量窗 (eV) | [%+.4f, %+.4f] |"
+                             % (float(window["e_min_ev"]), float(window["e_max_ev"])))
         lines.append("| 来源 | `%s` |" % _cell(transport.get("source")))
     else:
         lines.append("- 无 TE.dat / analysis.json，输运结果不可得。")
