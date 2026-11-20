@@ -4,6 +4,29 @@
 
 ## 未发布
 
+### 新增：分组 PDOS 与收敛扫描（P2，2026-11-20）
+
+P1 补了"有没有自旋证据"，P2 补"这些态在哪里"和"参数改动是否改变结论"：
+
+- `smj pdos RUN --groups molecule=1-20,left=21-52,right=53-84`：读 `aims_scf/mos.aims`
+  （开壳层读 `alpha.aims`/`beta.aims`）与 `basis-indices.out`，把每个基函数的系数
+  `c²` 按 `basis-indices.out` 的 atom 列归到原子、再按 `--groups` 汇总、乘占据数后做
+  高斯展宽，落在 `TE.dat` 的 E − E_F 网格上——**与 T(E) 同一能量轴**（`--sigma` 默认 0.1 eV）。
+  输出 `smj.pdos.v1`：`groups`/`channels{alpha,beta}`/`integrated_weight`/`state_energies_eV`/
+  `pdos{group: [...]}`；`--plot` 出上下两栏共享 x 轴的 T(E)+PDOS 图（`[plot]` extra）。
+  缺完整本征向量时**显式失败**（本地默认只回取 `mos.aims` 表头，实测 demo 的
+  `mos.aims` 只有 112 B），错误信息写明 `0/4364` 与"请整取"，`--fetch` 可按显式清单
+  从远端全量取回 `mos.aims`/`alpha.aims`/`beta.aims`。
+- `scripts/scan_convergence.py plan|run|compare`：把"改一个参数重跑一遍"做成矩阵。
+  `plan` 按 `--axis section.key=v1,v2` 展开变体、每个变体一份独立 `smj.yaml`
+  （`run.dir` 固定 `run`），只写计划**不提交作业**；`run` 必须 `--yes`
+  （遵守 AGENTS.md「只跑用户点名的计算」）；`compare` 读各变体 `analysis.json`，
+  沿轴按取值顺序比较相邻档的 S/G/ZT/κe，最大相对变化小于 `--tolerance`（默认 5%）
+  才算 `converged`，缺结果记 `missing` 并判 `incomplete`，**不把缺结果当 0**。
+- 新增 `tests/test_pdos.py`（12 例，含 CLI 与 `--fetch` 的配置检查）与
+  `tests/test_scan_convergence.py`（7 例：轴解析、变体展开、收敛/未收敛/缺结果、
+  `run` 无 `--yes` 不执行）。
+
 ### 新增：开壳层的第一手证据（P1，2026-11-20）
 
 P0 让报告"说出了"自旋通道，但证据仍只有 `TE.dat` 的两列透射谱：没有分原子磁矩、

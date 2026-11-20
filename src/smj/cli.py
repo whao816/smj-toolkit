@@ -10,6 +10,7 @@
     smj status    查看 state.json 与阶段状态
     smj report    生成人读报告（调用 smj.report）
     smj analyze   透射谱 / Landauer 分析（调用 smj.analysis）
+    smj pdos      分组 PDOS（按 atom list 投影到 α/β，与 T(E) 同能量轴）
     smj plot      按统一版式画 T(E) 图（调用 smj.plotting）
     smj audit     本地一致性检查（自包含，不依赖远端）
     smj review    结构复核（调用 smj.review）
@@ -802,6 +803,72 @@ def cmd_report(args: argparse.Namespace) -> int:
     return EXIT_OK if ok else EXIT_FAILED
 
 
+_PDOS_VECTOR_FILES = ("mos.aims", "alpha.aims", "beta.aims")
+
+
+def _fetch_pdos_vectors(args: argparse.Namespace) -> None:
+    """按显式清单整取波函数文件。
+
+    默认回取策略把 ``mos.aims``/``omat.aims`` 归入 head（实测集群侧 0.96 GB），
+    本地只留表头；PDOS 要的是完整系数，所以这里显式点名、按全量拉取。
+    """
+    from .config import load_config
+    from .errors import SmjError
+    from .runner import StageRunner
+
+    config = load_config(args.config)
+    run_dir = Path(args.run)
+    runner = StageRunner(
+        config, run_dir=run_dir,
+        logger=None if args.quiet else (lambda message: print(message)))
+    session = runner.session()
+    download = session.download("aims_scf", run_dir / "aims_scf",
+                                names=_PDOS_VECTOR_FILES)
+    fetched = list(download.get("fetched") or [])
+    missing = list(download.get("missing") or [])
+    if not fetched:
+        raise SmjError(
+            "没有从远端取回任何波函数文件（缺失: %s）。PDOS 需要完整的 "
+            "mos.aims（闭壳层）或 alpha.aims/beta.aims（开壳层）；"
+            "确认 run 目录与 remote 配置指向同一作业。" % (", ".join(missing) or "全部"))
+    if not args.quiet:
+        print("已取回: %s" % ", ".join(fetched))
+        if missing:
+            print("远端缺失/跳过: %s" % ", ".join(missing))
+
+
+def cmd_pdos(args: argparse.Namespace) -> int:
+    """分组 PDOS：数据不够就明确失败，不拿"只有本征值"的产物凑数。"""
+    from .pdos import analyze_pdos
+
+    plot = None if args.plot is None else (True if args.plot == "" else args.plot)
+    if args.fetch:
+        _fetch_pdos_vectors(args)
+    result = analyze_pdos(args.run, groups=args.groups, sigma_ev=args.sigma,
+                          te=args.te, output=args.output, plot=plot)
+    if args.json:
+        _emit_json(result)
+        return EXIT_OK
+    print("pdos: %s" % result["run_dir"])
+    print("  E_F = %r Ha；σ = %.3g eV；网格 %d 点" % (
+        result["efermi_Ha"], result["sigma_eV"], len(result["grid_eV"])))
+    for group in result["groups"]:
+        print("  分组 %-12s 原子 %d 个 / 基函数 %d 个"
+              % (group["name"], len(group["atoms"]), group["functions"]))
+    for name, channel in result["channels"].items():
+        weights = ", ".join("%s=%.4f" % (key, value)
+                            for key, value in channel["integrated_weight"].items())
+        print("  通道 %-6s %d 个态（%s）；积分权重 %s"
+              % (name, channel["states"], channel["spin"], weights))
+    for note in result["notes"]:
+        print("  注意: %s" % note)
+    if result.get("json_path"):
+        print("  结果: %s" % result["json_path"])
+    if (result.get("plot") or {}).get("path"):
+        print("  图: %s" % result["plot"]["path"])
+    return EXIT_OK
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     config = _load_config(args)
     module = _optional_module(_AUX_MODULES["analyze"][0], "analyze（透射谱分析）")
@@ -1358,6 +1425,27 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--plot", nargs="?", const="", default=None, metavar="PATH",
                          help="同时出 T(E) 图（缺省写到 TE.dat 同目录 T_E_plot.png）")
     analyze.set_defaults(handler=cmd_analyze)
+
+    pdos = subparsers.add_parser(
+        "pdos", help="分组 PDOS（按 atom list 投影到 α/β，与 T(E) 同能量轴）",
+        description="读 aims_scf 的 mos.aims/alpha.aims/beta.aims 与 basis-indices.out，"
+                    "按原子分组投影到 TE.dat 的 E − E_F 网格；缺完整本征向量会显式失败。")
+    _add_common(pdos, with_config=True)
+    pdos.add_argument("--fetch", action="store_true",
+                      help="先按显式清单从远端整取 mos.aims/alpha.aims/beta.aims"
+                           "（默认回取策略只抓表头，PDOS 需要完整本征向量）")
+    pdos.add_argument("run", metavar="RUN",
+                      help="run 目录（含 aims_scf/ 与 aitranss_te/TE.dat）")
+    pdos.add_argument("--groups", required=True, metavar="SPEC",
+                      help="原子分组，例如 molecule=1-20,left=21-52,right=53-84（1-based）")
+    pdos.add_argument("--sigma", type=float, default=0.1, metavar="EV",
+                      help="高斯展宽 σ（eV，默认 0.1）")
+    pdos.add_argument("--te", metavar="PATH", help="TE.dat 覆盖（默认 <run>/aitranss_te/TE.dat）")
+    pdos.add_argument("-o", "--output", metavar="PATH",
+                      help="把结果写成 JSON（默认只打印摘要）")
+    pdos.add_argument("--plot", nargs="?", const="", default=None, metavar="PATH",
+                      help="出 PDOS+T(E) 图（缺省写到 <run>/PDOS.png）")
+    pdos.set_defaults(handler=cmd_pdos)
 
     plot = subparsers.add_parser(
         "plot", help="按统一版式画 T(E) 图",

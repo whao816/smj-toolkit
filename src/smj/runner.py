@@ -213,6 +213,10 @@ class StageRunner:
                 self.context, transport=self._ensure_transport())
         return self._remote_session
 
+    def session(self) -> RemoteSession:
+        """对外的远端会话（``smj pdos --fetch`` 这类显式回取要用）。"""
+        return self._session()
+
     def _stage_script(self, name: str) -> str | None:
         """优先用 prepare 记下的脚本名（跨进程 --submit 也能工作）。"""
         state = self.state.stage(name)
