@@ -221,11 +221,26 @@ def main(argv: list[str] | None = None) -> int:
     manifest = build_manifest()
     text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
     if args.check:
-        current = VENDOR_JSON.read_text(encoding="utf-8") if VENDOR_JSON.is_file() else ""
-        if current != text:
+        if not VENDOR_JSON.is_file():
+            print("缺少 VENDOR.json：请运行 python scripts/gen_vendor_json.py")
+            return 1
+        try:
+            current = json.loads(VENDOR_JSON.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            print("VENDOR.json 不是合法 JSON：%s" % exc)
+            return 1
+        # repo_commit 记的是"生成时所在提交"，每次 commit 都会变；它不该让
+        # 校验变红（2026-11-20 复核 R10：旧实现整份文本比较，CI 必然红）。
+        # 其余字段（files 的 sha256/size、local_patches、schema、upstream 等）
+        # 逐字段比较，任何真实漂移仍然报错。
+        generated = dict(manifest)
+        recorded = dict(current)
+        generated.pop("repo_commit", None)
+        recorded.pop("repo_commit", None)
+        if recorded != generated:
             print("VENDOR.json 与磁盘内容不一致：请运行 python scripts/gen_vendor_json.py")
             return 1
-        print("VENDOR.json 一致：%d 个文件" % len(manifest["files"]))
+        print("VENDOR.json 一致：%d 个文件（repo_commit 不参与比对）" % len(manifest["files"]))
         return 0
 
     VENDOR_JSON.write_text(text, encoding="utf-8", newline="\n")

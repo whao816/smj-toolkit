@@ -14,7 +14,7 @@
 | 结几何 | 92 原子 = 18（去 S–H） + 2 Au tip + 72 库原子 |
 | species | `species/` 四个文件（01_H/06_C/16_S/79_Au），本地内联进 `control.in` |
 | 电子结构 | FHI-aims PBE，`KS_method serial`（aitranss 只认 serial 的 `omat.aims`） |
-| 输运窗 | `[-0.2075, 0.0002, -0.1695]` **Ha 绝对能量**（E_F≈−0.18845 Ha，即 E−E_F ∈ [−0.52, +0.52] eV，193 点） |
+| 输运窗 | `[-0.2075, 0.0002, -0.1695]` **Ha 绝对能量**（E_F≈−0.18845 Ha，即 E−E_F ∈ [−0.52, +0.52] eV，190 点） |
 
 > 注（历史）：本 demo 跑在 0.2.0 时代，当时 `transport.energy_window` 是 Hartree 绝对
 > 能量，不是 eV——这是本次 demo 踩到的第一个坑（见 §5）。2026-11-15 起默认口径改为
@@ -92,7 +92,7 @@ E_F 附近透射斜率极敏感（步长 5.4 meV），这个量级差异属预�
 | aims_tip_relax | 26020 | 8 rank / 8G | 3 min |
 | au_relax | 26029 | 8 rank / 9G | 71 min（15 个 SCF，末步最大力 0.028 eV/Å） |
 | aims_scf | 26033 | 4 rank / 9G | 38 min（90 次迭代收敛，E_F = −5.127 eV） |
-| aitranss_te | 26035 | 1 核 | 4 min（193 点） |
+| aitranss_te | 26035 | 1 核 | 4 min（190 点） |
 
 节点当时被 4 个 `adft-*` 作业各占 28G（合计 112G），本 demo 只能拿到 ~9.7G；8 rank 的
 aims_scf 会 OOM，降到 4 rank 才通过。

@@ -133,6 +133,14 @@ smj --help
 smj verify      # Python/PyYAML/numpy、vendored junction、模板、阶段模块（含 legacy au_relax）
 ```
 
+仓库级一致性检查（CI 同款，改动 vendored/demo 前后各跑一次）：
+
+```bash
+python scripts/gen_vendor_json.py --check     # VENDOR.json 的 sha256 台账（repo_commit 不参与比对）
+python scripts/sync_core.py --check           # vendored 副本 vs 主仓（带本地补丁的文件跳过）
+python scripts/gen_demo_reference.py --check  # demo 谱的数值基线（G/G0、S、k_e、ZT）
+```
+
 ## 2. 5 分钟快速开始
 
 ```bash
@@ -496,7 +504,8 @@ print(transport.commands[-2:])                 # 看实际发出的命令
     计漂移**（会打印跳过清单），否则 CI 会永久红、失去信号；`--files a.py,b.py` 只同步
     点名的文件，`--list` 看受管文件与补丁状态。
   - `python scripts/gen_vendor_json.py --check`：校验 `VENDOR.json` 的 sha256 台账与磁盘
-    一致（改过 vendored 文件必须重跑它，否则 `smj verify`/CI 报哈希过期）。
+    一致（改过 vendored 文件必须重跑它，否则 `smj verify`/CI 报哈希过期）。`repo_commit`
+    记的是生成时所在提交，**不参与**比对——否则每次 commit 都会让它变红。
   - 主仓默认位置是同级目录 `../AgenticDFT/agenticdft/agenticdft/tools/junction`，可用
     `--source` 或环境变量 `SMJ_CANONICAL_JUNCTION` 覆盖。
 - 本地补丁逐条登记在 `src/smj/_vendor/junction/VENDOR.json` 的 `local_patches` 字段

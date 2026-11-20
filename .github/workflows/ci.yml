@@ -48,6 +48,23 @@ jobs:
       - name: VENDOR.json must match vendored files on disk
         run: python scripts/gen_vendor_json.py --check
 
+  demo:
+    name: demo spectra regression (G/G0, S, ZT)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependencies only
+        # demo 回归只走 landauer 积分与容差比对，不需要 matplotlib/rdkit。
+        run: python -m pip install -e .
+      - name: demo-reference.json must match the spectra and the integrator
+        run: python scripts/gen_demo_reference.py --check
+      - name: Recompute demo transport quantities
+        run: python -m pytest -q tests/test_demo_regression.py
+
   dist:
     name: build wheel + sdist, install smoke
     runs-on: ubuntu-latest

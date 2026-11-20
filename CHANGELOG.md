@@ -4,6 +4,49 @@
 
 ## 未发布
 
+### 复核修复 R9/R10：demo 回归基线、VENDOR 校验语义（2026-11-20）
+
+- **demo 回归（R9）**：新增 `demo/demo-reference.json` 与 `scripts/gen_demo_reference.py`
+  （`--check` 可当 CI 门），把 4 份随发布走的 TE.dat 的
+  `sha256 / 点数 / 温度 / log10(G/G0) / L0 / S / k_e / ZT / 峰值` 固化成基线；
+  `tests/test_demo_regression.py`（16 例）用 `analysis.compare_reference` 做容差比对，
+  并证明"改一个数 / 整体放大 50% / 换谱"都会红。CI 新增 `demo` job（只装运行时依赖，
+  不需要 matplotlib）。
+- **demo 文档纠错**：`demo/azulene-26-dithiol/README.md` 两处「193 点」改为实际的 190 点。
+- **VENDOR 校验（R10）**：`scripts/gen_vendor_json.py --check` 改为逐字段比较并
+  **忽略 `repo_commit`**——旧实现比整份文本，而 `repo_commit` 记录生成时所在提交，
+  每次 commit 都让它变红（正是复核指出的"绑 commit 必红"）。
+  `tests/test_vendor_manifest.py`（6 例）守住该语义，并校验补丁台账里登记的文件真实存在
+  （写错文件名会让 `sync_core` 静默覆盖补丁）。
+- **README**：§1 增加三段仓库级一致性检查命令；§8 说明 `repo_commit` 不参与比对。
+
+### 复核修复 R8：采样覆盖进协议指纹（2026-11-20）
+
+- **问题**：`provenance._protocol_config` 无条件 `pop("ener"/"estep"/"eend")`，而
+  `config.resolved_window` 里这些覆盖**确实生效**——eV 相对窗下把 `transport.estep`
+  改成 `0.001` Ha，`protocol_sha256` 不变，`resolved_window` 却变了。
+- **改法**：只保留 `require_te_out` 的 pop（验证策略，不进协议）；`ener/estep/eend`
+  先 pop 再「显式写了才入协议」。默认配置不加键，0.2.x 的哈希形状逐字节不变
+  （demo azulene 仍是 `635ae0f0f1b7…`）；`config_to_dict` 的 `resolved_window` 旁标注
+  `resolved_window_unit: "Hartree"`。
+- **测试**：`tests/test_provenance.py` +4（`estep` 覆盖改哈希、起终点覆盖改哈希、
+  默认不加键、run_spec 标注单位）。
+
+### 复核修复 R7：运行没走完就不能"通过"（2026-11-20）
+
+- **问题**：`manifest.verdict` 只看已存在产物的判据；只放一份 TE.dat 的空 run
+  也能 `passed: true`（复核实测 `engineering_passed=true`、`errors=0`）。
+- **改法**：新增 `src/smj/verdict.py`——`completeness_check()` 生成
+  `run_incomplete`（engineering/error）判据并按"工程判据"口径重算
+  `errors/warnings/engineering_passed/passed`，`missing_stages()` 以
+  `collected/finished/skipped` 为完成；`report.build_manifest` 在
+  `validate_junction_run` 之后套一层，`verdict` 增加 `completeness` 字段，
+  `render_report` 增「完工度」行。
+- **测试**：`tests/test_report_verdict.py` +3——未完成时 `errors==1` 且
+  `failed_criteria` 含 `run_incomplete`、`physics_verdict` 不被改写、只放 TE 的
+  run 判定为未完成。
+
+
 ### 复核修复 R6：远端仍在跑的作业不再被"重跑"打成 failed（2026-11-20）
 
 - **问题**：`state=waiting` + `job_id` 时执行 `run`/`run_stage`，`prepare` 抛
