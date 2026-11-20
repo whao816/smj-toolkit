@@ -36,8 +36,8 @@ jobs:
       - name: Run test suite
         run: python -m pytest -q
 
-  vendor:
-    name: vendor manifest (VENDOR.json sha256 + local patches)
+  kernel:
+    name: kernel provenance (PROVENANCE.json sha256 + local change log)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -45,8 +45,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: VENDOR.json must match vendored files on disk
-        run: python scripts/gen_vendor_json.py --check
+      - name: PROVENANCE.json must match kernel files on disk
+        run: python scripts/gen_junction_provenance.py --check
 
   demo:
     name: demo spectra regression (G/G0, S, ZT)

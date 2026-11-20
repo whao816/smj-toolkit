@@ -1,6 +1,6 @@
 # SMJ 计算流程梳理（smj-toolkit 0.2.x）
 
-> 依据 0.2.0rc1 工作树逐文件核对：`src/smj/config.py`、`state.py`、`runner.py`、`resources.py`、`preflight.py`、`review.py`、`report.py`、`provenance.py`，以及 `src/smj/stages/*` 与 `src/smj/_vendor/junction/*`（inputs/electrode/electrode_library/tcontrol/self_energy/landauer/validate/criteria/analysis）。
+> 依据 0.2.0rc1 工作树逐文件核对：`src/smj/config.py`、`state.py`、`runner.py`、`resources.py`、`preflight.py`、`review.py`、`report.py`、`provenance.py`，以及 `src/smj/stages/*` 与 `src/smj/junction/*`（inputs/electrode/electrode_library/tcontrol/self_energy/landauer/validate/criteria/analysis）。
 > 2026-11-15 增补：步骤 4 由「本地构建 Au(111) 电极」改为「构建电极」——构建方式（`source: library|builtin`）与电极类型（`electrode.element` / `electrode.a_lattice`，fcc(111)）都是本阶段参数。
 > 默认值一栏写的是 **不写 smj.yaml 时生效的值**；单位与量纲单独注明。
 

@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from smj._vendor.junction.geometry import Atom
+from smj.junction.geometry import Atom
 from smj.checks import anchor_contacts, check_geometry, min_atom_distance
 
 

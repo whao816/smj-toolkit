@@ -4,6 +4,27 @@
 
 ## 未发布
 
+### A 方案：junction 内核改由本仓维护（2026-11-20）
+
+复核后的结论是「运行时早就独立、维护模型还假装是镜像」：13 条本地补丁覆盖
+17/36 个内核文件（47%），`upstream_commit` 为空，CI 里没有同步脚本，6 个文件
+曾从上游未提交工作区同步。本次按 A 方案收口：
+
+- **目录与命名**：`src/smj/_vendor/junction/` → `src/smj/junction/`；
+  `VENDOR.json` → `PROVENANCE.json`；`scripts/gen_vendor_json.py` →
+  `scripts/gen_junction_provenance.py`；`smj verify` 的检查项改为
+  `junction-kernel` / `kernel-provenance`。
+- **同步机制退役**：删除 `scripts/sync_core.py`。内核不再与 AgenticDFT 逐字节同步，
+  算法改动直接改本仓（AGENTS.md 已改）。
+- **一致性契约改为结果**：新增 `scripts/crosscheck_agenticdft.py`，把同一份 TE.dat
+  交给两边内核对比 L0/S/κe/ZT（手动跑、不进 CI，因为 CI 里没有主仓）。
+  实测薁示例两边逐位一致。
+- **R12 收口**：`k_e_zt_order` 元数据 `implemented` 改回 `True`（评估器确实会 emit），
+  删除 `PROVENANCE.json` note 与 README §9 的「已知偏离」登记。
+- **测试**：`tests/test_vendor_manifest.py` → `tests/test_junction_provenance.py`；
+  全量 397 passed；`smj verify` 7 项全 ok。
+
+
 ### 复核修复 R12/R13：产物定位去歧义、已知偏离登记（2026-11-20）
 
 - **R13b 产物定位**：vendored `validate.py` 的 `_ARTIFACT_STAGE_HOME['aims.out']` 原为
@@ -16,7 +37,7 @@
   必须同时让 stage 抛 `StageError` 与 validate 报 error——任何一边漏掉即红。
 - **R12 已知偏离登记**：vendored `criteria.py` 里 `k_e_zt_order` 的元数据仍写
   `implemented=False`（实际会 emit），与主仓新注册表不一致。该判据不参与闸门，
-  按计划**不改 vendored 判定语义**，只在 `VENDOR.json` 的 `note` 与 README §9 登记，
+  按计划**不改 vendored 判定语义**，只在 `PROVENANCE.json` 的 `note` 与 README §9 登记，
   待回迁主仓时一并对齐。
 - **测试**：`tests/test_validate_artifacts.py`（4 例）+ `test_scf_artifacts.py` +1。
 
@@ -30,7 +51,7 @@
   并证明"改一个数 / 整体放大 50% / 换谱"都会红。CI 新增 `demo` job（只装运行时依赖，
   不需要 matplotlib）。
 - **demo 文档纠错**：`demo/azulene-26-dithiol/README.md` 两处「193 点」改为实际的 190 点。
-- **VENDOR 校验（R10）**：`scripts/gen_vendor_json.py --check` 改为逐字段比较并
+- **VENDOR 校验（R10）**：`scripts/gen_junction_provenance.py --check` 改为逐字段比较并
   **忽略 `repo_commit`**——旧实现比整份文本，而 `repo_commit` 记录生成时所在提交，
   每次 commit 都让它变红（正是复核指出的"绑 commit 必红"）。
   `tests/test_vendor_manifest.py`（6 例）守住该语义，并校验补丁台账里登记的文件真实存在
@@ -115,7 +136,7 @@
   → inconclusive、BDT 有适用闸门、S≈0 不判通过）；`tests/test_energy_window.py` 增
   `test_prepare_blocks_window_not_covering_fermi`。
 - **VENDOR 维护**：`criteria.py` 新增本地补丁 `F-RECHECK-2026-11-20-window`
-  （VENDOR.json 现 36 文件 / 12 条补丁）。
+  （PROVENANCE.json 现 36 文件 / 12 条补丁）。
 
 ### 复核修复 R1：TE 谱行序不再影响 Seebeck 符号（2026-11-20）
 
@@ -128,8 +149,8 @@
   "已被静默排序"这条唯一提示也吞掉）；`aitranss_te.collect` 记 `energy_order`，非升序时
   在 notes 里写明。新增 `tests/test_te_order.py`（5 例，含顺序无关参考积分对照）。
 - **VENDOR 维护**：`scripts/sync_core.py` 落地（`--check`/`--list`/`--files`，
-  默认跳过已登记补丁的文件）；`VENDOR.json` 新增 `F-UPSTREAM-PENDING-2026-11-20`
-  条目，登记 7 个"副本领先于主仓 HEAD"的文件；CI 增加 `gen_vendor_json.py --check`。
+  默认跳过已登记补丁的文件）；`PROVENANCE.json` 新增 `F-UPSTREAM-PENDING-2026-11-20`
+  条目，登记 7 个"副本领先于主仓 HEAD"的文件；CI 增加 `gen_junction_provenance.py --check`。
 
 ### 结级自旋初猜与释放约束（2026-11-19）
 
@@ -434,7 +455,7 @@
   电子必须奇多重度、奇数电子必须偶多重度，否则 `StageError`。写错时 SCF 会为
   "不存在的电子态"收敛出漂亮结果，链上没有别处能发现；`results.json` 记
   `electron_count`。
-- 修 `_vendor/junction/molecules.py::molecule_from_smiles` 的多构象 bug：
+- 修 `junction/molecules.py::molecule_from_smiles` 的多构象 bug：
   `n_conformers>1` 时所有构象都返回构象 0（循环外只取了一次 `mol.GetConformer()`）。
 - 新增锚定接触报告（只报告、不判定）：`smj.checks.anchor_contacts` 给出每个贴着
   金属的锚定原子（S/N/Se）的 `M–X` 距离与 `C–X–M` 角，`smj review` 写进

@@ -37,7 +37,7 @@
 | P2-1 | 改步长协议指纹不变 | **部分成立** | 仅在 **eV 相对窗 + `estep/ener/eend` 覆盖键**下成立；Hartree 窗改 `estep` 哈希会变；原报告把「默认 eV 窗步长 0.000183747 Ha」当成 demo 实际步长（demo 是 0.0002 Ha） |
 | 后续① | demo 谱做成发布回归样本 | **部分成立** | 方向对；但「哈希、温度全无」不成立：温度 4/4 已记录，3/4 已有与实际一致的 TE.dat sha256；真缺口是**参考值、容差、统一清单、CI 重算** |
 | 后续② | 增加结构与机理证据 | **部分成立** | 结构归档**已实现并在跑**（`structure_archive.py` + 每阶段 `saved_structures/manifest.json`）；缺口是机理证据字段与跨 run 对照，不是「没有结构证据」 |
-| 后续③ | 统一 VENDOR 维护说明 | **成立** | 补：`scripts/gen_vendor_json.py --check` **是存在的可执行核验**，当前 exit=1 只因 `repo_commit` 绑死旧 HEAD（36 文件全一致）；原报告说「本仓库没有该脚本」属实，但不能推出「无法自动核验」 |
+| 后续③ | 统一 VENDOR 维护说明 | **成立** | 补：`scripts/gen_junction_provenance.py --check` **是存在的可执行核验**，当前 exit=1 只因 `repo_commit` 绑死旧 HEAD（36 文件全一致）；原报告说「本仓库没有该脚本」属实，但不能推出「无法自动核验」 |
 | 验证范围 | Python 3.12.14；267 项全通过 18.40 s；`smj verify` 六项全过 | **部分成立** | 3.12.14 **不成立**（本机 venv 3.12.10，无 3.12.14）；267 项与 `0f7b3c4` 吻合（实测 19.08–20.06 s），但**未绑定提交**（当前工作区 330 项）；`smj verify` 六项**逐字成立**；「装包后全通过」未说明 matplotlib 只是 extra、rdkit 完全未声明、CI 实际 248 passed + 3 模块级 skip |
 
 **行号引用质量（对被评审提交）**：12 处引用**全部落在其声称的代码上**，无错位；唯一瑕疵是 P1-2 的
@@ -150,7 +150,7 @@
 **关键点**：`results.aims_scf` 里 `normal_termination / has_basis_indices / has_omat / has_mos` 是**写死的常量**
 （当前 `aims_scf.py:183-185`），不是对文件的观测 —— 零字节时它们照样为 `true`。
 
-**两级判定不一致（原报告未提）**：同一 run 交给报告期 `validate`（`_vendor/junction/validate.py:96-101`）：
+**两级判定不一致（原报告未提）**：同一 run 交给报告期 `validate`（`junction/validate.py:96-101`）：
 
 | 用例 | `validate` 的 `aims_scf` 检查 | 结论 |
 |---|---|---|
@@ -263,9 +263,9 @@ CLI 与库路径**逐字段一致**，exit=0。
 - `README.md:8-11`（两版本逐字相同）要求 `python scripts/sync_core.py --check` 守漂移；
   `README.md §8`（`0f7b3c4` 的 :457-464）却明说「本仓库没有该脚本」；`scripts/` 下 7 个 `.py` 确无
   `sync_core.py`。`AGENTS.md:18` 也引用了这个不存在的脚本，并指向第 8 节 —— 三处自相矛盾。
-- `VENDOR.json`（与 `0f7b3c4` 相同）：36 条目 / 36 匹配 / 0 缺失 / 0 多余，28 个 py + 8 个模板，
+- `PROVENANCE.json`（与 `0f7b3c4` 相同）：36 条目 / 36 匹配 / 0 缺失 / 0 多余，28 个 py + 8 个模板，
   `local_patches = 10`。
-- **原报告未提的关键事实**：仓库里**已有一个可执行的核验** —— `python scripts/gen_vendor_json.py --check`
+- **原报告未提的关键事实**：仓库里**已有一个可执行的核验** —— `python scripts/gen_junction_provenance.py --check`
   （:187-201）。它当前 **exit=1**，唯一原因是 `repo_commit` 字段（:179 `_git_head()`）绑死在 `8eaa8fb`，
   而 36 个文件的哈希全部一致。也就是说这个检查**每次 commit 后必然变红**，红的原因与漂移无关 ——
   这比「没有核验」更麻烦：它训练人忽略红灯。
@@ -279,7 +279,7 @@ CLI 与库路径**逐字段一致**，exit=0。
 |---|---|---|
 | Windows / **Python 3.12.14** | **不成立** | `.venv` = **3.12.10**（`pyvenv.cfg:3`）；`py -0p` 无 3.12.14。若原报告在别的机器跑，应注明 |
 | 267 项 pytest 全通过，18.40 s | **对 `0f7b3c4` 成立**（计时不同），**对当前工作区不成立** | `git archive` 副本：**267 passed / 19.08 s**（另一次 20.06 s）；当前工作区：**330 passed / 32.72 s** |
-| `smj verify` 六项全通过 | **成立** | 实测恰好 6 项全 `ok: true`：python 3.12.10、pyyaml 6.0.3、numpy 2.5.1、vendored-junction、templates、stages（7 个阶段模块） |
+| `smj verify` 六项全通过 | **成立** | 实测恰好 6 项全 `ok: true`：python 3.12.10、pyyaml 6.0.3、numpy 2.5.1、junction-kernel、templates、stages（7 个阶段模块） |
 | 「装 matplotlib + RDKit 后全通过」 | **部分成立（说过头）** | matplotlib 只是 `plot` extra（`pyproject.toml:31`），**rdkit 完全未声明**；CI 只装 `.[dev]`（`ci.yml:35`）→ 屏蔽两包后 `0f7b3c4` 为 **248 passed + 3 skipped**、当前树 **295 passed + 4 skipped**；`importorskip` 按模块计 1 skip，**19（当前 35）个用例根本没被收集**，CI 绿并不覆盖它们 |
 | 「额外复核：原始谱重算/行序对照/合成谱/日志与作业状态」 | **无法复核** | 仓库无报告原文与这四项的执行记录；本文独立重做了这四项（§2–§7），结论与之吻合，但原报告的自述本身不可审计 |
 
@@ -321,7 +321,7 @@ CLI 与库路径**逐字段一致**，exit=0。
    另注明当前工作区 330 passed；环境改 3.12.10 或注明机器；依赖说明补 matplotlib 为 extra、rdkit 未声明、
    CI 覆盖为 248 passed + 3 模块级 skip。
 8. **后续①②③ 按 §9 改写**：①补「温度与 3/4 哈希已有」；②改为「机理证据字段与跨 run 对照」；
-   ③补「`gen_vendor_json.py --check` 存在但绑死 `repo_commit`，需只比 files 并进 CI」。
+   ③补「`gen_junction_provenance.py --check` 存在但绑死 `repo_commit`，需只比 files 并进 CI」。
 
 ## 13. 复现与证据
 
@@ -346,7 +346,7 @@ $env:PYTHONPATH = 'src'
 # P1-1：同一份谱，升序 vs 降序（TE.dat 三列：E_Ha / E-E_F(eV) / T）
 @'
 from pathlib import Path
-from smj._vendor.junction.landauer import analyze_te
+from smj.junction.landauer import analyze_te
 src = Path("demo/azulene-26-dithiol/azulene-26-dithiol/aitranss_te/TE.dat")
 lines = src.read_text().splitlines()
 asc = Path(".tmp/x_asc.dat"); desc = Path(".tmp/x_desc.dat")
@@ -359,7 +359,7 @@ print(analyze_te(desc)["S_uV_per_K"])   # -25.936208945458937
 # P1-2：整窗在 E_F 之上 → physics_verdict=passed（判据在同一目录找 TE.dat）
 @'
 from pathlib import Path
-from smj._vendor.junction.criteria import evaluate_run_criteria, physics_verdict
+from smj.junction.criteria import evaluate_run_criteria, physics_verdict
 run = Path(".tmp/synth/aitranss_te"); run.mkdir(parents=True, exist_ok=True)
 rows = "\n".join(f"{-0.20 + 0.001*i:.9f} {0.250 + 0.001*i:.6f} 0.2500000" for i in range(200))
 (run / "TE.dat").write_text("#synthetic: constant T, window fully above E_F\n" + rows + "\n")

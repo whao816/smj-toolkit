@@ -1,8 +1,9 @@
-"""独立包与 vendored 代码之间的唯一接缝。
+"""独立包与 junction 内核之间的唯一接缝。
 
-``smj/_vendor/junction/`` 是 ``agenticdft/agenticdft/tools/junction/`` 的**逐字节
-副本**（只允许 ``sync_core.py`` 改 3 行跨包 import）。那 3 行原本指向 AgenticDFT 的
-``...backends`` 与 ``..resources``，在独立包里改为指向本模块：
+内核原先是 ``agenticdft/agenticdft/tools/junction/`` 的副本，其中 3 行跨包 import
+指向 AgenticDFT 的 ``...backends`` 与 ``..resources``；本包在导入时把它们改为指向本模块
+（自 0.2.2 起内核由本仓维护，这 3 处接缝保持原样即可，改动内核时不要把它们改回
+AgenticDFT 的路径）：
 
 - :func:`get_backend` —— 独立包不用 AgenticDFT 的调度后端体系（提交由
   :mod:`smj.transport` / :mod:`smj.remote` 负责）。这里返回一个 ``local`` 后端

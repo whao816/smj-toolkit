@@ -183,7 +183,7 @@ def _summary(te: Path, temperature: float, result: Mapping[str, Any] | None) -> 
     """优先用调用方给的 Landauer 结果，否则现算一份（不写文件）。"""
     if isinstance(result, Mapping) and "fermi_nearest" in result:
         return result
-    from ._vendor.junction.landauer import analyze_te as _analyze
+    from .junction.landauer import analyze_te as _analyze
 
     return _analyze(te, temperature=float(temperature))
 

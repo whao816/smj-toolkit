@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping, Sequence
 
-from smj._vendor.junction.criteria import PHYSICAL_NAMES
+from smj.junction.criteria import PHYSICAL_NAMES
 
 CHECK_NAME = "run_incomplete"
 

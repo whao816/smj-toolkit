@@ -12,7 +12,7 @@ import json
 import shutil
 from pathlib import Path
 
-from .._vendor.junction.inputs import make_aims_scf_input
+from ..junction.inputs import make_aims_scf_input
 from ..errors import StageBlocked, StageError
 from ..provenance import (
     parse_aims_versions,

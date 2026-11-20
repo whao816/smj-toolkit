@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from smj._vendor.junction.criteria import evaluate_run_criteria, physics_verdict
-from smj._vendor.junction.landauer import analyze_te
+from smj.junction.criteria import evaluate_run_criteria, physics_verdict
+from smj.junction.landauer import analyze_te
 
 H_EV = 27.211386245988
 

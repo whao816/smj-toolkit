@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from smj._vendor.junction.geometry import read_aims_geometry
+from smj.junction.geometry import read_aims_geometry
 from smj.config import ElectrodeConfig, MoleculeConfig, load_config
 from smj.errors import ConfigError, StageError
 from smj.stages.molecule_opt import MoleculeOptStage

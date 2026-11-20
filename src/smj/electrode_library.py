@@ -24,8 +24,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from ._vendor.junction.electrode import LibraryElectrode
-from ._vendor.junction.geometry import Atom
+from .junction.electrode import LibraryElectrode
+from .junction.geometry import Atom
 from .errors import SmjError
 
 #: 默认团簇：37 原子 fcc111 壳层（nlayers=3），手册示例同族。

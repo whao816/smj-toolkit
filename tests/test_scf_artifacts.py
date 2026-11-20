@@ -115,7 +115,7 @@ def test_stage_and_report_agree_on_unconverged_log(workdir: Path):
     R5 之前：stage 照收、validate 报 ``aims_scf`` error；同一份日志两套结论。
     R5 之后：stage 抛 StageError，validate 也报 error——任何一边漏掉，这个用例都会红。
     """
-    from smj._vendor.junction.validate import validate_junction_run
+    from smj.junction.validate import validate_junction_run
 
     run_dir = workdir / "run"
     stage_dir = run_dir / "aims_scf"

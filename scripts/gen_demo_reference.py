@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
-from smj._vendor.junction.landauer import analyze_te  # noqa: E402
+from smj.junction.landauer import analyze_te  # noqa: E402
 
 DEMO_DIR = ROOT / "demo"
 REFERENCE = DEMO_DIR / "demo-reference.json"

@@ -15,5 +15,5 @@
 
 ## 代码
 
-- 算法改动先改主仓 `agenticdft/agenticdft/tools/junction/`，本包 vendored 文件只读；用 `scripts/sync_core.py --check` 守漂移（见 README §8）。
-- 不要手改 `src/smj/_vendor/`；需要改行为时改 `src/smj/` 的 wrapper/config。
+- **junction 内核在本仓维护**：算法改动直接改 `src/smj/junction/`（A 方案，2026-11-20）。不要再从 `agenticdft/agenticdft/tools/junction/` 覆盖同步，`scripts/sync_core.py` 已退役。
+- 改过内核文件必须重跑 `python scripts/gen_junction_provenance.py` 刷新 `PROVENANCE.json` 的 sha256，并跑 `python scripts/gen_demo_reference.py --check` 确认数值基线没漂；与主仓的分叉用 `scripts/crosscheck_agenticdft.py` 对账，不进 CI（见 README §8）。

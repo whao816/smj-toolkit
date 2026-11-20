@@ -22,8 +22,8 @@ import math
 from itertools import combinations
 from typing import Any, Iterable, Sequence
 
-from ._vendor.junction.geometry import Atom
-from ._vendor.junction.molecules import rmsd as _rmsd
+from .junction.geometry import Atom
+from .junction.molecules import rmsd as _rmsd
 
 __all__ = ["ATOMIC_NUMBERS", "COVALENT_RADII", "anchor_contacts", "check_geometry",
            "min_atom_distance", "total_electrons"]

@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from ._vendor.junction.geometry import Atom, read_xyz, write_xyz
+from .junction.geometry import Atom, read_xyz, write_xyz
 from .checks import total_electrons
 
 __all__ = [

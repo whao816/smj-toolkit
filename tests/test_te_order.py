@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from smj._vendor.junction import independent_check, landauer
+from smj.junction import independent_check, landauer
 
 EF_HARTREE = -0.188452434085
 S_KEYS = ("L0", "L1", "L2", "S_uV_per_K", "k_e_pW_per_K", "ZT_electronic")

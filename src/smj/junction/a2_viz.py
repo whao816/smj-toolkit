@@ -418,7 +418,7 @@ def meta_layer(audit, side):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        prog='python -m smj._vendor.junction.a2_viz',
+        prog='python -m smj.junction.a2_viz',
         description='连接核对: 表面三元组几何审计 + 出图 + 记录登记(绑定几何指纹)')
     ap.add_argument('--stage', required=True,
                     help='au60_build/au10_build 阶段目录(含 geometry.in + electrode_metadata.json)')

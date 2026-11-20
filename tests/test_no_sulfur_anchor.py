@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from smj._vendor.junction.electrode import append_au60
-from smj._vendor.junction.geometry import read_aims_geometry
-from smj._vendor.junction.inputs import make_tip_relax_input
-from smj._vendor.junction.validate import validate_junction_geometry
+from smj.junction.electrode import append_au60
+from smj.junction.geometry import read_aims_geometry
+from smj.junction.inputs import make_tip_relax_input
+from smj.junction.validate import validate_junction_geometry
 from smj.config import default_config_text, load_config
 from smj.stages._helpers import resolve_anchor_indices
 

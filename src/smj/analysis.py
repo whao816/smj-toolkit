@@ -1,7 +1,7 @@
 """TE.dat 输运分析：Landauer L0/L1/L2 与 G / S / k_e / ZT 摘要。
 
-本模块是 :mod:`smj._vendor.junction.landauer`（以及可选的
-:mod:`smj._vendor.junction.independent_check`）的**薄封装**，只做三件事：
+本模块是 :mod:`smj.junction.landauer`（以及可选的
+:mod:`smj.junction.independent_check`）的**薄封装**，只做三件事：
 
 1. 调 vendored ``analyze_te`` 得到固定字段的统计摘要；
 2. 可选跑独立复核（独立解析器 + Simpson 求积 + CODATA 常数），抓实现级单位/
@@ -138,7 +138,7 @@ def independent_check(result: Mapping[str, Any], te_path: str | Path, *,
     返回 ``{ok, L0, L1, L2, G_over_G0, S_uV_per_K, ZT_electronic, comparison}``；
     独立复核失败不影响主管线结果，调用方在 ``warnings`` 里记录原因。
     """
-    from smj._vendor.junction import independent_check as ind  # lazy: vendored
+    from smj.junction import independent_check as ind  # lazy: vendored
 
     temp = float(temperature if temperature is not None else result.get("temperature_K") or 300.0)
     rows = ind.parse_te(te_path)
@@ -263,7 +263,7 @@ def analyze_te(te_path: str | Path, *, temperature: float = 300.0,
         是否跑独立复核（默认 True）；失败只记 ``warnings``，不影响主结果。
     """
     te = resolve_te(te_path)
-    from smj._vendor.junction.landauer import analyze_te as _analyze  # lazy: vendored
+    from smj.junction.landauer import analyze_te as _analyze  # lazy: vendored
 
     core = _analyze(te, temperature=float(temperature))
     missing = [k for k in REQUIRED_KEYS if k not in core]
@@ -350,7 +350,7 @@ def orbital_alignment(te_path: str | Path, aims_out: str | Path, *,
                       mode: str = "fermi", target_e_ev: float | None = None,
                       output: str | Path | None = None) -> dict:
     """可选：把 TE.dat 的费米窗与 FHI-aims 轨道本征值对齐（vendored spectra）。"""
-    from smj._vendor.junction.spectra import match_orbital  # lazy: vendored
+    from smj.junction.spectra import match_orbital  # lazy: vendored
     return match_orbital(te_path, aims_out, mode=mode, target_e_ev=target_e_ev,
                          output=output)
 

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from smj.config import ReviewConfig, RunConfig, RunInfo
 from smj.runner import StageRunner
-from smj._vendor.junction.fingerprint import check_confirmation
+from smj.junction.fingerprint import check_confirmation
 
 TRI = ((0.0, 0.0), (2.88, 0.0), (1.44, 2.494))
 

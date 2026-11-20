@@ -471,7 +471,7 @@ def cmd_species(args: argparse.Namespace) -> int:
     try:
         atoms = None
         if args.xyz:
-            from ._vendor.junction.geometry import read_xyz
+            from .junction.geometry import read_xyz
             atoms = list(read_xyz(args.xyz))
         payload = species_mod.summary(
             args.dir, atoms, elements=elements or None, label=args.label)
@@ -1060,35 +1060,35 @@ def cmd_verify(args: argparse.Namespace) -> int:
         check("numpy", False, "缺少 numpy（pip install numpy）: %s" % exc)
 
     try:
-        from ._vendor.junction import artifacts, jobwait  # noqa: F401
+        from .junction import artifacts, jobwait  # noqa: F401
 
-        check("vendored-junction", True, "jobwait / artifacts 可导入")
+        check("junction-kernel", True, "jobwait / artifacts 可导入")
     except Exception as exc:  # noqa: BLE001
-        check("vendored-junction", False, "vendored junction 不可导入: %s" % exc)
+        check("junction-kernel", False, "junction 内核不可导入: %s" % exc)
 
-    # VENDOR.json 台账：记录的 sha256 必须与磁盘一致（改了 vendored 文件忘重算就失败）
-    vendor_root = Path(__file__).resolve().parent / "_vendor" / "junction"
+    # PROVENANCE.json 台账：记录的 sha256 必须与磁盘一致（改了内核文件忘重算就失败）
+    kernel_root = Path(__file__).resolve().parent / "junction"
     try:
         import hashlib as _hashlib
         import json as _json
 
-        _meta = _json.loads((vendor_root / "VENDOR.json").read_text(encoding="utf-8"))
+        _meta = _json.loads((kernel_root / "PROVENANCE.json").read_text(encoding="utf-8"))
         _files = _meta.get("files") or {}
         _stale = []
         for _rel, _info in sorted(_files.items()):
-            _path = vendor_root / _rel
+            _path = kernel_root / _rel
             if not _path.is_file():
                 _stale.append("%s(缺失)" % _rel)
             elif _hashlib.sha256(_path.read_bytes()).hexdigest() != _info.get("sha256"):
                 _stale.append(_rel)
-        check("vendor-manifest", not _stale,
+        check("kernel-provenance", not _stale,
               "%d 个文件、%d 条本地补丁" % (len(_files), len(_meta.get("local_patches") or []))
               if not _stale
-              else "哈希过期: %s（重跑 scripts/gen_vendor_json.py）" % ", ".join(_stale[:5]))
+              else "哈希过期: %s（重跑 scripts/gen_junction_provenance.py）" % ", ".join(_stale[:5]))
     except Exception as exc:  # noqa: BLE001
-        check("vendor-manifest", False, "VENDOR.json 不可读: %s" % exc)
+        check("kernel-provenance", False, "PROVENANCE.json 不可读: %s" % exc)
 
-    templates = vendor_root / "templates"
+    templates = kernel_root / "templates"
     missing = [name for name in ("sub_g16.sh", "sub_aims.sh", "sub_te.sh")
                if not (templates / name).is_file()]
     check("templates", not missing,

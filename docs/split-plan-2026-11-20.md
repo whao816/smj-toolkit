@@ -7,7 +7,7 @@
 
 - 运行时本来就没有耦合：`src/smj` 里 `import agenticdft` 为 **0 处**；
 - 但维护模型还假装是镜像：13 条本地补丁覆盖 **17/36 个文件（47%）**，
-  `VENDOR.json` 的 `upstream_commit` 是 **None**，CI 里没有 `sync_core`，
+  `PROVENANCE.json` 的 `upstream_commit` 是 **None**，CI 里没有 `sync_core`，
   6 个文件曾从上游**未提交**工作区同步、`molecules.py` 反向落后。
 
 用户决策（m01398）：**走 A** —— 本仓成为 junction 内核的主开发位置，
@@ -15,14 +15,14 @@
 
 ## 1. 目标（可验收）
 
-1. 目录与命名不再声称「副本」：`src/smj/_vendor/junction/` → `src/smj/junction/`，
-   `VENDOR.json` → `PROVENANCE.json`（记录来源与本地变更史，不再当镜像台账）。
+1. 目录与命名不再声称「副本」：`src/smj/junction/` → `src/smj/junction/`，
+   `PROVENANCE.json` → `PROVENANCE.json`（记录来源与本地变更史，不再当镜像台账）。
 2. 删除 `scripts/sync_core.py`（漂移守卫随之退役），README/AGENTS 的约定改为
    「内核在本仓维护」。
 3. 与 AgenticDFT 的唯一联系是**可验证的结果契约**：
    `demo/demo-reference.json`（本仓回归基线）+ 可选对账脚本，不进 CI 的强依赖。
 4. 消掉 R12「已知偏离」：`k_e_zt_order` 元数据改回 `implemented=True`（评估器实际会 emit），
-   删除 VENDOR.json note 与 README §9 的登记条目。
+   删除 PROVENANCE.json note 与 README §9 的登记条目。
 5. 全量测试、`smj verify`、`gen_*_reference --check` 全绿。
 
 ## 2. 提交拆分
@@ -37,8 +37,8 @@
 
 ## 3. 风险与回滚
 
-- **风险 1：import 面广（58 个文件）**。用脚本做机械替换（`smj._vendor.junction` →
-  `smj.junction`、`._vendor.junction` → `.junction`、路径字符串同步），
+- **风险 1：import 面广（58 个文件）**。用脚本做机械替换（`smj.junction` →
+  `smj.junction`、`.junction` → `.junction`、路径字符串同步），
   以全量测试 + `smj verify` 兜底；S2 是单独提交，回滚只需 `git revert`。
 - **风险 2：打包**。`pyproject` 用 `packages.find include=["smj*"]`，
   新目录 `smj.junction` 自动包含；模板随包数据目录一起搬，`artifacts`/`verify`

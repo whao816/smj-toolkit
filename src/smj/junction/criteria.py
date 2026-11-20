@@ -98,9 +98,11 @@ CRITERIA = [
      'note': '2026-11-20 复核 P1-2: TE.dat 的 E-E_F 必须跨 0(min<=0<=max)。整窗落在 E_F '
              '一侧时费米窗权重全在同一侧, L0/L1/L2 不是 E_F 处展开, S 无物理意义 -> failed'},
 
-    {'name': 'k_e_zt_order', 'kind': 'physical', 'gate': 'warn', 'implemented': False,
+    {'name': 'k_e_zt_order', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
      'band': None, 'source': None,
-     'note': '目前只有"非负且量级合理"的物理常识, 正式来源待补'},
+     'note': '2026-11-20 复核 R12: 评估器确实会 emit 该判据(κe≥0 与 ZT 量级常识), '
+             '原元数据写 implemented=False 与行为不符, 已改正; 正式文献来源待补, '
+             '仍列在 KNOWN_GAPS 里(ratchet 只许减不许增)'},
 ]
 
 # 已登记缺口(ratchtet): 只允许这些无源/未实现的 physical 判据存在, 新增即 lint 失败

@@ -13,8 +13,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 
-from smj._vendor.junction.criteria import significant_peaks
-from smj._vendor.junction.geometry import read_aims_geometry
+from smj.junction.criteria import significant_peaks
+from smj.junction.geometry import read_aims_geometry
 
 RUNS = {
     "baseline": ROOT / "runs/bdt/bdt",

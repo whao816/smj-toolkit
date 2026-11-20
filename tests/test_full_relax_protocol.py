@@ -19,9 +19,9 @@ from types import SimpleNamespace
 from smj.config import ElectrodeConfig, default_config_text, load_config
 from smj.stages import aims_tip_relax as tip_stage
 from smj.stages.aims_tip_relax import AimsTipRelaxStage
-from smj._vendor.junction.electrode import append_au60
-from smj._vendor.junction.inputs import make_tip_relax_input
-from smj._vendor.junction.geometry import read_aims_geometry
+from smj.junction.electrode import append_au60
+from smj.junction.inputs import make_tip_relax_input
+from smj.junction.geometry import read_aims_geometry
 
 BDT_XYZ = """14
 benzene-1,4-dithiol (BDT)

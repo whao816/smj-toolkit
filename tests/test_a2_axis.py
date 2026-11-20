@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from smj._vendor.junction.a2_viz import _axis, surface_audit
-from smj._vendor.junction.geometry import read_aims_geometry
+from smj.junction.a2_viz import _axis, surface_audit
+from smj.junction.geometry import read_aims_geometry
 
 GEOMETRY = """\
 atom -5.0  0.0  0.0 Au

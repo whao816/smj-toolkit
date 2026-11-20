@@ -15,8 +15,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .._vendor.junction.electrode import append_au60
-from .._vendor.junction.fingerprint import attach_fingerprint
+from ..junction.electrode import append_au60
+from ..junction.fingerprint import attach_fingerprint
 from ..electrode_library import resolve_cluster
 from ..errors import StageBlocked, StageError
 from ..state import previous_stage

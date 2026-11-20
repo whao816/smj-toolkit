@@ -2,16 +2,16 @@
   "schema": "smj.vendor.v1",
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
-  "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
-  "repo_commit": "2aab9cfc11fcfdd8fba488f839f9e806afa02a18",
+  "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 PROVENANCE.json）",
+  "repo_commit": "ad784d42927e93ea3b5d01eb8c0690a74a91f61b",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
       "bytes": 380
     },
     "a2_viz.py": {
-      "sha256": "28c8823c9fb2f7a9e87c5dd0f4eda89ddae155a7ebc2459692c96ce6c4dba169",
-      "bytes": 27164
+      "sha256": "0ea8b499d2954999e4f17a97fdf9802f8678973d28d07bc1168cc0eea5e8ef82",
+      "bytes": 27156
     },
     "artifacts.py": {
       "sha256": "c778d75a706c46bcf4ad031b4fc9cc307621364d5cda3af497221bad4cd255bc",
@@ -30,8 +30,8 @@
       "bytes": 2262
     },
     "criteria.py": {
-      "sha256": "2abc398c4ae4e9f008976ae262511d4bee910275e953f8ca7cf030341bb7f482",
-      "bytes": 30273
+      "sha256": "4f14f513351dabb45778647ce1c5bd3dfa634fd9282ea9aeb1a64e3fcb9abea2",
+      "bytes": 30461
     },
     "demo.py": {
       "sha256": "501fb09f251c197206664e996a10f018f9cc8a61edeb597ce2e464169043e97e",
@@ -317,9 +317,10 @@
         "templates/sub_g16.sh"
       ],
       "what": "副本与主仓工作区一致、但与主仓 HEAD（26c197b）不同：tcontrol 的 _spin_moment_line、surface_index.pick_surface_triple(away=…)、三份模板的 SCF 精度/scratch 目录/spin 行、fixtures 的 2026-11-15 判据注记，都是主仓尚未提交的改动；molecules.py 是等价实现（按 cid 逐个取 conformer）。",
-      "why": "副本当年是从主仓**工作区**同步的，主仓这些改动一直没提交，导致 sync_core --check 每次都报漂移。先登记避免 CI 永久红；主仓提交后应用 sync_core.py 全量同步并删除本条。",
+      "why": "这些文件当年是从主仓**工作区**同步的，主仓一直没提交。A 方案（2026-11-20）之后内核由本仓维护，本条只记录历史来源，不再需要回迁；若日后要与主仓对齐，用 scripts/crosscheck_agenticdft.py 比结果而不是比文件。",
       "tests": [
-        "scripts/sync_core.py --check"
+        "tests/test_junction_provenance.py",
+        "scripts/crosscheck_agenticdft.py"
       ]
     },
     {
@@ -335,5 +336,5 @@
       ]
     }
   ],
-  "note": "0.1.1 本地补丁的权威记录；回迁主仓后应删除对应条目并重新 sync。本文件由 scripts/gen_vendor_json.py 生成，勿手改。已知偏离（2026-11-20 复核 R12）：vendored criteria.py 是 0.2.1 版注册表，k_e_zt_order 的元数据仍写 implemented=False（实际评估器会 emit 该判据），与主仓新注册表不一致；该判据不参与闸门，本轮按要求不改 vendored 判定语义，仅在此登记，待回迁主仓时一并对齐。"
+  "note": "0.1.1 本地补丁的权威记录；回迁主仓后应删除对应条目并重新 sync。本文件由 scripts/gen_junction_provenance.py 生成，勿手改。"
 }

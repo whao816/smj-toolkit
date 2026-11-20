@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from smj._vendor.junction.geometry import Atom, write_xyz  # noqa: E402
+from smj.junction.geometry import Atom, write_xyz  # noqa: E402
 
 #: 双字母元素符号白名单(单字母直接取首字母)。只列分子结里可能出现的重元素。
 _TWO_LETTER = frozenset({

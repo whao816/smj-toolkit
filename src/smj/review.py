@@ -289,7 +289,7 @@ def _structure_review(result: ReviewResult, build_dir: Path | None,
                    "缺 %s：无法校验表面索引/输运轴" % METADATA_FILE)
         return
     try:
-        from smj._vendor.junction.validate import validate_junction_geometry  # lazy: vendored
+        from smj.junction.validate import validate_junction_geometry  # lazy: vendored
         verdict = validate_junction_geometry(build_dir, metadata=dict(meta),
                                              geometry=geo_path)
     except Exception as exc:  # noqa: BLE001
@@ -329,7 +329,7 @@ def _anchor_report(result: ReviewResult, geo_path: Path,
     被相邻原子挤压。合格区间取决于锚定化学与表面位点，所以只写 ``info`` + JSON。
     """
     try:
-        from smj._vendor.junction.geometry import read_aims_geometry  # lazy: vendored
+        from smj.junction.geometry import read_aims_geometry  # lazy: vendored
 
         from smj.checks import anchor_contacts
 
@@ -404,7 +404,7 @@ def _connection_check_state(build_dir: Path | None) -> dict:
     state["recorded_indices"] = _indices(confirmation)
     state["deviation"] = surface_index_deviation(confirmation, metadata)
     try:
-        from smj._vendor.junction.fingerprint import check_confirmation  # lazy: vendored
+        from smj.junction.fingerprint import check_confirmation  # lazy: vendored
         checked = check_confirmation(build_dir)
     except Exception as exc:  # noqa: BLE001
         state["reason"] = "连接核对指纹检查失败: %s" % exc

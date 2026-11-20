@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ._vendor.junction.landauer import minus_fermi_derivative, trapz
+from .junction.landauer import minus_fermi_derivative, trapz
 
 
 def read_te_channels(path: str | Path) -> tuple[list[tuple[float, float, float, float]], int]:

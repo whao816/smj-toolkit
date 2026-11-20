@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ._vendor.junction.geometry import Atom
+from .junction.geometry import Atom
 from .checks import DEFAULT_ANCHOR_ELEMENTS
 
 __all__ = [

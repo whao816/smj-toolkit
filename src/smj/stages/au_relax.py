@@ -21,11 +21,11 @@ import json
 import shutil
 from pathlib import Path
 
-from .._vendor.junction.electrode import backplane_indices as _backplane_indices
-from .._vendor.junction.fingerprint import attach_fingerprint
-from .._vendor.junction.geometry import read_aims_geometry
-from .._vendor.junction.inputs import make_au_relax_input
-from .._vendor.junction.surface_index import verify_surface_indices
+from ..junction.electrode import backplane_indices as _backplane_indices
+from ..junction.fingerprint import attach_fingerprint
+from ..junction.geometry import read_aims_geometry
+from ..junction.inputs import make_au_relax_input
+from ..junction.surface_index import verify_surface_indices
 from ..errors import StageBlocked, StageError
 from ..provenance import sha256_file, verify_parent_geometry
 from ..structure_archive import safe_archive

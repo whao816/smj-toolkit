@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .._vendor.junction.landauer import analyze_te
+from ..junction.landauer import analyze_te
 from .. import plotting
 from ..errors import StageError
 from ..landauer_spin import analyze_te_spin

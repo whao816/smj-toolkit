@@ -16,7 +16,7 @@
    （``mol.log`` / ``aims.out`` / ``TE.dat`` / ``te.out`` / ``.dsh_done``）；
 4. ``cd <dir> && sbatch <script> [args...]``，从输出解析 ``Submitted batch job <id>``。
 
-轮询交给 vendored 的 :func:`smj._vendor.junction.jobwait.wait_many`，本模块只提供
+轮询交给 vendored 的 :func:`smj.junction.jobwait.wait_many`，本模块只提供
 ``Transport -> (code, out, err)`` 的适配器。判定语义（与主仓一致）：
 
 * ``squeue`` 查询失败（非零退出/连不上）**不等于**作业缺席；
@@ -33,8 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from ._vendor.junction import artifacts as _artifacts
-from ._vendor.junction import jobwait as _jobwait
+from .junction import artifacts as _artifacts
+from .junction import jobwait as _jobwait
 from .errors import SmjError, StageError, TransportError
 from .state import normalize_stage
 from .transport import CommandResult, Transport, remote_join

@@ -11,8 +11,8 @@ import json
 from pathlib import Path
 
 from .. import aims_out, cube, species as species_mod
-from .._vendor.junction.geometry import read_aims_geometry, read_xyz, write_xyz
-from .._vendor.junction.inputs import make_aims_molecule_opt_input
+from ..junction.geometry import read_aims_geometry, read_xyz, write_xyz
+from ..junction.inputs import make_aims_molecule_opt_input
 from ..checks import check_geometry, total_electrons
 from ..errors import StageError
 from ..provenance import parse_aims_versions, record_observed_software

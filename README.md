@@ -6,9 +6,10 @@
 > `<run.dir>/<run.name>/<stage>/`，状态机在 `state.json` 里可查、可恢复。
 >
 > 本包是 AgenticDFT 主仓 SMJ 链的独立打包（发行名 `smj-toolkit`，
-> import 名 `smj`，命令行 `smj`）。**主仓仍是权威源**：算法以
-> `agenticdft/agenticdft/tools/junction/` 为准，本包内是只读副本，由
-> `scripts/sync_core.py --check` 守漂移。
+> import 名 `smj`，命令行 `smj`）。自 0.2.2 起 junction 内核
+> （`src/smj/junction/`）由**本仓维护**，与主仓的关系从「代码同源」改为
+> 「结果同契约」：来源与本地变更史记在 `PROVENANCE.json`，数值一致性由
+> `demo/demo-reference.json` 与 `scripts/crosscheck_agenticdft.py` 守。
 
 ## 0. 定位与边界
 
@@ -113,7 +114,7 @@ AZ/2CN 不做该族比对。
 python -m pip install -e .
 
 # 或构建 wheel 后安装（产物在 dist/）
-python scripts/gen_vendor_json.py           # 先刷新 vendored 补丁台账（VENDOR.json 随 wheel 分发）
+python scripts/gen_junction_provenance.py           # 先刷新内核台账（PROVENANCE.json 随 wheel 分发）
 python scripts/build_wheel.py --check       # 只用标准库，不需要 setuptools/build；--check 按 RECORD 校验
 python -m pip install dist/smj_toolkit-0.2.0-py3-none-any.whl
 ```
@@ -130,14 +131,13 @@ python -m pip install -e ".[plot,dev]"    # plot + dev
 
 ```bash
 smj --help
-smj verify      # Python/PyYAML/numpy、vendored junction、模板、阶段模块（含 legacy au_relax）
+smj verify      # Python/PyYAML/numpy、junction 内核、模板、阶段模块（含 legacy au_relax）
 ```
 
-仓库级一致性检查（CI 同款，改动 vendored/demo 前后各跑一次）：
+仓库级一致性检查（CI 同款，改动内核/demo 前后各跑一次）：
 
 ```bash
-python scripts/gen_vendor_json.py --check     # VENDOR.json 的 sha256 台账（repo_commit 不参与比对）
-python scripts/sync_core.py --check           # vendored 副本 vs 主仓（带本地补丁的文件跳过）
+python scripts/gen_junction_provenance.py --check     # PROVENANCE.json 的 sha256 台账（repo_commit 不参与比对）
 python scripts/gen_demo_reference.py --check  # demo 谱的数值基线（G/G0、S、k_e、ZT）
 ```
 
@@ -311,7 +311,7 @@ cluster:
     mkl_lib: /data/software/intel/mkl/lib/intel64
 ```
 
-`env` 的键与 vendored `inputs.py` 的 `ENV_SPECS` 同源（**区分大小写，请写小写**），
+`env` 的键与内核 `junction/inputs.py` 的 `ENV_SPECS` 同源（**区分大小写，请写小写**），
 常用项：
 
 | 键 | 用途 | 默认 |
@@ -443,7 +443,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj plot` | 按**统一版式**画 T(E)（四边框/刻度朝内/E_F 虚线/log 纵轴/固定配色，见 `docs/plot_style.md`）；可给 TE.dat、run 目录或逗号标签叠加多条 | `T_E.png` + `T_E.pdf`（默认 PNG+PDF 同源导出，600 dpi） |
 | `smj review` | 结构复核门：建结几何 + 连接核对（原 A2：指纹/表面索引偏差）。默认由管线在 `electrode_build` 之后自动登记（`who=auto`，审计不过则拒绝登记并阻断）；也可人工签 `--approve --who <名字>`（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用，`--connection-check/--no-connection-check` 临时覆盖 `review.connection_check` | `review.json`、`electrode_build/connection_check.json`（旧 `a2_confirmation.json` / `surface_check.json` 仍可读）；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
-| `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
+| `smj verify` | 安装自检：Python/PyYAML/numpy、junction 内核、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
 | `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
 
 退出码：`0` 成功/作业已结束；`1` 失败或配置/输入错误；`2` 未完成（`--wait` 超时、
@@ -494,23 +494,20 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `provenance_family_relabel` warning 而不阻断——run 做完再补登记族（如
   `null → BPY`）不必重建 run，判据按当前标注重算。
 
-## 8. 与主仓的关系
+## 8. 与上游 AgenticDFT 的关系
 
-- **主仓是权威源**：`src/smj/_vendor/junction/` 是 `agenticdft/agenticdft/tools/junction/`
-  的副本（含模板），算法改动一律先改主仓，再同步；不要随意手改 vendored 文件。
-- **本仓库的来历**：由 0.1.0 wheel 还原成源码树（wheel 本身不含 `scripts/`、`tests/`），
-  0.2.x 起补回了 `scripts/gen_vendor_json.py` 与 `scripts/sync_core.py`。日常两条命令：
-  - `python scripts/sync_core.py --check`：逐字节比对副本与主仓。**带本地补丁的文件不
-    计漂移**（会打印跳过清单），否则 CI 会永久红、失去信号；`--files a.py,b.py` 只同步
-    点名的文件，`--list` 看受管文件与补丁状态。
-  - `python scripts/gen_vendor_json.py --check`：校验 `VENDOR.json` 的 sha256 台账与磁盘
-    一致（改过 vendored 文件必须重跑它，否则 `smj verify`/CI 报哈希过期）。`repo_commit`
-    记的是生成时所在提交，**不参与**比对——否则每次 commit 都会让它变红。
-  - 主仓默认位置是同级目录 `../AgenticDFT/agenticdft/agenticdft/tools/junction`，可用
-    `--source` 或环境变量 `SMJ_CANONICAL_JUNCTION` 覆盖。
-- 本地补丁逐条登记在 `src/smj/_vendor/junction/VENDOR.json` 的 `local_patches` 字段
-  （id / commit / files / what / why / tests），由 `gen_vendor_json.py` 的 `LOCAL_PATCHES`
-  生成，便于日后回迁主仓；回迁后删掉对应条目再重新 sync。
+- **本仓自维护内核**：`src/smj/junction/` 是 junction 内核（含模板），自 0.2.2 起由本仓
+  直接维护。它源自 `agenticdft/agenticdft/tools/junction/`（A 方案之前是逐字节副本），
+  来源与本地变更史记在 `src/smj/junction/PROVENANCE.json`，但**不再与上游逐字节同步**：
+  `scripts/sync_core.py` 已退役，不要再用它覆盖内核文件。
+- **唯一的一致性契约是结果**：`demo/demo-reference.json` 记录 4 份示例谱的 G/G0、S、
+  κe、ZT 与峰位；`python scripts/gen_demo_reference.py --check` 与
+  `tests/test_demo_regression.py` 守住数值。若与 AgenticDFT 对同一 TE.dat 的结果分叉，
+  用 `python scripts/crosscheck_agenticdft.py <TE.dat>` 对账（可选、不进 CI，CI 里没有主仓）。
+- **台账**：`PROVENANCE.json` 的 `files` 是内核文件的 sha256（改过内核必须重跑
+  `python scripts/gen_junction_provenance.py`，否则 `smj verify`/CI 报哈希过期）；
+  `local_patches` 记录历史本地变更（id / commit / files / what / why / tests）；
+  `repo_commit` 是生成时所在提交，**不参与**校验——否则每次 commit 都会让它变红。
 - 主仓的 VASP 运行根（`agenticdft/work/`）与本包无关；本包的 run 产物落在
   `run.dir/run.name/`（默认是 `smj.yaml` 所在目录下的 `./<name>/`），不写主仓 `results.db`。
 
@@ -530,10 +527,6 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `true`，没有有效签名时 `smj review` 为 `blocked`。
 - **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
   （未测晶格热导就不下总 ZT 结论）。
-- **已知登记偏离**：vendored `criteria.py` 是 0.2.1 版注册表（本地补丁），
-  `k_e_zt_order` 的元数据仍写 `implemented=False`，而实际评估器会 emit 该判据——
-  与主仓新注册表不一致。该判据是非闸门的物理提示，不影响 `passed`；按复核 R12
-  只在 `VENDOR.json` 的 `note` 与这里登记，等回迁主仓时一并对齐。
 - **电极厚度口径**：`electrode.au_per_electrode` 只在 `source: builtin` 生效
   （`null` = 完整 60 Au/侧；整数按完整原子层截断，30 → 35/侧；上限 30）。默认
   `source: library` 时该键被完全忽略，团簇大小由 `electrodes.library` 文件决定。
@@ -561,7 +554,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   读双通道（远端回取时 `alpha.aims`/`beta.aims` 与 `mos.aims` 一样只取表头行）。
   `junction_analyze` 在 `results.json` 里另给 `spin` 块（每个通道的
   G/G0、E_F 处与积分后的自旋极化率）。**但**：总 G/S/ke/ZT 仍按
-  `(Tα+Tβ)/2` 的双通道均值口径（与 vendored Landauer 一致），且未考虑自旋轨道
+  `(Tα+Tβ)/2` 的双通道均值口径（与内核 Landauer 一致），且未考虑自旋轨道
   耦合、非共线磁构型、SOMO 与电极的强关联近藤效应；这些仍需人工判断，不要
   把平均透射当自旋分辨结论。另注意 `molecule.charge` 是整个模型的电荷（不是
   分子片段电荷），`fixed_spin_moment` 固定的是整个结——源文档建议把"释放约束

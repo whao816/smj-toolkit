@@ -276,7 +276,7 @@ def test_structural_fingerprint_ignores_initial_tags_only(workdir):
 def test_discover_stages_uses_state_order_not_vendored(
         workdir, monkeypatch):
     from smj import report as report_mod
-    import smj._vendor.junction.manifest as vendored
+    import smj.junction.manifest as vendored
 
     run_dir = workdir / "run"
     for stage in STAGE_ORDER:

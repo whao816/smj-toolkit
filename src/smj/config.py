@@ -21,7 +21,7 @@ import yaml
 
 from .errors import ConfigError
 from .electrode_library import DEFAULT_CLUSTER
-from ._vendor.junction.electrode import FCC_LATTICE_A
+from .junction.electrode import FCC_LATTICE_A
 
 DEFAULT_CONFIG_NAME = "smj.yaml"
 MODES = ("dry-run", "local", "slurm-ssh")

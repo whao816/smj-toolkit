@@ -42,7 +42,7 @@ where = ["src"]
 include = ["smj*"]
 
 [tool.setuptools.package-data]
-"smj._vendor.junction" = ["templates/*", "VENDOR.json"]
+"smj.junction" = ["templates/*", "PROVENANCE.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .._vendor.junction.geometry import read_xyz
-from .._vendor.junction.inputs import make_tip_relax_input, measure_au_s_bonds
+from ..junction.geometry import read_xyz
+from ..junction.inputs import make_tip_relax_input, measure_au_s_bonds
 from ..errors import StageBlocked, StageError
 from ..spin import (DEFAULT_INITIAL_MOMENT, insert_control_lines, map_molecule_moments,
                     record_initial_charge, record_junction_spin, spin_control_lines,

@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from smj._vendor.junction import artifacts
-from smj._vendor.junction.inputs import make_aitranss_input
-from smj._vendor.junction.tcontrol import parse_mos_nsaos
+from smj.junction import artifacts
+from smj.junction.inputs import make_aitranss_input
+from smj.junction.tcontrol import parse_mos_nsaos
 from smj.remote import RemoteSession
 from smj.testing import FakeTransport
 

@@ -12,11 +12,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .._vendor.junction.geometry import read_aims_geometry
-from .._vendor.junction.inputs import make_aitranss_input
-from .._vendor.junction.landauer import energy_order, read_te
-from .._vendor.junction.self_energy import make_self_energy
-from .._vendor.junction.tcontrol import parse_efermi, parse_mos_nsaos
+from ..junction.geometry import read_aims_geometry
+from ..junction.inputs import make_aitranss_input
+from ..junction.landauer import energy_order, read_te
+from ..junction.self_energy import make_self_energy
+from ..junction.tcontrol import parse_efermi, parse_mos_nsaos
 from ..errors import StageBlocked, StageError
 from ..landauer_spin import read_te_channels
 from ..provenance import (

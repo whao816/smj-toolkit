@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from smj._vendor.junction.validate import validate_junction_run
+from smj.junction.validate import validate_junction_run
 
 RELAX_LOG = (
     "Self-consistency cycle converged.\n"

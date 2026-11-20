@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from smj._vendor.junction.landauer import analyze_te
+from smj.junction.landauer import analyze_te
 from smj.analysis import compare_reference
 
 ROOT = Path(__file__).resolve().parents[1]

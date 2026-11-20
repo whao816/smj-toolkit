@@ -102,7 +102,7 @@ def _sha256(path: Path, chunk: int = 1 << 20) -> str:
 def _retrieval_mode(stage: str, name: str) -> str:
     """vendored artifacts 的取回策略（缺失时 unknown，不臆断）。"""
     try:
-        from smj._vendor.junction.artifacts import retrieval_mode  # lazy: vendored
+        from smj.junction.artifacts import retrieval_mode  # lazy: vendored
     except Exception:  # noqa: BLE001
         return "unknown"
     try:
@@ -118,9 +118,9 @@ def _atom_count(path: Path, *, xyz: bool = False) -> int | None:
         return None
     try:
         if xyz or path.suffix.lower() == ".xyz":
-            from smj._vendor.junction.geometry import read_xyz  # lazy: vendored
+            from smj.junction.geometry import read_xyz  # lazy: vendored
             return len(read_xyz(path))
-        from smj._vendor.junction.geometry import read_aims_geometry  # lazy: vendored
+        from smj.junction.geometry import read_aims_geometry  # lazy: vendored
         return len(read_aims_geometry(path))
     except Exception:  # noqa: BLE001
         return None
@@ -477,7 +477,7 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         # 空目录曾经直接判 passed; 现在统一交给 validate_junction_run, 缺 TE.dat 时
         # criteria 会给出 error 级 te_present, 结果是 failed 而不是"支持 H0"。
         try:
-            from smj._vendor.junction.validate import validate_junction_run  # lazy: vendored
+            from smj.junction.validate import validate_junction_run  # lazy: vendored
             from smj.verdict import apply_completeness, missing_stages
             verdict = validate_junction_run(
                 run_dir, results={"junction": transport or {}}, system=system,
