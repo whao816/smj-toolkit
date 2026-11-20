@@ -27,13 +27,13 @@
 
 ## 2. 提交拆分
 
-| 提交 | 内容 | 验收 |
-|---|---|---|
-| S1 | `docs/split-plan-2026-11-20.md`（本文件） | 无代码改动 |
-| S2 | 目录迁移 + 全仓 import/路径引用改写（58 个文件）+ `_vendor` 包删除 | `pytest` 全绿；`smj verify` 全 ok |
-| S3 | 清单改名与语义：`PROVENANCE.json`、`scripts/gen_junction_provenance.py`、`smj verify` 检查项改名；删除 `sync_core.py` | `gen_junction_provenance.py --check` exit 0 |
-| S4 | 约定文档：AGENTS.md、README §1/§8/§9、CHANGELOG「0.2.2：内核自维护」 | 文档一致 |
-| S5 | R12 收口：`k_e_zt_order` `implemented=True`，删除偏离登记 | 判据元数据自洽用例 |
+| 提交 | 内容 | 验收 | 状态 |
+|---|---|---|---|
+| S1 | `docs/split-plan-2026-11-20.md`（本文件） | 无代码改动 | ✅ `ad784d4` |
+| S2 | 目录迁移 + 全仓 import/路径引用改写（58 个文件）+ `_vendor` 包删除 | `pytest` 全绿；`smj verify` 全 ok | ✅ `dcc4cc3` |
+| S3 | 清单改名与语义：`PROVENANCE.json`、`scripts/gen_junction_provenance.py`、`smj verify` 检查项改名；删除 `sync_core.py`；新增 `crosscheck_agenticdft.py` | `gen_junction_provenance.py --check` exit 0 | ✅ `dcc4cc3` |
+| S4 | 约定文档：AGENTS.md、README §8、RELEASING、CHANGELOG、CI | 文档一致 | ✅ `dcc4cc3` |
+| S5 | R12 收口：`k_e_zt_order` `implemented=True`，删除偏离登记 | 判据元数据自洽 | ✅ `dcc4cc3` |
 
 ## 3. 风险与回滚
 
@@ -59,3 +59,15 @@
 - R11（结构与机理证据）仍按原决策待办；
 - 主仓若仍活跃，可反向 vendor `smj.junction` 或固定版本引用，
   由主仓自己决定，不再由本仓承担同步职责。
+
+
+## 6. 执行结果（2026-11-20）
+
+- 目录：`src/smj/junction/`（28 个 py + 8 个模板），`_vendor` 包已删除。
+- 台账：`src/smj/junction/PROVENANCE.json`（36 文件 / 13 条历史补丁），
+  `python scripts/gen_junction_provenance.py --check` → 一致。
+- 契约：`python scripts/gen_demo_reference.py --check` → 4 份谱一致；
+  `python scripts/crosscheck_agenticdft.py <薁 TE.dat>` → 两边 L0/S/κe/ZT 逐位一致。
+- 验证：`pytest -q` → 397 passed；`smj verify` → 7 项全 ok；
+  `python scripts/build_wheel.py --check` → RECORD 91 条目自检通过。
+- 已退役：`scripts/sync_core.py`；AGENTS.md/README/RELEASING 不再要求同步上游。
