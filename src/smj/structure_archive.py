@@ -85,9 +85,9 @@ def _atom_count(structure: Path, fmt: str = "xyz") -> int:
     """数原子。优先用解析器（xyz / aims 各有语义），失败再退回行数。"""
     try:
         if fmt == "aims":
-            from ._vendor.junction.geometry import read_aims_geometry
+            from .junction.geometry import read_aims_geometry
             return len(read_aims_geometry(structure))
-        from ._vendor.junction.geometry import read_xyz
+        from .junction.geometry import read_xyz
         return len(read_xyz(structure))
     except Exception:  # noqa: BLE001 - 归档不因解析失败而中断
         pass

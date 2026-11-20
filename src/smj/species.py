@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-from ._vendor.junction.tcontrol import find_species_file
+from .junction.tcontrol import find_species_file
 
 #: 文件头里的基组档位：`Suggested "light" defaults for S atom`。
 _TIER_RE = re.compile(r'Suggested\s+"([A-Za-z][A-Za-z0-9_-]*)"\s+defaults', re.IGNORECASE)

@@ -6,7 +6,7 @@
 
 **核对什么**：``electrode_build`` 贴装后的建结几何里，每侧选中的三个表面原子
 （surface indices）与输运轴、tcontrol 是否一致，并把当前 ``geometry.in`` 的
-sha256 绑进记录 —— 几何一变，旧记录立刻失效（:mod:`smj._vendor.junction.fingerprint`）。
+sha256 绑进记录 —— 几何一变，旧记录立刻失效（:mod:`smj.junction.fingerprint`）。
 
 **默认自动**：``review.auto_connection_check: true``（默认）时，``electrode_build``
 采集后与 ``smj review`` 开始时都会自动调本模块登记；审计不通过仍会拒绝
@@ -193,7 +193,7 @@ def approve_connection_check(target: Any, *, who: str, stage: str | Path | None 
         return _refuse("metadata_unreadable",
                        "%s 不是对象或为空" % metadata_path, **base)
 
-    from smj._vendor.junction import a2_viz, fingerprint  # lazy: vendored
+    from smj.junction import a2_viz, fingerprint  # lazy: vendored
 
     if tcontrol is not None:
         tc_path: Path | None = Path(tcontrol)

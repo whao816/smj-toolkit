@@ -16,3 +16,7 @@ presentation/
 
 # 运行期归档的分子结构（每次 prepare/collect 自动生成，与结果快照挂钩）
 saved_structures/
+
+# pytest 在本机被沙箱拒绝时会落在仓库根
+pytest-of-*/
+

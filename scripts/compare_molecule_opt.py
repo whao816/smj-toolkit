@@ -16,7 +16,7 @@ import math
 from pathlib import Path
 
 from smj import cube
-from smj._vendor.junction.geometry import read_xyz
+from smj.junction.geometry import read_xyz
 
 
 def _dist(a, b) -> float:

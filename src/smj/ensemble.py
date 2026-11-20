@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import conformers
-from ._vendor.junction.geometry import write_xyz
+from .junction.geometry import write_xyz
 
 #: `ensemble.json` 里固定写出的口径说明。
 CAVEAT = (

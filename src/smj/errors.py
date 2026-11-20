@@ -30,6 +30,17 @@ class StageError(SmjError):
     """阶段内部错误（输入生成失败、产物解析失败、作业失败等）。"""
 
 
+class ActiveJobError(StageError):
+    """阶段在远端仍是活跃作业（``submitted``/``waiting``），拒绝重来。
+
+    2026-11-20 复核 P1-5：这与"阶段失败"是两种不同的状态。旧实现让
+    ``run_stage`` 的兜底 ``except SmjError`` 把它当失败写进 state，覆盖掉
+    ``waiting``+``job_id``，于是下一次 ``run`` 的保护失效、直接重新提交，
+    在集群上留下两个作业。调用方（``run`` / ``run_stage``）必须保留
+    ``submitted``/``waiting`` 原状态，只回报"作业还在跑"。
+    """
+
+
 class StageBlocked(StageError):
     """阶段无法开始：上游产物缺失或参数不足。
 

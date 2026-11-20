@@ -93,9 +93,16 @@ CRITERIA = [
                               '性质; 换分子体系(如 2CN)不得当普适闸门 —— 2026-10-24 用户拍板'
                               '"窄口径", 2CN 记不适用而非判否')}},
 
-    {'name': 'k_e_zt_order', 'kind': 'physical', 'gate': 'warn', 'implemented': False,
+    {'name': 'te_window_covers_efermi', 'kind': 'physical', 'gate': 'error', 'implemented': True,
      'band': None, 'source': None,
-     'note': '目前只有"非负且量级合理"的物理常识, 正式来源待补'},
+     'note': '2026-11-20 复核 P1-2: TE.dat 的 E-E_F 必须跨 0(min<=0<=max)。整窗落在 E_F '
+             '一侧时费米窗权重全在同一侧, L0/L1/L2 不是 E_F 处展开, S 无物理意义 -> failed'},
+
+    {'name': 'k_e_zt_order', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
+     'band': None, 'source': None,
+     'note': '2026-11-20 复核 R12: 评估器确实会 emit 该判据(κe≥0 与 ZT 量级常识), '
+             '原元数据写 implemented=False 与行为不符, 已改正; 正式文献来源待补, '
+             '仍列在 KNOWN_GAPS 里(ratchet 只许减不许增)'},
 ]
 
 # 已登记缺口(ratchtet): 只允许这些无源/未实现的 physical 判据存在, 新增即 lint 失败
@@ -287,6 +294,10 @@ def physics_verdict(checks) -> dict:
                 'missing_evidence_criteria': [],
                 'not_applicable_criteria': [], 'unregistered_checks': []}
     fam = {c['name']: c for c in CRITERIA}
+    # 2026-11-20 复核 P1-2, 本地补丁 F-RECHECK-window
+    evaluated_gates = [c.get('name') for c in checks or []
+                       if c.get('applicable') is not False
+                       and c.get('name') in _DISCRIMINATING_GATES]
     errs, warns, unknown, not_app, missing = [], [], [], [], []
     for c in checks or []:
         if c.get('applicable') is False:    # 判据对此体系不作闸门(A, 2026-10-24)
@@ -313,6 +324,11 @@ def physics_verdict(checks) -> dict:
     elif warns or unknown or missing:
         # 未登记判据未过时**不得**判 passed(否则新增闸门一旦忘登记就会被静默放过)
         v = 'inconclusive'
+    elif not evaluated_gates:
+        # 2026-11-20 复核 P1-2: 所有带 applies_to 的族闸门都 applicable=False。
+        # 这不是"证据支持 H0", 而是"没有闸门可判" —— 必须 inconclusive。
+        v = 'inconclusive'
+        warns = ['no_applicable_gate']
     else:
         v = 'passed'
     return {'physics_verdict': v, 'wording': VERDICT_WORDING[v],
@@ -344,6 +360,10 @@ def _check(name, value, ok, detail, applicable: bool = True, missing: bool = Fal
 
 _ERROR_GATED = {c['name'] for c in CRITERIA if c.get('gate') == 'error'}
 PHYSICAL_NAMES = frozenset(c['name'] for c in CRITERIA if c.get('kind') == 'physical')
+# 2026-11-20 复核 P1-2, 本地补丁 F-RECHECK-window: "有判别力的族闸门" = 带 applies_to 的判据。
+# 全部此类闸门都 applicable=False 时, 该 run 没有任何族标定下的物理闸门被真正评估过,
+# 不能判 passed(那只是"没有闸门可判", 不是"证据支持 H0")。
+_DISCRIMINATING_GATES = frozenset(c['name'] for c in CRITERIA if c.get('applies_to'))
 
 
 def _spec(name):
@@ -420,6 +440,17 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None) -> l
                        missing=True)]
 
     checks = []
+    # ⓪ 能量窗必须跨 E_F(2026-11-20 复核 P1-2, 本地补丁 F-RECHECK-window):
+    # 整窗落在 E_F 一侧时, 费米窗权重全在同一侧, L0/L1/L2 不是 E_F 处的展开,
+    # S 的符号与量级都没有意义 —— 这种谱必须判 failed, 而不是靠"族闸门不适用"放过。
+    energies = [r[1] for r in rows]
+    lo_ev, hi_ev = min(energies), max(energies)
+    covers = lo_ev <= 0.0 <= hi_ev
+    checks.append(_check(
+        'te_window_covers_efermi', [round(lo_ev, 6), round(hi_ev, 6)], covers,
+        '能量窗 E-E_F ∈ [%+.4f, %+.4f] eV %s 0: %s'
+        % (lo_ev, hi_ev, '跨越' if covers else '**未跨越**',
+           '正常' if covers else '整窗在 E_F 一侧, Seebeck/ZT 无物理意义')))
     # ① E_F 近旁的显著透射峰: 按族归因(2026-11-15: "有峰"从错误信号改为需解释的物理信号)
     pk = [p for p in significant_peaks(rows) if abs(p[0]) <= PEAK_SEARCH_WINDOW_EV]
     band_lo, band_hi = _bf('t_ef_resonance_attribution') or (0.15, 1.0)

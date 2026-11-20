@@ -232,10 +232,51 @@ def test_guard_geometry_fingerprint_rejects_mismatch(workdir):
     assert verify_parent_geometry("aims_scf", geometry, metadata)
 
 
+def test_guard_geometry_fingerprint_accepts_structural_when_tags_added(workdir):
+    """开壳层/带电 SCF 往 geometry.in 追加 initial_* 子 tag 后，
+    字节 sha256 变了，但结构没变 —— 结构指纹仍应通过。"""
+    from smj.provenance import structural_fingerprint, verify_parent_geometry
+
+    base = "atom 0.0 0.0 0.0 Au\natom 1.0 0.0 0.0 S\n"
+    geometry = workdir / "geometry.in"
+    geometry.write_text(base, encoding="utf-8")
+    tagged = base + "  initial_charge  0.5\n  initial_moment  0.1\n"
+    scf_geometry = workdir / "scf_geometry.in"
+    scf_geometry.write_text(tagged, encoding="utf-8")
+
+    meta = {"surface_fingerprint": _sha256_file(geometry),
+            "surface_fingerprint_structural": structural_fingerprint(geometry)}
+    metadata = workdir / "electrode_metadata.json"
+    metadata.write_text(json.dumps(meta), encoding="utf-8")
+
+    assert structural_fingerprint(geometry) == structural_fingerprint(scf_geometry)
+    assert verify_parent_geometry("aims_scf", scf_geometry, metadata)
+
+    meta_bad = dict(meta, surface_fingerprint_structural="0" * 64)
+    metadata.write_text(json.dumps(meta_bad), encoding="utf-8")
+    with pytest.raises(StageBlocked, match="结构指纹"):
+        verify_parent_geometry("aims_scf", scf_geometry, metadata)
+
+
+def test_structural_fingerprint_ignores_initial_tags_only(workdir):
+    from smj.provenance import structural_fingerprint
+
+    a = workdir / "a.in"
+    a.write_text("atom 0 0 0 Au\n", encoding="utf-8")
+    b = workdir / "b.in"
+    b.write_text("atom 0 0 0 Au\n  initial_charge 1.0\n", encoding="utf-8")
+    c = workdir / "c.in"
+    c.write_text("atom 0 0 0 Ag\n", encoding="utf-8")
+
+    assert structural_fingerprint(a) == structural_fingerprint(b)
+    assert structural_fingerprint(a) != structural_fingerprint(c)
+    assert structural_fingerprint(workdir / "missing.in") is None
+
+
 def test_discover_stages_uses_state_order_not_vendored(
         workdir, monkeypatch):
     from smj import report as report_mod
-    import smj._vendor.junction.manifest as vendored
+    import smj.junction.manifest as vendored
 
     run_dir = workdir / "run"
     for stage in STAGE_ORDER:
@@ -269,3 +310,53 @@ def test_review_flags_protocol_drift(workdir):
 
     assert "provenance_drift" in result.codes()
     assert result.status == "blocked"
+
+# --- 2026-11-20 复核 P2-1 / R8：采样覆盖必须进协议指纹 ------------------ #
+
+def _protocol_config_of(config: RunConfig) -> dict:
+    from smj.provenance import _protocol_config
+    return _protocol_config(config)
+
+
+def test_protocol_hash_ignores_explicit_estep_override(workdir):
+    """复核实测：eV 相对窗下改 transport.estep，哈希必须变。"""
+    from smj.provenance import protocol_sha256
+
+    base = _config(workdir)
+    overridden = _config(workdir)
+    overridden.transport.estep = 0.001
+
+    assert protocol_sha256(base) != protocol_sha256(overridden)
+    assert _protocol_config_of(overridden)["transport"]["estep"] == 0.001
+
+
+def test_protocol_hash_ignores_explicit_window_edges(workdir):
+    from smj.provenance import protocol_sha256
+
+    base = _config(workdir)
+    changed = _config(workdir)
+    changed.transport.ener = -0.2
+    changed.transport.eend = -0.1
+
+    assert protocol_sha256(base) != protocol_sha256(changed)
+    transport = _protocol_config_of(changed)["transport"]
+    assert transport["ener"] == -0.2
+    assert transport["eend"] == -0.1
+
+
+def test_protocol_default_config_keeps_old_shape(workdir):
+    """默认配置（ener/estep/eend 皆 None）不得新增键——否则历史 run_spec 集体漂移。"""
+    transport = _protocol_config_of(_config(workdir))["transport"]
+    for key in ("ener", "estep", "eend"):
+        assert key not in transport
+    assert transport["energy_window_unit"] == "eV"
+
+
+def test_run_spec_records_resolved_window_unit(workdir):
+    config = _config(workdir)
+    runner = _runner(config)
+    runner.prepare("gaussian_opt")
+    transport = _spec(runner.run_dir)["config"]["transport"]
+    # eV 口径需要 efermi 才能解析；resolve 不了时该键可以缺席，出现就必须带单位。
+    if "resolved_window" in transport:
+        assert transport["resolved_window_unit"] == "Hartree"

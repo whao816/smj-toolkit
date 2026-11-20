@@ -176,7 +176,7 @@ def resolve_species_dir(config: Any, species_dir: str | Path | None = None) -> P
 def molecule_atoms(path: str | Path) -> list[Any]:
     """读分子结构（xyz 或 FHI-aims geometry.in），返回 vendored ``Atom`` 列表。"""
     p = Path(path)
-    from smj._vendor.junction.geometry import read_aims_geometry, read_xyz  # lazy: vendored
+    from smj.junction.geometry import read_aims_geometry, read_xyz  # lazy: vendored
     if p.suffix.lower() == ".xyz" or p.name.lower().endswith(".xyz"):
         return read_xyz(p)
     try:
@@ -210,7 +210,7 @@ def _molecule_check(result: PreflightResult, config: Any,
     labels = list(elements or [])
     if not labels:
         try:
-            from smj._vendor.junction.geometry import elements_in_geometry  # lazy: vendored
+            from smj.junction.geometry import elements_in_geometry  # lazy: vendored
             labels = elements_in_geometry(atoms)
         except Exception:  # noqa: BLE001
             labels = []
@@ -228,7 +228,7 @@ def _molecule_check(result: PreflightResult, config: Any,
 def _overlap_check(result: PreflightResult, atoms: list[Any]) -> None:
     """元素对 + 共价半径下限判原子重叠（与 vendored validate 同一口径）。"""
     try:
-        from smj._vendor.junction.validate import (  # lazy: vendored
+        from smj.junction.validate import (  # lazy: vendored
             COVALENT_RADII, MIN_BOND_FACTOR, PAIR_CUTOFF)
     except Exception:  # noqa: BLE001
         result.notes.append("vendored validate 不可用，跳过分子重叠预检")
@@ -278,7 +278,7 @@ def _species_check(result: PreflightResult, config: Any,
         result.add("warning", "species_elements_unknown",
                    "species_dir 已给（%s），但分子元素未知，未逐元素核对" % path)
         return
-    from smj._vendor.junction.preflight import species_available  # lazy: vendored
+    from smj.junction.preflight import species_available  # lazy: vendored
     report = species_available(path, elements)
     if report.get("ok"):
         result.add("info", "species_ok", report.get("detail", "species 齐备"),
@@ -311,7 +311,7 @@ def _geometry_check(result: PreflightResult, run_dir: Path, layout: RunLayout) -
                    "尚无建结 geometry.in（将由 electrode_build 阶段生成），结构几何闸门未执行")
         return
     try:
-        from smj._vendor.junction.validate import validate_junction_geometry  # lazy: vendored
+        from smj.junction.validate import validate_junction_geometry  # lazy: vendored
         verdict = validate_junction_geometry(build, geometry=geometry)
     except Exception as exc:  # noqa: BLE001
         result.add("error", "geometry_check_failed", "建结几何检查失败: %s" % exc)
@@ -352,7 +352,7 @@ def _geometry_count(path: Path) -> int | None:
     if not path.is_file():
         return None
     try:
-        from smj._vendor.junction.geometry import read_aims_geometry  # lazy: vendored
+        from smj.junction.geometry import read_aims_geometry  # lazy: vendored
         return len(read_aims_geometry(path))
     except Exception:  # noqa: BLE001
         return None
@@ -480,7 +480,7 @@ def _env_check(result: PreflightResult, config: Any, mode: str,
                    "dry-run 只生成输入：未核对 Gaussian / FHI-aims / aitranss 二进制与许可"
                    "（提交前在目标机器上再跑一次非 dry-run 预检）")
         return
-    from smj._vendor.junction import preflight as vendored  # lazy: vendored
+    from smj.junction import preflight as vendored  # lazy: vendored
     engine = engine_for_config(config)
     extra_probes = {
         "gaussian": ("gaussian_unavailable", "Gaussian", vendored.gaussian_license),
@@ -540,7 +540,7 @@ def run_preflight(config: Any, *, transport: Any = None, stage: str | None = Non
 
     atoms = _molecule_check(result, config, elements)
     if elements is None and atoms:
-        from smj._vendor.junction.geometry import elements_in_geometry  # lazy: vendored
+        from smj.junction.geometry import elements_in_geometry  # lazy: vendored
         elements = elements_in_geometry(atoms)
     result.elements = list(elements or [])
 

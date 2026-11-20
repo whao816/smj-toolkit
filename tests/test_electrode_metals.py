@@ -23,9 +23,9 @@ import pytest
 from smj.cli import main
 from smj.config import load_config
 from smj.errors import ConfigError
-from smj._vendor.junction.electrode import append_au60, FCC_LATTICE_A
-from smj._vendor.junction.geometry import read_aims_geometry, write_aims_geometry
-from smj._vendor.junction.inputs import make_tip_relax_input
+from smj.junction.electrode import append_au60, FCC_LATTICE_A
+from smj.junction.geometry import read_aims_geometry, write_aims_geometry
+from smj.junction.inputs import make_tip_relax_input
 
 BDT_XYZ = """14
 benzene-1,4-dithiol (BDT)
@@ -265,7 +265,7 @@ def test_builtin_custom_lattice_used(workdir, capsys):
 
 def test_au_builtin_metadata_stays_legacy(workdir):
     """默认 Au / builtin：metadata 不新增 electrode_element 键（与 0.2.0 一致）。"""
-    from smj._vendor.junction.geometry import Atom
+    from smj.junction.geometry import Atom
 
     atoms = [Atom("C", 0, 0, 0), Atom("S", 0, 1.8, 0), Atom("S", 0, -1.8, 0),
              Atom("Au", 0, 3.8, 0), Atom("Au", 0, -3.8, 0)]

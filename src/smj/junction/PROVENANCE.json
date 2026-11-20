@@ -2,16 +2,16 @@
   "schema": "smj.vendor.v1",
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
-  "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 VENDOR.json）",
-  "repo_commit": "8eaa8fb925870cfeb0ed83d25fe25a01323b9987",
+  "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 PROVENANCE.json）",
+  "repo_commit": "ad784d42927e93ea3b5d01eb8c0690a74a91f61b",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
       "bytes": 380
     },
     "a2_viz.py": {
-      "sha256": "28c8823c9fb2f7a9e87c5dd0f4eda89ddae155a7ebc2459692c96ce6c4dba169",
-      "bytes": 27164
+      "sha256": "0ea8b499d2954999e4f17a97fdf9802f8678973d28d07bc1168cc0eea5e8ef82",
+      "bytes": 27156
     },
     "artifacts.py": {
       "sha256": "c778d75a706c46bcf4ad031b4fc9cc307621364d5cda3af497221bad4cd255bc",
@@ -30,8 +30,8 @@
       "bytes": 2262
     },
     "criteria.py": {
-      "sha256": "da67a5b04b5ca69a98aff6bedb818185028cb5ad38c2565d1a298b5278ca100b",
-      "bytes": 28260
+      "sha256": "4f14f513351dabb45778647ce1c5bd3dfa634fd9282ea9aeb1a64e3fcb9abea2",
+      "bytes": 30461
     },
     "demo.py": {
       "sha256": "501fb09f251c197206664e996a10f018f9cc8a61edeb597ce2e464169043e97e",
@@ -54,8 +54,8 @@
       "bytes": 10168
     },
     "independent_check.py": {
-      "sha256": "76dac0d97a8c5f5ae8bebc9cb091afd2da3d2158b8324ed266ff4b91bfe772b4",
-      "bytes": 7952
+      "sha256": "8307da56896ae27fe293232da7999d82ccf06a31bd9eb1998d900e46f035638f",
+      "bytes": 8216
     },
     "inputs.py": {
       "sha256": "7128fdefe5a36740080e296f52287635a3e1aaec7a82be337aa3ab58d081d255",
@@ -66,8 +66,8 @@
       "bytes": 9557
     },
     "landauer.py": {
-      "sha256": "607b0cc502aa890eaa9b4da0ed214d057eada8bad13ddd6ae7c917539d4fce0c",
-      "bytes": 4202
+      "sha256": "e8b781d90aff457ba4e2ee9aabb6ece284876ce76caaededb37a8ee8ef2a73bd",
+      "bytes": 5676
     },
     "manifest.py": {
       "sha256": "ab9071810cbbf550a3b0d82cfa6bad5bfb770f9bcf228efe3f4b1603f0645446",
@@ -146,8 +146,8 @@
       "bytes": 566
     },
     "validate.py": {
-      "sha256": "1528d9bcdfb2fc4a9d5f0a5a88021de6fc5d0bbf3bf982897075fd96f588fce0",
-      "bytes": 23803
+      "sha256": "c7a15b419ca35d11f6290fa31e66c8b61319570f28bdffb74509fde53318f125",
+      "bytes": 24194
     }
   },
   "local_patches": [
@@ -291,7 +291,50 @@
         "tests/test_family.py",
         "tests/test_criteria_failopen.py"
       ]
+    },
+    {
+      "id": "F-RECHECK-2026-11-20-window",
+      "commit": "2026-11-20",
+      "files": [
+        "criteria.py"
+      ],
+      "what": "新增 physical/error 判据 te_window_covers_efermi（E−E_F 必须跨 0）；physics_verdict 增加闸门覆盖判定：所有带 applies_to 的族闸门都 applicable=False 时判 inconclusive（inconclusive_criteria 记 no_applicable_gate），不再因为「没有闸门可判」而 passed。",
+      "why": "复核 P1-2：整窗在 E_F 一侧的合成谱、以及族闸门全部不适用的体系（如薁），原实现给出 physics_verdict=passed / 支持 H0，属于把「没有证据」包装成「证据支持」。",
+      "tests": [
+        "tests/test_verdict_gates.py"
+      ]
+    },
+    {
+      "id": "F-UPSTREAM-PENDING-2026-11-20",
+      "commit": "2026-11-20",
+      "files": [
+        "fixtures.py",
+        "molecules.py",
+        "surface_index.py",
+        "tcontrol.py",
+        "templates/control_relax.in",
+        "templates/gaussian_opt_freq.gjf",
+        "templates/sub_g16.sh"
+      ],
+      "what": "副本与主仓工作区一致、但与主仓 HEAD（26c197b）不同：tcontrol 的 _spin_moment_line、surface_index.pick_surface_triple(away=…)、三份模板的 SCF 精度/scratch 目录/spin 行、fixtures 的 2026-11-15 判据注记，都是主仓尚未提交的改动；molecules.py 是等价实现（按 cid 逐个取 conformer）。",
+      "why": "这些文件当年是从主仓**工作区**同步的，主仓一直没提交。A 方案（2026-11-20）之后内核由本仓维护，本条只记录历史来源，不再需要回迁；若日后要与主仓对齐，用 scripts/crosscheck_agenticdft.py 比结果而不是比文件。",
+      "tests": [
+        "tests/test_junction_provenance.py",
+        "scripts/crosscheck_agenticdft.py"
+      ]
+    },
+    {
+      "id": "F-RECHECK-2026-11-20-aims-out-stage",
+      "commit": "2026-11-20",
+      "files": [
+        "validate.py"
+      ],
+      "what": "_ARTIFACT_STAGE_HOME['aims.out'] 从 ('aims_scf','aims_tip_relax') 收紧为 ('aims_scf',)：静态 SCF 判据只认 aims_scf 阶段（扁平布局仍由 run_dir/aims.out 命中），不再回落到弛豫日志。",
+      "why": "复核 R13b：弛豫日志每一步都写 Self-consistency cycle converged，回落到 tip_relax/aims.out 时，一个「静态 SCF 阶段根本没跑」的 run 也会拿到 aims_scf=OK 判据，报告把弛豫里的某一步 SCF 当成了送 aitranss 的静态 SCF。",
+      "tests": [
+        "tests/test_validate_artifacts.py"
+      ]
     }
   ],
-  "note": "0.1.1 本地补丁的权威记录；回迁主仓后应删除对应条目并重新 sync。本文件由 scripts/gen_vendor_json.py 生成，勿手改。"
+  "note": "0.1.1 本地补丁的权威记录；回迁主仓后应删除对应条目并重新 sync。本文件由 scripts/gen_junction_provenance.py 生成，勿手改。"
 }

@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable
 
-from .._vendor.junction.geometry import Atom, read_aims_geometry, read_xyz
+from ..junction.geometry import Atom, read_aims_geometry, read_xyz
 from ..errors import StageBlocked
 
 #: 写进 ``StageState.resources`` 的估算字段（与 resources.estimate_smj_resources 对齐）

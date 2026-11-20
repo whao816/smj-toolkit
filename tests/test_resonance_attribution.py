@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from smj._vendor.junction.criteria import (
+from smj.junction.criteria import (
     EXPECTED_RESONANCE,
     evaluate_run_criteria,
     physics_verdict,

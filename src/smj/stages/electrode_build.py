@@ -15,12 +15,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .._vendor.junction.electrode import append_au60
-from .._vendor.junction.fingerprint import attach_fingerprint
+from ..junction.electrode import append_au60
+from ..junction.fingerprint import attach_fingerprint
 from ..electrode_library import resolve_cluster
-from ..errors import StageError
-from ..provenance import sha256_file
+from ..errors import StageBlocked, StageError
+from ..state import previous_stage
+from ..provenance import sha256_file, structural_fingerprint
 from ..structure_archive import safe_archive
+from ._aims_log import describe, relax_status
 from ._helpers import est_record
 from .base import Collected, Prepared, Stage, register
 
@@ -39,6 +41,17 @@ class ElectrodeBuildStage(Stage):
         # --geometry 覆盖：阶段独立运行时直接给"分子 + 两枚电极 tip"的几何文件。
         source = ctx.upstream(
             self.name, "geometry.in.next_step", override=ctx.override_path("geometry"))
+        # 2026-11-20 复核 P1-3 双保险：上游 collect 已拒绝未收敛弛豫，这里再按上游
+        # 日志核一遍——防止有人手工把 state 标成 collected，或直接用 --geometry 覆盖。
+        if ctx.override_path("geometry") is None:
+            upstream_log = ctx.artifact(previous_stage(self.name), "aims.out")
+            upstream_status = relax_status(upstream_log)
+            if upstream_status is not None and not upstream_status["converged"]:
+                raise StageBlocked(
+                    self.name,
+                    "上游弛豫未收敛，拒绝装配电极：%s（日志 %s）"
+                    % (describe(upstream_status), upstream_log),
+                    [str(upstream_log)])
         electrode = ctx.config.electrode
         element = electrode.element
         geometry = stage_dir / "geometry.in"
@@ -75,6 +88,15 @@ class ElectrodeBuildStage(Stage):
         # 指纹写回 metadata：surface_fingerprint = sha256(geometry.in)，
         # 下游 review 用它确认"确认过的表面"和"实际算的表面"是同一份文件。
         metadata = attach_fingerprint(stage_dir)
+        # 2026-11-19：再记一份**结构**指纹（只哈希原子行）。开壳层/带电结的
+        # aims_scf 会往 geometry.in 里追加 initial_charge/initial_moment 子 tag，
+        # 字节 sha256 随之变化；下游核对几何同源时应看结构指纹。
+        structural = structural_fingerprint(geometry)
+        if structural:
+            metadata["surface_fingerprint_structural"] = structural
+            Path(metadata_path).write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8")
         natoms = self.count_aims_atoms(geometry)
         estimate = ctx.estimate(self.name, natoms)
         surface = metadata.get("surface_indices") or {}

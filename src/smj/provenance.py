@@ -82,6 +82,35 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def structural_fingerprint(path: str | Path) -> str | None:
+    """几何的**结构**指纹：只哈希原子行（元素 + 坐标），忽略 initial_charge /
+    initial_moment 等子 tag。
+
+    为什么要单独定义一个：FHI-aims 要求带电/自旋极化体系把 per-atom
+    ``initial_charge``/``initial_moment`` 写进 geometry.in，同一个结构的字节
+    sha256 会随这些子 tag 变化。阶段间核对「是不是同一份几何」应当看结构本身，
+    而不是看这些初始猜测量。缺失或读不到返回 ``None``。
+    """
+    p = Path(path)
+    try:
+        if not p.is_file():
+            return None
+        atoms: list[str] = []
+        for raw in p.read_text(encoding="utf-8", errors="replace").splitlines():
+            fields = raw.split()
+            if not fields:
+                continue
+            head = fields[0]
+            if head in ("atom", "lattice_vector"):
+                # 坐标与元素做规范化（空白折叠），子 tag 行（initial_*）不参与。
+                atoms.append(" ".join(fields))
+        if not atoms:
+            return None
+        return sha256_text("\n".join(atoms))
+    except OSError:
+        return None
+
+
 def canonical_json(payload: Any) -> str:
     """稳定 JSON：排序键、紧凑分隔符、不允许 NaN。"""
     return json.dumps(payload, sort_keys=True, separators=(",", ":"),
@@ -156,6 +185,8 @@ def config_to_dict(config: Any) -> dict[str, Any]:
     try:
         data["transport"]["energy_window"] = list(config.transport.energy_window)
         data["transport"]["resolved_window"] = list(config.transport.resolved_window())
+        # 2026-11-20 复核 P2-1：resolved_window 恒为 Ha 绝对能量，标注单位避免误读。
+        data["transport"]["resolved_window_unit"] = "Hartree"
     except Exception:  # noqa: BLE001 - 兼容手写/旧配置对象
         pass
     # 分子路径按绝对路径入档；实际文件哈希在 spec["molecule"] 里。
@@ -200,6 +231,14 @@ def _protocol_config(config: Any) -> dict[str, Any]:
         pass
     molecule["xyz_sha256"] = sha256_file(xyz) if xyz is not None else None
     molecule.pop("xyz", None)
+    # 0.2.x 时代的 protocol 里没有 initial_moments；未设时与旧行为逐字节等价，
+    # 所以只在非空时才入协议，避免历史 run_spec 集体判为漂移。
+    if not molecule.get("initial_moments"):
+        molecule.pop("initial_moments", None)
+    # fixed_spin_moment=True 是旧行为（模板一直写 M−1）；默认值不入协议，
+    # 只有显式解除约束（false）才需要触发漂移检查。
+    if molecule.get("fixed_spin_moment") is True:
+        molecule.pop("fixed_spin_moment", None)
 
     electrode = _jsonable(config.electrode)
     # 库文件位置不是物理参数；库文件内容哈希才是。
@@ -223,9 +262,16 @@ def _protocol_config(config: Any) -> dict[str, Any]:
             transport["energy_window"] = list(config.transport.resolved_window())
     except Exception:  # noqa: BLE001 - 兼容手写/旧配置对象
         pass
-    transport.pop("ener", None)
-    transport.pop("estep", None)
-    transport.pop("eend", None)
+    # 2026-11-20 复核 P2-1：ener/estep/eend 是"采样覆盖"——它们确实会改变
+    # 积分网格（config.resolved_window 里 estep 覆盖生效），所以**显式写了的
+    # 覆盖值必须进协议**。旧实现无条件 pop 掉三个键，于是 eV 相对窗下改
+    # transport.estep 不改变 protocol_sha256（复核实测）。
+    # 默认配置（三者皆 None）不加键，保持 0.2.x 的哈希形状逐字节不变。
+    for key in ("ener", "estep", "eend"):
+        transport.pop(key, None)
+        value = getattr(config.transport, key, None)
+        if value is not None:
+            transport[key] = float(value)
     # 这是"缺 te.out 是否拒绝"的验证策略，不改变物理结果，不进 protocol。
     transport.pop("require_te_out", None)
     return {"molecule": molecule, "electrode": electrode, "transport": transport}
@@ -540,6 +586,20 @@ def verify_parent_geometry(stage: str, geometry: str | Path,
             raise StageBlocked(stage, "电极 metadata 不可解析: %s" % meta_path,
                               [str(meta_path)]) from exc
         expected = payload.get("surface_fingerprint") if isinstance(payload, dict) else None
+        if isinstance(payload, dict) and payload.get("surface_fingerprint_structural"):
+            # 结构指纹优先：initial_charge/initial_moment 会改变字节 sha256，
+            # 但不应改变「这是同一份几何」这一事实。
+            expected = payload["surface_fingerprint_structural"]
+            actual_struct = structural_fingerprint(geo)
+            if actual_struct is None:
+                raise StageBlocked(stage, "几何文件没有可识别的原子行: %s" % geo,
+                                  [str(geo)])
+            if actual_struct != expected:
+                raise StageBlocked(
+                    stage, "几何结构指纹与电极 metadata 不一致（几何=%s，记录=%s，来源=%s）"
+                    % (str(actual_struct)[:12], str(expected)[:12], source or "未提供"),
+                    [str(geo)])
+            return True
 
     actual = sha256_file(geo)
     if not expected:

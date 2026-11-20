@@ -21,14 +21,15 @@ import json
 import shutil
 from pathlib import Path
 
-from .._vendor.junction.electrode import backplane_indices as _backplane_indices
-from .._vendor.junction.fingerprint import attach_fingerprint
-from .._vendor.junction.geometry import read_aims_geometry
-from .._vendor.junction.inputs import make_au_relax_input
-from .._vendor.junction.surface_index import verify_surface_indices
+from ..junction.electrode import backplane_indices as _backplane_indices
+from ..junction.fingerprint import attach_fingerprint
+from ..junction.geometry import read_aims_geometry
+from ..junction.inputs import make_au_relax_input
+from ..junction.surface_index import verify_surface_indices
 from ..errors import StageBlocked, StageError
 from ..provenance import sha256_file, verify_parent_geometry
 from ..structure_archive import safe_archive
+from ._aims_log import describe, relax_status
 from ._helpers import est_record, submit_command, vdw_mode
 from .base import Collected, Prepared, Stage, register
 
@@ -143,14 +144,14 @@ class AuRelaxStage(Stage):
             )
 
         output = ctx.require_stage_file(self.name, "aims.out")
-        try:
-            text = output.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            text = ""
-        if "Have a nice day" not in text:
+        # 2026-11-20 复核 P1-3/新增④：必须解析收敛标记，不能只看 "Have a nice day"。
+        status = relax_status(output)
+        if status is None:
+            raise StageError("au_relax 缺 aims.out：无法验收弛豫收敛（%s）" % output)
+        if not status["converged"]:
             raise StageError(
-                "au_relax 的 aims.out 没有正常结束（缺 'Have a nice day'）；"
-                "几何未收敛，不能交给 aims_scf（先看 %s）" % output)
+                "au_relax 未收敛，拒绝采集：%s（日志 %s）。几何不是弛豫结果，"
+                "不能交给 aims_scf" % (describe(status), output))
         next_step = stage_dir / "geometry.in.next_step"
         if not next_step.is_file():
             raise StageError(
@@ -180,7 +181,7 @@ class AuRelaxStage(Stage):
         input_geometry = ctx.artifact("electrode_build", "geometry.in")
         meta["relax"] = {
             "enabled": True,
-            "converged": True,
+            "converged": status["converged"],
             "force_threshold": ctx.config.electrode.relax_force_threshold,
             "input_fingerprint": _sha256(input_geometry),
             "relaxed_fingerprint": _sha256(stage_dir / "geometry.in"),
@@ -194,7 +195,7 @@ class AuRelaxStage(Stage):
         results = {"au_relax": {
             "enabled": True,
             "atom_count": len(after),
-            "normal_termination": True,
+            "normal_termination": status["terminated_normally"],
             "force_threshold": ctx.config.electrode.relax_force_threshold,
             "surface_indices_verified": True,
         }}

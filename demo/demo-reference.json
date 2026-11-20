@@ -1,0 +1,72 @@
+{
+  "demos": {
+    "2CN-656-4-thiomethylphenyl-aimsopt/2CN-656-4-thiomethylphenyl-aimsopt/aitranss_te/TE.dat": {
+      "L0": 0.0013202092539969727,
+      "S_uV_per_K": -35.133530618,
+      "ZT_electronic": 0.029910651371252015,
+      "input_energy_order": "ascending",
+      "k_e_pW_per_K": 1.266416885,
+      "log10_G_over_G0_like": -2.879357227,
+      "max_transmission_T": 0.9992137532,
+      "max_transmission_at_eV": 0.24025131,
+      "points": 301,
+      "te_sha256": "b67442e9fe44865a8cf9c59e3cb75c5cb2a4229eb08402afe6973372dff69264",
+      "temperature_K": 300.0
+    },
+    "2CN-656-4-thiomethylphenyl-fullrelax/2CN-656-4-thiomethylphenyl-fr/aitranss_te/TE.dat": {
+      "L0": 0.001284826359091114,
+      "S_uV_per_K": -29.091841404,
+      "ZT_electronic": 0.02241258527146982,
+      "input_energy_order": "ascending",
+      "k_e_pW_per_K": 1.127745509,
+      "log10_G_over_G0_like": -2.891155562,
+      "max_transmission_T": 0.5911882613,
+      "max_transmission_at_eV": 0.24270517,
+      "points": 301,
+      "te_sha256": "327136be2b06ac78a43d5a801a0384abe1bdd2493dea4bdc9aabf34f57cf9489",
+      "temperature_K": 300.0
+    },
+    "2CN-656-4-thiomethylphenyl/2CN-656-4-thiomethylphenyl/aitranss_te/TE.dat": {
+      "L0": 0.0004770530757729543,
+      "S_uV_per_K": 2.796262966,
+      "ZT_electronic": 0.00030164628338301105,
+      "input_energy_order": "ascending",
+      "k_e_pW_per_K": 0.287435857,
+      "log10_G_over_G0_like": -3.3214333,
+      "max_transmission_T": 0.987441788,
+      "max_transmission_at_eV": 0.39031087,
+      "points": 301,
+      "te_sha256": "ce273be9d9eec514e6f18bbaa590ce709720d15262f4dfeb1941d0fb1a1d87d0",
+      "temperature_K": 300.0
+    },
+    "azulene-26-dithiol/azulene-26-dithiol/aitranss_te/TE.dat": {
+      "L0": 0.7461471866885822,
+      "S_uV_per_K": 25.936208945,
+      "ZT_electronic": 0.030068860697093802,
+      "input_energy_order": "ascending",
+      "k_e_pW_per_K": 388.00446741,
+      "log10_G_over_G0_like": -0.127175494,
+      "max_transmission_T": 1.307197457,
+      "max_transmission_at_eV": -0.36592688,
+      "points": 190,
+      "te_sha256": "01d89887fe024487be8bc01c02143f6247a717777456e659d53931753aee956b",
+      "temperature_K": 300.0
+    }
+  },
+  "note": "demo 谱的数值回归基线。由 scripts/gen_demo_reference.py 生成；改动谱文件或积分口径后请重新生成并在评审里说明原因。",
+  "schema": "smj.demo-reference.v1",
+  "tolerance": {
+    "S_uV_per_K": {
+      "rel": 0.1
+    },
+    "ZT_electronic": {
+      "rel": 0.1
+    },
+    "k_e_pW_per_K": {
+      "rel": 0.1
+    },
+    "log10_G_over_G0_like": {
+      "abs": 0.1
+    }
+  }
+}

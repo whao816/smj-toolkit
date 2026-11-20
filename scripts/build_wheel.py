@@ -29,12 +29,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 DIST = ROOT / "dist"
 
-#: 打包进 wheel 的文件模式（相对 src/）。模板与 VENDOR.json 都挂在
-#: smj/_vendor/junction/ 下（`smj verify` 的模板检查也读那里），不是 smj/templates/。
+#: 打包进 wheel 的文件模式（相对 src/）。模板与 PROVENANCE.json 都挂在
+#: smj/junction/ 下（`smj verify` 的模板检查也读那里），不是 smj/templates/。
 INCLUDE_PATTERNS = (
     "smj/**/*.py",
-    "smj/_vendor/junction/templates/*",
-    "smj/_vendor/junction/VENDOR.json",
+    "smj/junction/templates/*",
+    "smj/junction/PROVENANCE.json",
 )
 
 AUTHOR = "AgenticDFT contributors"
@@ -156,9 +156,9 @@ def build() -> Path:
     package_files = _package_files()
     if not any("/templates/" in name for name, _ in package_files):
         raise SystemExit("打包文件里没有 templates/*：检查 "
-                         "src/smj/_vendor/junction/templates/ 是否存在")
-    if not any(name.endswith("VENDOR.json") for name, _ in package_files):
-        raise SystemExit("打包文件里没有 VENDOR.json：先运行 python scripts/gen_vendor_json.py")
+                         "src/smj/junction/templates/ 是否存在")
+    if not any(name.endswith("PROVENANCE.json") for name, _ in package_files):
+        raise SystemExit("打包文件里没有 PROVENANCE.json：先运行 python scripts/gen_junction_provenance.py")
     license_file = ROOT / "LICENSE"
     if not license_file.is_file():
         raise SystemExit("缺少 LICENSE：发布包必须带许可证")
@@ -256,9 +256,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sdist", action="store_true", help="同时构建 sdist（tar.gz）")
     args = parser.parse_args(argv)
 
-    vendor_json = SRC / "smj" / "_vendor" / "junction" / "VENDOR.json"
-    if not vendor_json.is_file():
-        print("缺少 %s：先运行 python scripts/gen_vendor_json.py" % vendor_json)
+    provenance_json = SRC / "smj" / "junction" / "PROVENANCE.json"
+    if not provenance_json.is_file():
+        print("缺少 %s：先运行 python scripts/gen_junction_provenance.py" % provenance_json)
         return 1
     wheel = build()
     print("构建 %s（%d 字节）" % (wheel, wheel.stat().st_size))

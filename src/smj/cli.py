@@ -10,6 +10,7 @@
     smj status    查看 state.json 与阶段状态
     smj report    生成人读报告（调用 smj.report）
     smj analyze   透射谱 / Landauer 分析（调用 smj.analysis）
+    smj plot      按统一版式画 T(E) 图（调用 smj.plotting）
     smj audit     本地一致性检查（自包含，不依赖远端）
     smj review    结构复核（调用 smj.review）
     smj verify    安装自检（依赖 / 模板 / 阶段模块）
@@ -318,6 +319,13 @@ def _invoke(func: Callable[..., Any], config: RunConfig, **kwargs: Any) -> Any:
 # --------------------------------------------------------------------------- #
 # 输出辅助
 # --------------------------------------------------------------------------- #
+def _style_version() -> str:
+    """绘图版式版本（供运行时提示；plotting 模块顶层不 import matplotlib）。"""
+    from .plotting import STYLE_VERSION
+
+    return STYLE_VERSION
+
+
 def _print_prepared(payload: Mapping[str, Any], *, stage: str) -> None:
     print("[%s] 已生成输入（prepared）" % stage)
     for item in payload.get("inputs") or ():
@@ -463,7 +471,7 @@ def cmd_species(args: argparse.Namespace) -> int:
     try:
         atoms = None
         if args.xyz:
-            from ._vendor.junction.geometry import read_xyz
+            from .junction.geometry import read_xyz
             atoms = list(read_xyz(args.xyz))
         payload = species_mod.summary(
             args.dir, atoms, elements=elements or None, label=args.label)
@@ -714,6 +722,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     if all(outcome.ok for outcome in outcomes):
         if not args.json:
             print("\n完成：%s" % ", ".join(names))
+            if "junction_analyze" in names:
+                print("出图: junction_analyze/T_E.png + T_E.pdf（统一版式 style %s）；"
+                      "换尺寸/叠加用 smj plot -c %s"
+                      % (_style_version(), args.config))
         return EXIT_OK
     unfinished = any(
         (not outcome.ok) and outcome.status == "waiting" for outcome in outcomes)
@@ -794,7 +806,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     config = _load_config(args)
     module = _optional_module(_AUX_MODULES["analyze"][0], "analyze（透射谱分析）")
     func = _find_callable(module, _AUX_MODULES["analyze"][1])
-    result = _invoke(func, config, force=args.force)
+    plot = None if args.plot is None else (True if args.plot == "" else args.plot)
+    result = _invoke(func, config, force=args.force, plot=plot)
     data = _as_mapping(result)
     ok = _truthy_ok(data)
     if args.json:
@@ -802,6 +815,50 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     else:
         _print_mapping(data, title="analyze: %s" % config.name)
     return EXIT_OK if ok else EXIT_FAILED
+
+
+def cmd_plot(args: argparse.Namespace) -> int:
+    """统一版式画 T(E)：单条 -> 一张图；多个 input -> 同坐标系叠加。"""
+    from .plotting import plot_te, plot_te_multi, resolve_te
+
+    sources = [str(item) for item in (args.inputs or [])]
+    if not sources:
+        config = _load_config(args)
+        sources = [str(config.run_dir)]
+    try:
+        te_files = [resolve_te(item) for item in sources]
+    except FileNotFoundError as exc:
+        raise SmjError(str(exc)) from exc
+
+    formats = tuple(f for f in (args.formats or "png,pdf").split(",") if f.strip())
+    labels = [item.strip() for item in args.labels.split(",")] if args.labels else None
+    out = args.out
+    if out is None:
+        base = Path(sources[0])
+        if not base.is_dir():
+            base = te_files[0].parent
+        out = base / ("T_E.png" if len(te_files) == 1 else "T_E_overlay.png")
+    common = dict(scale=args.scale, figsize=args.figsize, formats=formats, dpi=args.dpi,
+                  xlim=args.xlim, ylim=args.ylim, title=args.title, panel=args.panel,
+                  spin=args.spin)
+    if len(te_files) == 1:
+        meta = plot_te(te_files[0], out, label=args.label, annotate=not args.no_annotate,
+                       **common)
+    else:
+        multi = {k: v for k, v in common.items() if k != "spin"}
+        meta = plot_te_multi(list(zip(te_files, labels or [None] * len(te_files))),
+                             out, **multi)
+    payload = {"paths": meta["paths"], "points": meta.get("points"),
+               "scale": meta["scale"], "style_version": meta["style_version"],
+               "spin": meta.get("spin"), "channels": meta.get("channels")}
+    if args.json:
+        _emit_json(payload)
+    else:
+        print("图已写入: %s" % ", ".join(meta["paths"]))
+        print("  scale=%s  style=%s" % (meta["scale"], meta["style_version"]))
+        if len(te_files) == 1:
+            print("  spin=%s  channels=%s" % (meta.get("spin"), meta.get("channels")))
+    return EXIT_OK
 
 
 def cmd_review(args: argparse.Namespace) -> int:
@@ -1003,13 +1060,35 @@ def cmd_verify(args: argparse.Namespace) -> int:
         check("numpy", False, "缺少 numpy（pip install numpy）: %s" % exc)
 
     try:
-        from ._vendor.junction import artifacts, jobwait  # noqa: F401
+        from .junction import artifacts, jobwait  # noqa: F401
 
-        check("vendored-junction", True, "jobwait / artifacts 可导入")
+        check("junction-kernel", True, "jobwait / artifacts 可导入")
     except Exception as exc:  # noqa: BLE001
-        check("vendored-junction", False, "vendored junction 不可导入: %s" % exc)
+        check("junction-kernel", False, "junction 内核不可导入: %s" % exc)
 
-    templates = Path(__file__).resolve().parent / "_vendor" / "junction" / "templates"
+    # PROVENANCE.json 台账：记录的 sha256 必须与磁盘一致（改了内核文件忘重算就失败）
+    kernel_root = Path(__file__).resolve().parent / "junction"
+    try:
+        import hashlib as _hashlib
+        import json as _json
+
+        _meta = _json.loads((kernel_root / "PROVENANCE.json").read_text(encoding="utf-8"))
+        _files = _meta.get("files") or {}
+        _stale = []
+        for _rel, _info in sorted(_files.items()):
+            _path = kernel_root / _rel
+            if not _path.is_file():
+                _stale.append("%s(缺失)" % _rel)
+            elif _hashlib.sha256(_path.read_bytes()).hexdigest() != _info.get("sha256"):
+                _stale.append(_rel)
+        check("kernel-provenance", not _stale,
+              "%d 个文件、%d 条本地补丁" % (len(_files), len(_meta.get("local_patches") or []))
+              if not _stale
+              else "哈希过期: %s（重跑 scripts/gen_junction_provenance.py）" % ", ".join(_stale[:5]))
+    except Exception as exc:  # noqa: BLE001
+        check("kernel-provenance", False, "PROVENANCE.json 不可读: %s" % exc)
+
+    templates = kernel_root / "templates"
     missing = [name for name in ("sub_g16.sh", "sub_aims.sh", "sub_te.sh")
                if not (templates / name).is_file()]
     check("templates", not missing,
@@ -1276,7 +1355,41 @@ def build_parser() -> argparse.ArgumentParser:
         description="调用 smj.analysis；读取 aitranss_te 的 TE.dat。")
     _add_common(analyze)
     analyze.add_argument("--force", action="store_true", help="覆盖已有分析结果")
+    analyze.add_argument("--plot", nargs="?", const="", default=None, metavar="PATH",
+                         help="同时出 T(E) 图（缺省写到 TE.dat 同目录 T_E_plot.png）")
     analyze.set_defaults(handler=cmd_analyze)
+
+    plot = subparsers.add_parser(
+        "plot", help="按统一版式画 T(E) 图",
+        description="统一版式（文献式）：四边框、刻度朝内、E_F 虚线、log 纵轴、"
+                    "panel 角标。可给 TE.dat / run 目录 / 多个输入叠加。")
+    _add_common(plot)
+    plot.add_argument("inputs", nargs="*", metavar="PATH",
+                      help="TE.dat、run 目录或阶段目录（缺省用 -c 配置的 run）")
+    plot.add_argument("-o", "--out", metavar="PATH",
+                      help="输出路径（缺省 <run 目录>/T_E.png；输入为 TE.dat 时用它所在目录）")
+    plot.add_argument("--scale", choices=("log", "linear"), default="log",
+                      help="纵轴刻度（默认 log）")
+    plot.add_argument("--figsize", choices=("single", "double", "wide"),
+                      default="single", help="成图尺寸（默认 single，单栏）")
+    plot.add_argument("--formats", default="png,pdf", metavar="LIST",
+                      help="导出格式，逗号分隔（默认 png,pdf）")
+    plot.add_argument("--dpi", type=float, default=600, help="位图分辨率（默认 600）")
+    plot.add_argument("--xlim", nargs=2, type=float, metavar=("LO", "HI"), help="x 轴范围（eV）")
+    plot.add_argument("--ylim", nargs=2, type=float, metavar=("LO", "HI"), help="y 轴范围")
+    plot.add_argument("--title", default=None, help="图标题（默认无，符合期刊图注习惯）")
+    plot.add_argument("--panel", default=None, metavar="LETTER",
+                      help="panel 角标字母，如 a")
+    plot.add_argument("--label", default=None,
+                      help="单条曲线的图例标签（不给则无图例）")
+    plot.add_argument("--labels", default=None, metavar="A,B,C",
+                      help="多条曲线叠加时的图例标签（逗号分隔）")
+    plot.add_argument("--spin", choices=("auto", "mean", "channels", "polarization"),
+                      default="auto",
+                      help="自旋通道画法（默认 auto：TE.dat 有 α/β 两列时出双 panel）")
+    plot.add_argument("--no-annotate", action="store_true",
+                      help="不标注 T(E_F) / G/G0")
+    plot.set_defaults(handler=cmd_plot)
 
     review = subparsers.add_parser(
         "review", help="结构复核（含连接核对）",

@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+from _aims_fixtures import RELAX_CONVERGED
 from smj.cli import main
 from smj.electrode_library import parse_cluster_text
 from smj.stages.aitranss_te import AitranssTeStage
@@ -284,12 +285,12 @@ def test_au_relax_collect_requires_normal_termination(workdir, capsys):
                                                    encoding="utf-8")
     rc = _run("stage", "au_relax", "--collect", "-c", str(cfg))
     assert rc == 1
-    assert "没有正常结束" in capsys.readouterr().err
+    assert "Have a nice day" in capsys.readouterr().err
 
 
 def test_au_relax_collect_requires_next_step(workdir, capsys):
     cfg, run_dir = _prepare_relax(workdir)
-    (run_dir / "au_relax" / "aims.out").write_text("Have a nice day.\n", encoding="utf-8")
+    (run_dir / "au_relax" / "aims.out").write_text(RELAX_CONVERGED, encoding="utf-8")
     rc = _run("stage", "au_relax", "--collect", "-c", str(cfg))
     assert rc == 1
     assert "缺 geometry.in.next_step" in capsys.readouterr().err
@@ -297,7 +298,7 @@ def test_au_relax_collect_requires_next_step(workdir, capsys):
 
 def test_au_relax_collect_rejects_moved_frozen_atoms(workdir, capsys):
     cfg, run_dir = _prepare_relax(workdir)
-    (run_dir / "au_relax" / "aims.out").write_text("Have a nice day.\n", encoding="utf-8")
+    (run_dir / "au_relax" / "aims.out").write_text(RELAX_CONVERGED, encoding="utf-8")
     meta = json.loads((run_dir / "electrode_build" / "electrode_metadata.json").read_text(
         encoding="utf-8"))
     lines = (run_dir / "au_relax" / "geometry.in").read_text(encoding="utf-8").splitlines()
@@ -315,7 +316,7 @@ def test_au_relax_collect_rejects_moved_frozen_atoms(workdir, capsys):
 
 def test_au_relax_collect_rejects_surface_mismatch(workdir, capsys):
     cfg, run_dir = _prepare_relax(workdir)
-    (run_dir / "au_relax" / "aims.out").write_text("Have a nice day.\n", encoding="utf-8")
+    (run_dir / "au_relax" / "aims.out").write_text(RELAX_CONVERGED, encoding="utf-8")
     (run_dir / "au_relax" / "geometry.in.next_step").write_text(
         (run_dir / "au_relax" / "geometry.in").read_text(encoding="utf-8"), encoding="utf-8")
     meta_path = run_dir / "electrode_build" / "electrode_metadata.json"
@@ -329,7 +330,7 @@ def test_au_relax_collect_rejects_surface_mismatch(workdir, capsys):
 
 def test_au_relax_collect_ok_writes_relaxed_metadata(workdir, capsys):
     cfg, run_dir = _prepare_relax(workdir)
-    (run_dir / "au_relax" / "aims.out").write_text("Have a nice day.\n", encoding="utf-8")
+    (run_dir / "au_relax" / "aims.out").write_text(RELAX_CONVERGED, encoding="utf-8")
     geometry = (run_dir / "au_relax" / "geometry.in").read_text(encoding="utf-8")
     (run_dir / "au_relax" / "geometry.in.next_step").write_text(geometry, encoding="utf-8")
     rc = _run("stage", "au_relax", "--collect", "-c", str(cfg))

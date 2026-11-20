@@ -36,8 +36,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from ._vendor.junction.geometry import Atom, write_xyz
-from ._vendor.junction.molecules import _rdkit
+from .junction.geometry import Atom, write_xyz
+from .junction.molecules import _rdkit
 
 __all__ = ["DEFAULT_RMSD_TOL", "DEFAULT_SEED", "Conformer",
            "select_conformers", "write_conformers"]

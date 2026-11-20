@@ -16,7 +16,7 @@
    （``mol.log`` / ``aims.out`` / ``TE.dat`` / ``te.out`` / ``.dsh_done``）；
 4. ``cd <dir> && sbatch <script> [args...]``，从输出解析 ``Submitted batch job <id>``。
 
-轮询交给 vendored 的 :func:`smj._vendor.junction.jobwait.wait_many`，本模块只提供
+轮询交给 vendored 的 :func:`smj.junction.jobwait.wait_many`，本模块只提供
 ``Transport -> (code, out, err)`` 的适配器。判定语义（与主仓一致）：
 
 * ``squeue`` 查询失败（非零退出/连不上）**不等于**作业缺席；
@@ -33,8 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from ._vendor.junction import artifacts as _artifacts
-from ._vendor.junction import jobwait as _jobwait
+from .junction import artifacts as _artifacts
+from .junction import jobwait as _jobwait
 from .errors import SmjError, StageError, TransportError
 from .state import normalize_stage
 from .transport import CommandResult, Transport, remote_join
@@ -373,6 +373,9 @@ class RemoteSession:
     def download_plan_detail(self, stage: str) -> dict[str, Any]:
         """完整回取计划：``must``（全量）+ ``head``（只取表头行数）+ ``skip``。
 
+        ``optional_head`` 列闭壳层 run 不存在的候选（自旋极化的
+        ``alpha.aims``/``beta.aims``），缺席不记入 ``missing``。
+
         2026-11-11 本地补丁 F1：``mos.aims`` 属 head —— 旧实现只消费 ``must``，
         ``head`` 里的 ``mos.aims`` 永远不回取，导致 aitranss_te 阶段读不到 nsaos
         而在第 5 阶段必断（P0）。这里保留完整计划供 :meth:`download` 消费。
@@ -384,10 +387,22 @@ class RemoteSession:
         plan = _artifacts.retrieval_plan(plan_name)
         if plan.get("unknown"):
             raise StageError(plan.get("reason") or "未知阶段: %s" % stage)
+        head = {str(k): int(v) for k, v in (plan.get("head") or {}).items()}
+        optional_head: list[str] = []
+        if canonical == "aims_scf":
+            # 2026-11-19 结级自旋：FHI-aims 在 spin collinear 下把 mos.aims 拆成
+            # alpha.aims + beta.aims；vendored 清单只认 mos.aims，本地只需表头
+            # 读 nsaos（aitranss_te.prepare 的 $nsaos），不整取 GB 级波函数。
+            # 闭壳层 run 没有这两个文件，缺席不算缺件。
+            for name in ("alpha.aims", "beta.aims"):
+                if name not in head:
+                    head[name] = 2
+                    optional_head.append(name)
         return {
             "stage": normalize_stage(stage),
             "must": list(plan.get("must") or ()),
-            "head": {str(k): int(v) for k, v in (plan.get("head") or {}).items()},
+            "head": head,
+            "optional_head": optional_head,
             "skip": list(plan.get("skip") or ()),
         }
 
@@ -400,6 +415,7 @@ class RemoteSession:
         """
         stage = normalize_stage(stage)
         remote_dir = self.stage_dir(stage)
+        optional: set[str] = set()
         if names is not None:
             full = list(names)
             head: dict[str, int] = {}
@@ -407,11 +423,13 @@ class RemoteSession:
             detail = self.download_plan_detail(stage)
             full = detail["must"]
             head = detail["head"]
+            optional = set(detail.get("optional_head") or ())
         target = Path(local_dir)
         target.mkdir(parents=True, exist_ok=True)
         fetched: list[str] = []
         head_fetched: list[str] = []
         missing: list[str] = []
+        optional_missing: list[str] = []
         errors: dict[str, str] = {}
         for name in full:
             result = self.transport.get(remote_join(remote_dir, name), target / name)
@@ -425,15 +443,27 @@ class RemoteSession:
                                              target / name, int(lines))
             if result.ok:
                 head_fetched.append(name)
+            elif name in optional:
+                # 闭壳层 run 没有 alpha.aims/beta.aims：缺席是正常状态，不算缺件。
+                optional_missing.append(name)
             else:
                 missing.append(name)
                 errors[name] = (result.err or result.out).strip()[:300]
+        if (stage == "aims_scf" and "mos.aims" in missing
+                and {"alpha.aims", "beta.aims"}.issubset(set(head_fetched))):
+            # 2026-11-19 结级自旋：spin collinear 的 SCF 不写 mos.aims，
+            # 而是写 alpha.aims + beta.aims。两者都取到表头时，mos.aims
+            # 缺席是自旋极化的正常状态，不该判成回取缺件。
+            missing.remove("mos.aims")
+            optional_missing.append("mos.aims")
+            errors.pop("mos.aims", None)
         return {
             "stage": stage,
             "remote_dir": remote_dir,
             "fetched": fetched,
             "head_fetched": head_fetched,
             "missing": missing,
+            "optional_missing": optional_missing,
             "errors": errors,
         }
 

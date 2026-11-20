@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .._vendor.junction.geometry import read_xyz, write_xyz  # noqa: F401
-from .._vendor.junction.inputs import make_gaussian_input
-from .._vendor.junction.spectra import parse_gaussian_log
+from ..junction.geometry import read_xyz, write_xyz  # noqa: F401
+from ..junction.inputs import make_gaussian_input
+from ..junction.spectra import parse_gaussian_log
 from ..checks import check_geometry, total_electrons
 from ..errors import StageError
 from . import Engine, EngineCollected, EnginePrepared, register

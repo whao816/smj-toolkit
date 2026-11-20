@@ -54,7 +54,7 @@ def test_family_marks_bdt_bands_not_applicable(workdir, capsys):
     stage.mkdir(parents=True)
     (stage / "TE.dat").write_text(TE, encoding="utf-8")
 
-    from smj._vendor.junction.validate import validate_junction_run
+    from smj.junction.validate import validate_junction_run
     verdict = validate_junction_run(project, system="AZ")
     names = {c["name"] for c in verdict["checks"] if c.get("applicable") is False}
     assert {"g_in_theory_band", "seebeck_sign"} <= names
@@ -66,7 +66,7 @@ def test_family_marks_bdt_bands_not_applicable(workdir, capsys):
 
 
 def test_bpy_family_registered():
-    from smj._vendor.junction.criteria import system_family
+    from smj.junction.criteria import system_family
 
     assert system_family("bpy") == "Au-(4,4'-bipyridine)-Au"
     assert system_family("BPY") == "Au-(4,4'-bipyridine)-Au"
@@ -74,7 +74,7 @@ def test_bpy_family_registered():
 
 def test_bpy_family_marks_bdt_bands_not_applicable(workdir):
     """BPY 是吡啶 N 锚定、非硫醇盐体系，BDT 标定的两条判据必须记"不适用"。"""
-    from smj._vendor.junction.validate import validate_junction_run
+    from smj.junction.validate import validate_junction_run
 
     project = workdir / "bpy-family"
     stage = project / "aitranss_te"
@@ -88,7 +88,7 @@ def test_bpy_family_marks_bdt_bands_not_applicable(workdir):
 
 
 def test_sme_family_registered():
-    from smj._vendor.junction.criteria import system_family
+    from smj.junction.criteria import system_family
 
     assert system_family("sme") == "Au-(1,4-bis(methylthio)benzene)-Au"
     assert system_family("SME") == "Au-(1,4-bis(methylthio)benzene)-Au"
@@ -96,7 +96,7 @@ def test_sme_family_registered():
 
 def test_sme_family_marks_bdt_bands_not_applicable(workdir):
     """SMe 是硫醚配位接触（S 上无 H，不脱质子），BDT 标定的两条判据必须记"不适用"。"""
-    from smj._vendor.junction.validate import validate_junction_run
+    from smj.junction.validate import validate_junction_run
 
     project = workdir / "sme-family"
     stage = project / "aitranss_te"
@@ -111,7 +111,7 @@ def test_sme_family_marks_bdt_bands_not_applicable(workdir):
 
 def test_alkane_family_registered():
     """HDT/ODT/DDT（C6/C8/C10 烷烃二硫醇）登记为同一判据标定族。"""
-    from smj._vendor.junction.criteria import system_family
+    from smj.junction.criteria import system_family
 
     for key in ("hdt", "HDT", "odt", "ODT", "ddt", "DDT", "c6", "C8", "C10"):
         assert system_family(key) == "Au-alkane-dithiol-Au"
@@ -119,7 +119,7 @@ def test_alkane_family_registered():
 
 def test_alkane_family_marks_bdt_bands_not_applicable(workdir):
     """饱和烷链走 σ 隧穿通道，BDT 标定的两条判据必须记"不适用"而非"否证"。"""
-    from smj._vendor.junction.validate import validate_junction_run
+    from smj.junction.validate import validate_junction_run
 
     project = workdir / "alkane-family"
     stage = project / "aitranss_te"

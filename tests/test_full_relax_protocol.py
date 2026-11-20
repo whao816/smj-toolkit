@@ -16,12 +16,12 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from smj.config import ElectrodeConfig, default_config_text
+from smj.config import ElectrodeConfig, default_config_text, load_config
 from smj.stages import aims_tip_relax as tip_stage
 from smj.stages.aims_tip_relax import AimsTipRelaxStage
-from smj._vendor.junction.electrode import append_au60
-from smj._vendor.junction.inputs import make_tip_relax_input
-from smj._vendor.junction.geometry import read_aims_geometry
+from smj.junction.electrode import append_au60
+from smj.junction.inputs import make_tip_relax_input
+from smj.junction.geometry import read_aims_geometry
 
 BDT_XYZ = """14
 benzene-1,4-dithiol (BDT)
@@ -63,6 +63,17 @@ def test_default_template_does_not_pin_or_relax():
     assert "anchor_au_s_target: null" in text
     assert "pin_contact: false" in text
     assert "relax: false" in text
+
+
+def test_pinned_contact_is_flagged_as_control(workdir):
+    """pinned 是明确要求才跑的对照口径，不是生产默认。"""
+    cfg_path = workdir / "smj.yaml"
+    text = default_config_text(name="t", xyz="molecule.xyz").replace(
+        "pin_contact: false", "pin_contact: true")
+    cfg_path.write_text(text, encoding="utf-8")
+    cfg = load_config(cfg_path)
+    assert cfg.electrode.pin_contact is True
+    assert any("pinned 对照" in warning for warning in cfg.warnings)
 
 
 def test_tip_input_without_target_has_no_constraints(workdir):

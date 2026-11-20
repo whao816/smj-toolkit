@@ -16,7 +16,7 @@
   `t_ef_resonance_attribution`（0.15–1.0 eV 归因）、`g_in_theory_band`（派生包络，warn）、
   `seebeck_sign`、`k_e_zt_order`。`t_ef_magnitude` 已删除。
 - 重评时点：2026-11-16 10:27（+08:00）；当时代码全量测试 256 passed，
-  `scripts/gen_vendor_json.py --check` 通过（36 文件 / 10 条本地补丁）。
+  `scripts/gen_junction_provenance.py --check` 通过（36 文件 / 10 条本地补丁）。
 
 ## 1. `runs/` 正式 run（12 个）
 

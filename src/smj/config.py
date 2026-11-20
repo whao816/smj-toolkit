@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -20,7 +21,7 @@ import yaml
 
 from .errors import ConfigError
 from .electrode_library import DEFAULT_CLUSTER
-from ._vendor.junction.electrode import FCC_LATTICE_A
+from .junction.electrode import FCC_LATTICE_A
 
 DEFAULT_CONFIG_NAME = "smj.yaml"
 MODES = ("dry-run", "local", "slurm-ssh")
@@ -137,6 +138,14 @@ class MoleculeConfig:
     xyz: str | None = None
     charge: int = 0
     multiplicity: int = 1
+    #: 开壳层初始磁矩（**1-based 原子序号 -> μB**）。``spin collinear`` 下 FHI-aims
+    #: 要求给出初始自旋密度，否则默认初猜可能收敛到错误自旋分布（甚至更慢）。
+    #: 只影响收敛路径/落到哪个解，不改变 ``fixed_spin_moment``（=M−1）约束的总自旋；
+    #: 各分量之和不必等于 M−1，但引擎会在 notes 里提示。闭壳层设了会被拒绝。
+    initial_moments: dict[int, float] | None = None
+    #: 是否写 ``fixed_spin_moment``（=M−1）把总自旋钉住。False = 解除约束的对照解：
+    #: 只写 ``spin collinear`` + 初始磁矩，让 SCF 自己决定自旋态（与固定解比较）。
+    fixed_spin_moment: bool = True
     method: str = "b3lyp"          # 仅 opt_engine=gaussian
     basis: str = "6-31g(d)"        # 仅 opt_engine=gaussian
     family: str | None = None  # 判据标定族（如 AZ/BDT），见 criteria.SYSTEM_FAMILIES
@@ -160,8 +169,8 @@ class ElectrodeConfig:
     #: 距离约束；最终键长/角度完全由 aims_tip_relax 的全原子弛豫决定。
     #: 2.40 Å 只对**去质子硫醇盐**有参考意义；-SCH3 硫醚或 N/Se 锚不应把它当目标键长。
     anchor_au_s_target: float | None = None
-    #: True = 把两个锚定原子和两个 tip 一起冻结（旧 W0-1 距离扫描口径）；
-    #: 默认 False = 全原子自由弛豫，tip 可以动。
+    #: True = 把两个锚定原子和两个 tip 一起冻结（旧 W0-1 距离扫描口径；
+    #: pinned 对照/敏感性专用，只有用户明确要求时才用）。默认 False = 全原子自由弛豫。
     pin_contact: bool = False
     #: tip 放置方向：``axis``（默认）= 沿两锚原子连线外推（旧行为逐字节不变）；
     #: ``lone_pair`` = 沿锚原子的孤对方向外推（S 为例：C–S–C 角平分线的反向）。
@@ -426,7 +435,8 @@ _KNOWN_SECTIONS = {"run", "molecule", "electrode", "transport", "cluster", "path
 
 _RUN_KEYS = {"name", "dir", "mode", "clean", "keep_going"}
 _MOLECULE_KEYS = {
-    "xyz", "charge", "multiplicity", "method", "basis", "family",
+    "xyz", "charge", "multiplicity", "initial_moments", "fixed_spin_moment",
+    "method", "basis", "family",
     "opt_engine", "opt_functional", "opt_basis", "opt_force_threshold",
 }
 _ELECTRODE_KEYS = {
@@ -472,6 +482,39 @@ def _parse_run(data: Mapping[str, Any], warnings: list[str]) -> RunInfo:
     )
 
 
+def _parse_initial_moments(value: Any) -> dict[int, float] | None:
+    """``molecule.initial_moments``：{1-based 原子序号: μB}。
+
+    YAML 的键可能是整数也可能是字符串，这里统一成 ``int``；空映射等价于未设置。
+    只做结构校验（序号 >=1、数值有限、|μB| 合理），原子序号上界要等读到结构
+    才知道，留给引擎在 prepare 时 fail-closed。
+    """
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ConfigError(
+            "molecule.initial_moments 应为映射（1-based 原子序号 -> μB），实际是 %r"
+            % (value,))
+    parsed: dict[int, float] = {}
+    for key, raw in value.items():
+        try:
+            index = int(str(key).strip())
+        except (TypeError, ValueError):
+            raise ConfigError(
+                "molecule.initial_moments 的键应为 1-based 原子序号（整数），实际是 %r"
+                % (key,)) from None
+        if index < 1:
+            raise ConfigError(
+                "molecule.initial_moments 的原子序号应 >= 1（1-based），实际是 %d" % index)
+        moment = _as_float(raw, "molecule.initial_moments[%d]" % index)
+        if not math.isfinite(moment) or abs(moment) > 20.0:
+            raise ConfigError(
+                "molecule.initial_moments[%d] 应为有限且 |μB| <= 20 的数值，实际是 %r"
+                % (index, raw))
+        parsed[index] = moment
+    return dict(sorted(parsed.items())) or None
+
+
 def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeConfig:
     _warn_unknown("molecule", data, _MOLECULE_KEYS, warnings)
     xyz = data.get("xyz")
@@ -479,6 +522,9 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         xyz=_as_str(xyz, "molecule.xyz", allow_empty=True) or None,
         charge=_as_int(data.get("charge", 0), "molecule.charge"),
         multiplicity=_as_int(data.get("multiplicity", 1), "molecule.multiplicity", minimum=1),
+        initial_moments=_parse_initial_moments(data.get("initial_moments")),
+        fixed_spin_moment=_as_bool(
+            data.get("fixed_spin_moment", True), "molecule.fixed_spin_moment"),
         method=_as_str(data.get("method") or "b3lyp", "molecule.method"),
         basis=_as_str(data.get("basis") or "6-31g(d)", "molecule.basis"),
         family=_as_str(data.get("family"), "molecule.family", allow_empty=True) or None,
@@ -583,6 +629,10 @@ def _parse_electrode(data: Mapping[str, Any], warnings: list[str]) -> ElectrodeC
         relax_force_threshold=threshold,
         relax_freeze=freeze,
     )
+    if cfg.pin_contact:
+        warnings.append(
+            "electrode.pin_contact=true 是 pinned 对照/距离扫描口径，不是生产默认；"
+            "只有用户明确要求做 pinned 对照时才应启用（生产默认 false）")
     if not (1.0 <= cfg.au_tip_distance <= 5.0):
         raise ConfigError("electrode.au_tip_distance 应在 1.0–5.0 Å，实际是 %s" % cfg.au_tip_distance)
     return cfg
@@ -785,6 +835,8 @@ molecule:
   xyz: {xyz}
   charge: 0
   multiplicity: 1
+  initial_moments: null     # 开壳层初始磁矩 {{1-based 原子序号: μB}}，如 {{7: 1.0}}；null = 不写 initial_moment
+  fixed_spin_moment: true   # 开壳层结是否钉住总自旋（M−1）；false = 解除约束的对照解
   opt_engine: aims          # aims = 与 tip/SCF 同为 FHI-aims PBE/NAO（推荐）；gaussian = 旧口径
   opt_functional: pbe       # 仅 opt_engine=aims
   opt_basis: light          # 仅 opt_engine=aims；实际 species 由 cluster.species_dir 决定
@@ -804,7 +856,7 @@ electrode:
   right_anchor: S
   au_tip_distance: 2.35
   anchor_au_s_target: null  # null = 只按 au_tip_distance 放置，锚–金属距离由全原子弛豫决定
-  pin_contact: false        # false = aims_tip_relax 全原子自由弛豫（推荐）；true 仅用于距离扫描
+  pin_contact: false        # false = aims_tip_relax 全原子自由弛豫（推荐）；true 仅用于用户明确要求的 pinned 对照/距离扫描
   tip_direction: axis       # axis = 沿两锚原子连线外推（默认）；lone_pair = 沿锚原子孤对外推
                             # （S···S 连线与 S–C(Me) 近共线的间位取代 SMe 分子才需要）
   strip_thiol_h: null       # null = 仅当锚定原子为 S 时自动去质子（其它锚保留 H）；true = 强制去；false = 不去

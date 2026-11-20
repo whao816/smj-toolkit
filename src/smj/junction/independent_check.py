@@ -84,7 +84,12 @@ def _simpson(y: list, x: list) -> float:
 
 
 def l0_l1_l2(rows: list, temperature: float = 300.0) -> dict:
-    """独立积分: L0/L1/L2(不调用管线 landauer 的任何函数)。"""
+    """独立积分: L0/L1/L2(不调用管线 landauer 的任何函数)。
+
+    先按 E-E_F 升序排序, 与 :func:`landauer.analyze_te` 同口径 —— 行序不是物理量,
+    但不排序时求积结果随 x 方向整体变号, 只有 L1 带符号, 倒序 TE.dat 会静默反号。
+    """
+    rows = sorted(rows, key=lambda r: r[1])
     e = [r[1] for r in rows]
     t = [max(r[2], 0.0) for r in rows]
     w = [fermi_window(x, temperature) for x in e]

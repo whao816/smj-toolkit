@@ -21,6 +21,7 @@ from smj.config import HARTREE_EV, load_config
 from smj.errors import ConfigError, StageBlocked
 from smj.provenance import sha256_file
 from smj.stages.aitranss_te import AitranssTeStage
+from _aims_fixtures import write_scf_artifacts
 
 EFERMI = -0.180814064867
 
@@ -180,6 +181,7 @@ def _prepare_case(workdir: Path, *, transport: list[str] | None = None,
         (scf / "aims.out").write_text(
             "| Chemical potential (Fermi level):   %.12f Ha\n" % EFERMI,
             encoding="utf-8")
+    write_scf_artifacts(scf)
     (scf / "mos.aims").write_text("nsaos = 4210\n", encoding="utf-8")
     metadata = {
         "left_surface_indices": [1, 2, 3],
@@ -220,6 +222,19 @@ def test_prepare_blocks_without_fermi_level(workdir: Path):
                config)
     with pytest.raises(StageBlocked, match="efermi"):
         AitranssTeStage().prepare(ctx, stage_dir)
+
+
+def test_prepare_blocks_window_not_covering_fermi(workdir: Path):
+    """2026-11-20 复核 P1-2：整窗在 E_F 一侧时必须在生成输入前拦住。"""
+    cfg, stage_dir = _prepare_case(
+        workdir, transport=["energy_window: [0.25, 0.0005, 0.45]"])
+    config = load_config(cfg)
+    assert config.transport.energy_window_unit == "eV"
+    ctx = _Ctx(stage_dir.parent / "aims_scf", stage_dir.parent / "electrode_build",
+               config)
+    with pytest.raises(StageBlocked, match="未覆盖 E_F"):
+        AitranssTeStage().prepare(ctx, stage_dir)
+    assert not (stage_dir / "tcontrol").exists()
 
 
 def test_prepare_keeps_legacy_hartree_window(workdir: Path):

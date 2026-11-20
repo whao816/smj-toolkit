@@ -7,8 +7,8 @@ Au–S = 2.68 Å 被 `junction_geom_anchor_aus` 按硫醇盐带有源带判成�
 
 from __future__ import annotations
 
-from smj._vendor.junction.geometry import Atom, write_aims_geometry
-from smj._vendor.junction.validate import validate_junction_geometry
+from smj.junction.geometry import Atom, write_aims_geometry
+from smj.junction.validate import validate_junction_geometry
 
 
 def _geometry(workdir, *, chemistry: str):

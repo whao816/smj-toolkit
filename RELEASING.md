@@ -24,13 +24,15 @@ DoD 已满足；本文以 `vX.Y.Z` 代指目标版本。
 python -m pytest -q
 ```
 
-要求全绿。若改动涉及 vendored `smj/_vendor/junction/`，先跑
-`python scripts/sync_core.py --check`（如存在）并刷新 `scripts/gen_vendor_json.py`。
+要求全绿。若改动涉及 `smj/junction/` 内核，必须先跑
+`python scripts/gen_junction_provenance.py` 刷新 `PROVENANCE.json`，并跑
+`python scripts/gen_demo_reference.py --check` 确认数值基线没漂
+（与 AgenticDFT 的对比用 `scripts/crosscheck_agenticdft.py`，不进 CI）。
 
 ## 3. 构建发布产物
 
 ```bash
-python scripts/gen_vendor_json.py          # 刷新 VENDOR.json（含 repo_commit）
+python scripts/gen_junction_provenance.py          # 刷新 PROVENANCE.json（含 repo_commit）
 python scripts/build_wheel.py --check --sdist
 ```
 

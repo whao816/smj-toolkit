@@ -192,7 +192,7 @@ def test_legacy_config_keys_parse_with_warning(workdir: Path):
 
 
 def test_legacy_confirmation_file_is_honored(workdir: Path):
-    from smj._vendor.junction.fingerprint import record_confirmation
+    from smj.junction.fingerprint import record_confirmation
 
     cfg = _write_case(workdir, review_lines=["auto_connection_check: false"])
     build = workdir / "run" / "electrode_build"
@@ -227,7 +227,7 @@ def test_legacy_surface_config_keys_parse_with_warning(workdir: Path):
 
 
 def test_legacy_surface_confirmation_file_is_honored(workdir: Path):
-    from smj._vendor.junction.fingerprint import record_confirmation
+    from smj.junction.fingerprint import record_confirmation
 
     cfg = _write_case(workdir, review_lines=["auto_connection_check: false"])
     build = workdir / "run" / "electrode_build"

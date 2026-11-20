@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from smj._vendor.junction.criteria import (
+from smj.junction.criteria import (
     CRITERIA,
     evaluate_run_criteria,
     physics_verdict,
 )
-from smj._vendor.junction.validate import validate_junction_run
+from smj.junction.validate import validate_junction_run
 from smj.report import build_manifest, render_report
 
 

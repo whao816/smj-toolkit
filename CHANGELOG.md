@@ -4,6 +4,280 @@
 
 ## 未发布
 
+### A 方案：junction 内核改由本仓维护（2026-11-20）
+
+复核后的结论是「运行时早就独立、维护模型还假装是镜像」：13 条本地补丁覆盖
+17/36 个内核文件（47%），`upstream_commit` 为空，CI 里没有同步脚本，6 个文件
+曾从上游未提交工作区同步。本次按 A 方案收口：
+
+- **目录与命名**：`src/smj/_vendor/junction/` → `src/smj/junction/`；
+  `VENDOR.json` → `PROVENANCE.json`；`scripts/gen_vendor_json.py` →
+  `scripts/gen_junction_provenance.py`；`smj verify` 的检查项改为
+  `junction-kernel` / `kernel-provenance`。
+- **同步机制退役**：删除 `scripts/sync_core.py`。内核不再与 AgenticDFT 逐字节同步，
+  算法改动直接改本仓（AGENTS.md 已改）。
+- **一致性契约改为结果**：新增 `scripts/crosscheck_agenticdft.py`，把同一份 TE.dat
+  交给两边内核对比 L0/S/κe/ZT（手动跑、不进 CI，因为 CI 里没有主仓）。
+  实测薁示例两边逐位一致。
+- **R12 收口**：`k_e_zt_order` 元数据 `implemented` 改回 `True`（评估器确实会 emit），
+  删除 `PROVENANCE.json` note 与 README §9 的「已知偏离」登记。
+- **测试**：`tests/test_vendor_manifest.py` → `tests/test_junction_provenance.py`；
+  全量 397 passed；`smj verify` 7 项全 ok。
+
+
+### 复核修复 R12/R13：产物定位去歧义、已知偏离登记（2026-11-20）
+
+- **R13b 产物定位**：vendored `validate.py` 的 `_ARTIFACT_STAGE_HOME['aims.out']` 原为
+  `('aims_scf', 'aims_tip_relax')`。弛豫日志每一步都写
+  `Self-consistency cycle converged.`，于是"静态 SCF 阶段根本没跑"的 run 也能拿到一条
+  `aims_scf=OK` 判据——它证明的是弛豫里的某一步 SCF。收紧为只认 `aims_scf` 阶段
+  （扁平布局仍由 `run_dir/aims.out` 命中），以本地补丁
+  `F-RECHECK-2026-11-20-aims-out-stage` 登记。
+- **R13a 两级一致**：`tests/test_scf_artifacts.py` 新增一条用例，同一份未收敛日志
+  必须同时让 stage 抛 `StageError` 与 validate 报 error——任何一边漏掉即红。
+- **R12 已知偏离登记**：vendored `criteria.py` 里 `k_e_zt_order` 的元数据仍写
+  `implemented=False`（实际会 emit），与主仓新注册表不一致。该判据不参与闸门，
+  按计划**不改 vendored 判定语义**，只在 `PROVENANCE.json` 的 `note` 与 README §9 登记，
+  待回迁主仓时一并对齐。
+- **测试**：`tests/test_validate_artifacts.py`（4 例）+ `test_scf_artifacts.py` +1。
+
+
+### 复核修复 R9/R10：demo 回归基线、VENDOR 校验语义（2026-11-20）
+
+- **demo 回归（R9）**：新增 `demo/demo-reference.json` 与 `scripts/gen_demo_reference.py`
+  （`--check` 可当 CI 门），把 4 份随发布走的 TE.dat 的
+  `sha256 / 点数 / 温度 / log10(G/G0) / L0 / S / k_e / ZT / 峰值` 固化成基线；
+  `tests/test_demo_regression.py`（16 例）用 `analysis.compare_reference` 做容差比对，
+  并证明"改一个数 / 整体放大 50% / 换谱"都会红。CI 新增 `demo` job（只装运行时依赖，
+  不需要 matplotlib）。
+- **demo 文档纠错**：`demo/azulene-26-dithiol/README.md` 两处「193 点」改为实际的 190 点。
+- **VENDOR 校验（R10）**：`scripts/gen_junction_provenance.py --check` 改为逐字段比较并
+  **忽略 `repo_commit`**——旧实现比整份文本，而 `repo_commit` 记录生成时所在提交，
+  每次 commit 都让它变红（正是复核指出的"绑 commit 必红"）。
+  `tests/test_vendor_manifest.py`（6 例）守住该语义，并校验补丁台账里登记的文件真实存在
+  （写错文件名会让 `sync_core` 静默覆盖补丁）。
+- **README**：§1 增加三段仓库级一致性检查命令；§8 说明 `repo_commit` 不参与比对。
+
+### 复核修复 R8：采样覆盖进协议指纹（2026-11-20）
+
+- **问题**：`provenance._protocol_config` 无条件 `pop("ener"/"estep"/"eend")`，而
+  `config.resolved_window` 里这些覆盖**确实生效**——eV 相对窗下把 `transport.estep`
+  改成 `0.001` Ha，`protocol_sha256` 不变，`resolved_window` 却变了。
+- **改法**：只保留 `require_te_out` 的 pop（验证策略，不进协议）；`ener/estep/eend`
+  先 pop 再「显式写了才入协议」。默认配置不加键，0.2.x 的哈希形状逐字节不变
+  （demo azulene 仍是 `635ae0f0f1b7…`）；`config_to_dict` 的 `resolved_window` 旁标注
+  `resolved_window_unit: "Hartree"`。
+- **测试**：`tests/test_provenance.py` +4（`estep` 覆盖改哈希、起终点覆盖改哈希、
+  默认不加键、run_spec 标注单位）。
+
+### 复核修复 R7：运行没走完就不能"通过"（2026-11-20）
+
+- **问题**：`manifest.verdict` 只看已存在产物的判据；只放一份 TE.dat 的空 run
+  也能 `passed: true`（复核实测 `engineering_passed=true`、`errors=0`）。
+- **改法**：新增 `src/smj/verdict.py`——`completeness_check()` 生成
+  `run_incomplete`（engineering/error）判据并按"工程判据"口径重算
+  `errors/warnings/engineering_passed/passed`，`missing_stages()` 以
+  `collected/finished/skipped` 为完成；`report.build_manifest` 在
+  `validate_junction_run` 之后套一层，`verdict` 增加 `completeness` 字段，
+  `render_report` 增「完工度」行。
+- **测试**：`tests/test_report_verdict.py` +3——未完成时 `errors==1` 且
+  `failed_criteria` 含 `run_incomplete`、`physics_verdict` 不被改写、只放 TE 的
+  run 判定为未完成。
+
+
+### 复核修复 R6：远端仍在跑的作业不再被"重跑"打成 failed（2026-11-20）
+
+- **问题**：`state=waiting` + `job_id` 时执行 `run`/`run_stage`，`prepare` 抛
+  "正在远端运行"的保护异常，被 `run_stage` 的兜底 `except SmjError` 写成
+  `status=failed`；下一次 `run` 于是重新 `prepare`+`sbatch`，在集群上留下第二个
+  作业（复核实测新作业 424242 覆盖 12345 的登记）。
+- **改法**：新增 `ActiveJobError(StageError)`；`prepare` 抛它，`run_stage` 单独
+  捕获——**不改状态**，返回 `StageOutcome(status="waiting", ok=False)`，保留
+  `job_id`。`run()` 对 `submitted`/`waiting` 走新的 `_resume_active()`：先
+  `wait()`，结束再 `collect()`；`finished` 仍只补 collect；`--force` 语义不变。
+- **测试**：`tests/test_rerun_active_job.py`（4 例）——活跃作业保留状态且不重复
+  提交、`run` 走 resume 分支、`--force` 仍重跑、等待超时保持 `waiting`。
+
+### 复核修复 R4/R5：弛豫与 SCF 必须"真收敛、真产物"（2026-11-20）
+
+- **问题**：`aims_tip_relax.collect` 只判 `geometry.in.next_step` 存在，从不打开
+  `aims.out`；`au_relax.collect` 同样不解析收敛标记却在 metadata 里硬写
+  `converged: True`。`aims_scf.collect` 只 `is_file()`，零字节
+  `basis-indices.out`/`omat.aims`/`mos.aims` + 未收敛日志都能 collected，且
+  `normal_termination`/`has_*` 是写死的常量。
+- **新增** `src/smj/stages/_aims_log.py`：`relax_status()` 取**最后一次**
+  `Present geometry (is|is not yet) converged.`、要求日志以 `Have a nice day.` 结束、
+  识别步数上限（排除 "No maximum number of relaxation steps, defaulting to 1000"），
+  大日志只读尾部 1 MB。
+- **新增** `src/smj/stages/_aims_artifacts.py`：按 FHI-aims 头部（`$basis.indices.aims`、
+  `$omat.aims`、`$scfmo.aims`）校验产物真实性，顺带解析 `nsaos`/基函数数量。
+- **阶段行为**：`aims_tip_relax` / `au_relax` 未收敛或日志缺失 → `StageError`（不采集）；
+  `aims_scf` 缺 SCF 收敛标记、零字节或头部不符 → `StageError`；`results` 改为观测值
+  （`scf_converged`、`basis_functions`、各文件字节数等）；`electrode_build.prepare`
+  与 `aitranss_te.prepare` 各加一道上游复核（`StageBlocked`）。
+- **测试**：新增 `tests/test_relax_convergence.py`（7 例）、`tests/test_scf_artifacts.py`
+  （9 例）、`tests/_aims_fixtures.py`（真实形状的最小产物片段）；既有测试的
+  `placeholder` 产物改为走 fixtures。
+- **实测**：4 份 demo 的 `aims_tip_relax/aims.out` 全部判 converged，4 套
+  `aims_scf` 产物全部通过头部校验（无回归）。
+
+### 复核修复 R2/R3：能量窗必须跨 E_F，"无适用闸门"不再判通过（2026-11-20）
+
+- **问题**：`transport.energy_window`（eV 口径）只校验 `eend > ener`，不要求窗口跨越 E_F；
+  整窗落在 E_F 一侧时 `criteria` 仍判 `physics_verdict=passed`（`g_in_theory_band` /
+  `seebeck_sign` 都 `applicable=False`，等于没有任何闸门被真正评估）。
+- **上游/本包口径**：新增 `te_window_covers_efermi`（physical / error）：`E−E_F` 必须
+  `min <= 0 <= max`，否则 `failed`；`physics_verdict` 在所有带 `applies_to` 的族闸门都
+  `applicable=False` 时返回 `inconclusive`（`inconclusive_criteria` 含 `no_applicable_gate`），
+  不再落到 `passed`。
+- **本包守卫**：`aitranss_te.prepare` 在解析出 `efermi` 后校验窗口含 E_F，不含则
+  `StageBlocked`（不生成 `tcontrol`），错误信息给出相对窗与 `efermi`。
+- **测试**：新增 `tests/test_verdict_gates.py`（7 例：窗口在 E_F 上方/下方/跨 0、AZ 常数谱
+  → inconclusive、BDT 有适用闸门、S≈0 不判通过）；`tests/test_energy_window.py` 增
+  `test_prepare_blocks_window_not_covering_fermi`。
+- **VENDOR 维护**：`criteria.py` 新增本地补丁 `F-RECHECK-2026-11-20-window`
+  （PROVENANCE.json 现 36 文件 / 12 条补丁）。
+
+### 复核修复 R1：TE 谱行序不再影响 Seebeck 符号（2026-11-20）
+
+- **问题**：`analyze_te` 按 `TE.dat` 行序直接梯形积分，`L1` 有符号而 `L0/L2` 取绝对值；
+  能量列写成降序时 L1 反号 → Seebeck 静默变成反号（demo 薁谱 +25.94 ↔ −25.94 µV/K）。
+- **上游修复**（`agenticdft/agenticdft/tools/junction/landauer.py`）：新增
+  `energy_order(rows)`；`analyze_te` 发现非升序时按 `E−E_F` 排序后再积分，并返回
+  `input_energy_order` / `reordered` / `warnings`。`independent_check.l0_l1_l2` 同口径排序。
+- **本包**：`src/smj/analysis.py` 保留 vendored 的 `warnings`（旧实现直接清空，等于把
+  "已被静默排序"这条唯一提示也吞掉）；`aitranss_te.collect` 记 `energy_order`，非升序时
+  在 notes 里写明。新增 `tests/test_te_order.py`（5 例，含顺序无关参考积分对照）。
+- **VENDOR 维护**：`scripts/sync_core.py` 落地（`--check`/`--list`/`--files`，
+  默认跳过已登记补丁的文件）；`PROVENANCE.json` 新增 `F-UPSTREAM-PENDING-2026-11-20`
+  条目，登记 7 个"副本领先于主仓 HEAD"的文件；CI 增加 `gen_junction_provenance.py --check`。
+
+### 结级自旋初猜与释放约束（2026-11-19）
+
+- `molecule.initial_moments` 现在会映射到结几何：`aims_tip_relax`/`aims_scf`
+  把分子坐标系的 1-based 序号写到 `geometry.in` 对应 `atom` 行的 per-atom
+  `initial_moment`（`strip_thiol_h` 删掉锚定 S–H 后自动左移；指向被删氢会报错）。
+  有逐原子初猜时不再写全体统一的 `default_initial_moment 0.1`。
+- 新增 `molecule.fixed_spin_moment: true|false`（默认 `true`）：`false` 时
+  `control.in` 不写 `fixed_spin_moment`，只留 `spin collinear` + 初猜，用于
+  "解除总自旋约束"的 release 对照；`input_summary.json` 记
+  `spin_constraint: released`。`smj/spin.py` 的 `SpinState.fix_spin_moment` 统一
+  两处 stage；`protocol_sha256` 对默认值不敏感（只在显式 `false` 时入协议）。
+- 对照实测（`runs/ttf-fixed` vs `runs/ttf-release`，同一 88 原子几何）：两解都
+  收敛；fixed（S=1/2）总能低 3.88 meV，但 1 μB 的 98.9% 在 Au 电极、分子 1–14
+  仅 0.0055 μB；release 解收敛到 S≈0（分子 −0.0001 μB，gap 0.89 meV）。详见
+  `runs/ttf-spin-comparison.md` 与开发规划文档 §5.1。
+- 接触构型复核（2026-11-20）：`tip_direction: lone_pair` 重建（review 通过）后
+  重跑 fixed/release，结论相同——ΔE 仍为 +3.88 meV、分子局域自旋仍 ≈0；
+  四套 SCF 见 `runs/ttf-lone-pair*`。
+
+### 自由基结实现对照文档（2026-11-19）
+
+- 新增 `docs/自由基单分子结-实现对照与开发规划.md`：把外部调研文档
+  （Gaussian/FHI-aims/AITRANSS 自由基输运核查整合版）翻译成 smj 口径，
+  逐阶段对照自旋/电荷/输运链，列出与源文档一致处、口径差异（整结电荷 vs
+  片段电荷、固定总自旋、initial_moment 粒度、OpenMP aitranss 等）、
+  未实现项与后续优先级；`docs/README.md` 与根 README §9 已加链接。
+
+### 开壳层分子输入修正（2026-11-19）
+
+- 修 `molecule_opt` 的 FHI-aims `spin` 关键字：原先按多重度写 `spin 2` 这类数字，
+  而 FHI-aims 的 `spin` 只接受 `none`/`collinear`（数字会因关键字取值非法而停止）。
+  现在 `multiplicity > 1` 写 `spin collinear`，总自旋仍由
+  `fixed_spin_moment = M−1`（=2S，不是多重度）固定。
+- 新增 `molecule.initial_moments`（1-based 原子序号 -> μB）：写成 geometry.in 的
+  per-atom `initial_moment` 子 tag（独占一行，不影响 `read_aims_geometry` 解析）；
+  FHI-aims 在 `spin collinear` 下要求给出初始自旋密度。未给时 notes 警告；
+  闭壳层设置或序号越界直接报错。
+- `aims_tip_relax` / `aims_scf` 对 `multiplicity > 1` 先 fail-closed（当时结级自旋
+  尚未接线；现已按下一节「结级自旋接线」打通）。
+- 非零 `molecule.charge` 时把总电荷均分成 per-atom `initial_charge` 写进
+  geometry.in：FHI-aims 要求 `charge` 等于这些行之和；项目使用的 221103 不认
+  `override_initial_charge_check`（2026-11-19 集群实测 parse_control 停算），
+  所以改用满足一致性检查的 per-atom 写法。写入值记入 `input_summary.json`
+  的 `initial_charge_total/initial_charge_per_atom` 与 notes。
+- `protocol_sha256` 只在 `initial_moments` 非空时纳入，历史 run_spec 不判漂移。
+- 新增 `tests/test_open_shell_junction.py`、更新 `tests/test_aims_molecule_opt.py`；
+  全量 306 passed。
+
+### 结级自旋接线（2026-11-19）
+
+- 新增 `src/smj/spin.py`：`SpinState` 统一分子/结的自旋口径（`multiplicity>1`
+  → `spin collinear` + `fixed_spin_moment=M−1` + `default_initial_moment 0.1`
+  初猜；`charge≠0` → 把总电荷均分成 per-atom `initial_charge` 写进 geometry.in），
+  并负责把关键字插进 control.in 的 general 段、写入 `input_summary.json`。
+- `aims_tip_relax` / `aims_scf` 不再 fail-closed：prepare 把 `spin`/`charge`/
+  `fixed_spin_moment` 传进 FHI-aims 输入；开壳层 SCF 产出 `alpha.aims` +
+  `beta.aims`（collect 接受两者替代 `mos.aims`，`results.json` 记
+  `has_mos/has_alpha/has_beta/spin_unpolarized`）。
+- `aitranss_te` 开壳层时从 `alpha.aims` 解析 `nsaos`（自旋极化无 `mos.aims`），
+  把 tcontrol 的 `$scfmo` 换成 `$uhfmo_alpha file=alpha.aims` +
+  `$uhfmo_beta file=beta.aims`；带电结按电荷修正 `$valence_electrons`；
+  `input_summary.json` 记 `spin_polarized/wavefunction_files/valence_electrons`。
+- 新增 `src/smj/landauer_spin.py`：解析 `TE.dat` 的 α/β 双列，给出 per-channel
+  `L0`/`G/G0`、`E_F` 处与 L0 积分后的自旋极化率；`junction_analyze` 在开壳层
+  时把 `spin` 块并入 `results.json`（总 G/S/ke/ZT 仍按双通道均值）。
+- 新增 `tests/test_spin_transport.py`，重写 `tests/test_open_shell_junction.py`；
+  全量 315 passed。口径限制（无 SOC、非共线、Kondo；平均透射不是自旋分辨结论）
+  写入 README §9。
+- 阶段间几何核对改用**结构指纹**（只哈希 atom/lattice_vector 行）：带电/开壳层
+  SCF 会往 geometry.in 追加 `initial_charge`/`initial_moment` 子 tag，字节 sha256
+  变化会让 aitranss_te 误判「几何与 metadata 不一致」。`electrode_build` 的
+  metadata 新增 `surface_fingerprint_structural`；旧 run 缺该键时仍按字节
+  sha256 回退（2026-11-19 TTF 实跑 prepare 时发现）。
+- 远端回取补 `alpha.aims`/`beta.aims` 的表头（head，2 行）：vendored 台账只认
+  `mos.aims`，否则自旋极化 SCF 在 slurm-ssh 模式下本地拿不到 `nsaos`；闭壳层
+  run 里两者缺席记为 `optional_missing`，不算缺件。自旋极化 run 反之：取到
+  α/β 表头时 `mos.aims` 缺席同样记 `optional_missing`，不再判回取缺件
+  （2026-11-19 TTF 实跑 collect 时发现）。全量 317 passed。
+
+### 统一 T(E) 绘图版式（2026-11-19）
+
+- 新增 `src/smj/plotting.py`：单一版式实现（四边框、刻度朝内、`E_F` 虚线、
+  log 纵轴、固定配色 `PALETTE`、单栏/双栏/宽幅尺寸 `FIG_SIZES`、600 dpi
+  PNG+PDF 同源导出、panel 角标、`T(E_F)`/`G/G0` 注释）。版式常量集中在
+  `STYLE` / `STYLE_VERSION`，顶层不 import matplotlib（渲染时才加载，且强制 Agg）。
+- 新增 `smj plot` 子命令：输入可为 `TE.dat`、run 目录或阶段目录，支持单图与
+  多 run 叠加（固定配色、带框图例）、`--scale log|linear`、`--figsize
+  single|double|wide`、`--formats`、`--dpi`、`--xlim/--ylim`、`--panel`、
+  `--no-annotate`；缺省输出到 run 根的 `T_E.png`（多图 `T_E_overlay.png`）。
+- `junction_analyze` 阶段在写 `results.json` 的同时按同一版式出
+  `T_E.png` + `T_E.pdf`（matplotlib 未安装时只记 note、不阻断数值结果）。
+- `smj analyze --plot` 与 `smj.analysis.plot_transmission` 均委托新实现，
+  旧返回键（`path`/`points`/`log_scale`/`floor`）保持不变。
+- 版式依据用户 Zotero 中 Yi 2016 *Chin. Phys. B* Fig. 6 与 Guan 2022
+  *Nanotechnology* Figs. 2–3；说明见 `docs/plot_style.md`，新增
+  `tests/test_plotting.py`（含 CLI 与阶段出图）；全量 296 passed。
+- ET7H-BS2 结果图按新版式重绘（`runs/et7h-bs2/ET7H-BS2_TE.png` +
+  同源 `.pdf`），删除该 run 下各画各的临时脚本 `plot_te.py`。
+
+### T(E) 自旋分辨自适应绘图（2026-11-19）
+
+- `read_curve` 改用 `landauer_spin.read_te_channels`，返回 `t`（双通道均值，
+  与旧口径一致）、`t_alpha`/`t_beta` 与 `channels`；旧调用不受影响。
+- `plot_te` 新增 `spin="auto"|"mean"|"channels"|"polarization"`：`auto` 在
+  TE.dat 有 α/β 两列时自动出双 panel——(a) `Tα`/`Tβ`（固定配色
+  `PALETTE[0]`/`PALETTE[1]`），(b) 自旋极化率 `P(E)=(Tα−Tβ)/(Tα+Tβ)`；
+  单列数据、或 `channels`/`polarization` 遇到单列时退化为旧版式 `mean`。
+  双 panel 在 `figsize="single"` 下自动升到 `FIG_SIZES["double"]`，panel 角标
+  自动 `(a)`/`(b)`；`meta` 增加 `spin`/`channels`。
+- `smj plot` 新增 `--spin`；`smj analyze --plot` 与 `junction_analyze` 仍走
+  默认 `auto`，因此自旋极化 run 会自动得到自旋分辨图。
+- `docs/plot_style.md` 补自旋双 panel 说明；`tests/test_plotting.py` 增加
+  四列 TE.dat 用例（通道拆分、自动双 panel、`mean`/`channels` 降级、非法值、
+  `smj plot --spin`），全量 325 passed。
+
+### 运行范围策略（2026-11-18）
+
+- 新增仓库级 `AGENTS.md`：只跑用户明确点名的分子/异构体/协议；不默认加跑
+  pinned 对照、敏感性扫描、替代锚定、团簇尺寸扫描、空结对照等控制计算；需要
+  对照时先说明理由和代价，等用户明确同意。
+- `electrode.pin_contact: true` 现在在配置加载时给出警告，提示它是 pinned 对照/
+  距离扫描口径、不是生产默认；`smj plan` / `smj run` / `smj preflight` 等命令都会
+  打印。README §0 "不承诺"同步写明不自动加对照臂/敏感性计算。
+- 新增 `tests/test_full_relax_protocol.py::test_pinned_contact_is_flagged_as_control`；
+  全量 286 passed。
+
 ### 脚本整理（2026-11-18）
 
 - 原仓库根的一次性脚本 `_azo.py` 整理为 `scripts/azo_ez_ratio.py`：两个 run 的
@@ -181,7 +455,7 @@
   电子必须奇多重度、奇数电子必须偶多重度，否则 `StageError`。写错时 SCF 会为
   "不存在的电子态"收敛出漂亮结果，链上没有别处能发现；`results.json` 记
   `electron_count`。
-- 修 `_vendor/junction/molecules.py::molecule_from_smiles` 的多构象 bug：
+- 修 `junction/molecules.py::molecule_from_smiles` 的多构象 bug：
   `n_conformers>1` 时所有构象都返回构象 0（循环外只取了一次 `mol.GetConformer()`）。
 - 新增锚定接触报告（只报告、不判定）：`smj.checks.anchor_contacts` 给出每个贴着
   金属的锚定原子（S/N/Se）的 `M–X` 距离与 `C–X–M` 角，`smj review` 写进

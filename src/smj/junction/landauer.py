@@ -51,6 +51,22 @@ def trapz(y: list[float], x: list[float]) -> float:
     return sum(0.5 * (y[i] + y[i - 1]) * (x[i] - x[i - 1]) for i in range(1, len(x)))
 
 
+def energy_order(rows: list[tuple[float, float, float]]) -> str:
+    """E-E_F(eV) 列的行序: ``ascending`` / ``descending`` / ``unsorted``。
+
+    TE.dat 的行序**不是物理量**: 积分只依赖 (E, T) 集合。但梯形求积的符号随 x 的
+    单调方向翻转, 而旧实现直接按行序积分、且只对 L0/L2 取 abs —— 于是**倒序文件会
+    静默把 Seebeck 反号**(L1 是唯一带符号的矩, 不受 abs 保护)。这里只做观测,
+    真正的修正在 :func:`analyze_te` 里先排序。
+    """
+    e = [r[1] for r in rows]
+    if all(b > a for a, b in zip(e, e[1:])):
+        return "ascending"
+    if all(b < a for a, b in zip(e, e[1:])):
+        return "descending"
+    return "unsorted"
+
+
 def minus_fermi_derivative(e_ev: float, temperature: float) -> float:
     x = e_ev / (2.0 * KB_EV_PER_K * temperature)
     if abs(x) > 50:
@@ -61,6 +77,15 @@ def minus_fermi_derivative(e_ev: float, temperature: float) -> float:
 
 def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path | None = None) -> dict:
     rows = read_te(path)
+    order = energy_order(rows)
+    warnings: list[str] = []
+    if order != "ascending":
+        # 行序不是物理量: 排序后积分, 让升序/降序/乱序给出**同一**物理结果。
+        # 不排序时梯形积分随 x 方向整体变号, 只有带符号的 L1 没被 abs 吸收,
+        # 于是倒序 TE.dat 会静默把 S 反号(2026-11-20 复核 P1-1)。
+        rows = sorted(rows, key=lambda r: r[1])
+        warnings.append(
+            "TE.dat 的能量列不是升序(%s); 已按 E-E_F 升序排序后积分" % order)
     e_ev = [r[1] for r in rows]
     trans = [max(r[2], 0.0) for r in rows]
     weights = [minus_fermi_derivative(e, temperature) for e in e_ev]
@@ -83,6 +108,10 @@ def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path 
         "ZT_electronic": 1.0 / ((l0 * l2) / (l1 * l1) - 1.0) if l1 else None,
         "fermi_nearest": nearest_energy(rows, 0.0),
         "max_transmission": max(({"E_Hartree": r[0], "E_minus_Ef_eV": r[1], "T": r[2]} for r in rows), key=lambda x: x["T"]),
+        # 行序观测: 让下游能区分"本来就是升序"与"被脚本纠正过"。
+        "input_energy_order": order,
+        "reordered": order != "ascending",
+        "warnings": warnings,
     }
     if output:
         Path(output).parent.mkdir(parents=True, exist_ok=True)

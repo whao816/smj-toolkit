@@ -33,7 +33,11 @@ def _warn(name: str, value, detail: str) -> dict:
 _ARTIFACT_STAGE_HOME = {
     'mol.log': ('gaussian_opt',),
     'geometry.in.next_step': ('aims_tip_relax',),
-    'aims.out': ('aims_scf', 'aims_tip_relax'),
+    # 2026-11-20 复核 R13b：原来还回落到 aims_tip_relax。弛豫日志每一步都会写
+    # `Self-consistency cycle converged.`，于是"静态 SCF 阶段根本没跑"的 run 也能
+    # 拿到一条 aims_scf=OK 的判据——它证明的是弛豫里的某一步 SCF，不是送 aitranss
+    # 的静态 SCF。SCF 判据只认 aims_scf 阶段（扁平布局仍由 run_dir/aims.out 命中）。
+    'aims.out': ('aims_scf',),
     'TE.dat': ('aitranss_te',),
     'results.json': ('junction_analyze',),
 }

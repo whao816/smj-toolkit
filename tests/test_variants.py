@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from smj._vendor.junction.geometry import Atom, read_xyz
+from smj.junction.geometry import Atom, read_xyz
 from smj import variants
 
 #: 简化苯硫酚：S–H 1.34 Å，S–C 1.80 Å，其余 5 个 C 只是占位（几何检查用不到）。

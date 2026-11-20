@@ -1,6 +1,6 @@
 # 判据来源核验：Thygesen 2005 / Jackson 2009 与"分子族 → 预期共振"
 
-> 目的：核验 `src/smj/_vendor/junction/criteria.py` 中 `t_ef_magnitude`、`g_in_theory_band`、
+> 目的：核验 `src/smj/junction/criteria.py` 中 `t_ef_magnitude`、`g_in_theory_band`、
 > `au_s_bond`、`t_ef_no_peak_near_ef` 四条判据的 source{doi,locator} 是否成立，并为按族
 > 登记 `applies_to` 提供一手依据。
 >

@@ -1,7 +1,7 @@
 """TE.dat 输运分析：Landauer L0/L1/L2 与 G / S / k_e / ZT 摘要。
 
-本模块是 :mod:`smj._vendor.junction.landauer`（以及可选的
-:mod:`smj._vendor.junction.independent_check`）的**薄封装**，只做三件事：
+本模块是 :mod:`smj.junction.landauer`（以及可选的
+:mod:`smj.junction.independent_check`）的**薄封装**，只做三件事：
 
 1. 调 vendored ``analyze_te`` 得到固定字段的统计摘要；
 2. 可选跑独立复核（独立解析器 + Simpson 求积 + CODATA 常数），抓实现级单位/
@@ -138,7 +138,7 @@ def independent_check(result: Mapping[str, Any], te_path: str | Path, *,
     返回 ``{ok, L0, L1, L2, G_over_G0, S_uV_per_K, ZT_electronic, comparison}``；
     独立复核失败不影响主管线结果，调用方在 ``warnings`` 里记录原因。
     """
-    from smj._vendor.junction import independent_check as ind  # lazy: vendored
+    from smj.junction import independent_check as ind  # lazy: vendored
 
     temp = float(temperature if temperature is not None else result.get("temperature_K") or 300.0)
     rows = ind.parse_te(te_path)
@@ -224,41 +224,15 @@ def _log_floor(values: list[float]) -> float:
 
 def plot_transmission(te_path: str | Path, result: Mapping[str, Any],
                       out_png: str | Path, *, title: str | None = None) -> dict:
-    """T(E) 曲线（E-E_F vs T，**纵轴对数**）；需要 matplotlib（extra ``plot``），缺失即抛错。"""
-    import matplotlib  # lazy: optional dependency
+    """T(E) 曲线（E-E_F vs T，**纵轴对数**）。兼容入口：版式与导出统一走
+    :func:`smj.plotting.plot_te`（需要 matplotlib，extra ``plot``），缺失即抛错。
+    """
+    from .plotting import plot_te
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    from smj._vendor.junction.landauer import read_te  # lazy: vendored
-
-    rows = read_te(te_path)
-    e_ev = [r[1] for r in rows]
-    trans = [r[2] for r in rows]
-    floor = _log_floor(trans)
-    clipped = [max(float(v), floor) for v in trans]
-    target = Path(out_png)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(7.2, 4.2))
-    ax.plot(e_ev, clipped, color="#1f4e9c", lw=1.2, label="T(E) per spin")
-    nearest = result.get("fermi_nearest") or {}
-    e_f = nearest.get("E_minus_Ef_eV")
-    if e_f is not None:
-        ax.axvline(0.0, color="#999999", lw=0.8, ls="--", label="E_F")
-        ax.plot([e_f], [max(float(nearest.get("T", 0.0)), floor)], "o",
-                color="#c02020", ms=4, label="nearest to E_F")
-    ax.set_yscale("log")
-    ax.set_ylim(floor, max(max(clipped) * 1.15, floor * 10.0))
-    ax.set_xlabel("E - E_F (eV)")
-    ax.set_ylabel("T(E) (G0)")
-    ax.set_title(title or "transmission %s (log scale)" % Path(te_path).name)
-    ax.grid(alpha=0.25, which="both")
-    ax.legend(fontsize=8, frameon=False)
-    fig.tight_layout()
-    fig.savefig(target, dpi=150)
-    plt.close(fig)
-    return {"path": str(target), "points": len(rows), "log_scale": True,
-            "floor": floor}
+    meta = plot_te(te_path, out_png, scale="log", title=title, result=result,
+                   formats=("png",), annotate=True)
+    return {"path": meta["path"], "points": meta["points"],
+            "log_scale": True, "floor": meta["floor"]}
 
 
 # --------------------------------------------------------------------------- #
@@ -289,7 +263,7 @@ def analyze_te(te_path: str | Path, *, temperature: float = 300.0,
         是否跑独立复核（默认 True）；失败只记 ``warnings``，不影响主结果。
     """
     te = resolve_te(te_path)
-    from smj._vendor.junction.landauer import analyze_te as _analyze  # lazy: vendored
+    from smj.junction.landauer import analyze_te as _analyze  # lazy: vendored
 
     core = _analyze(te, temperature=float(temperature))
     missing = [k for k in REQUIRED_KEYS if k not in core]
@@ -299,7 +273,9 @@ def analyze_te(te_path: str | Path, *, temperature: float = 300.0,
     result: dict[str, Any] = dict(core)
     result["schema"] = ANALYSIS_SCHEMA
     result["source"] = str(te)
-    result["warnings"] = []
+    # 保留 vendored 的口径告警（如 TE.dat 行序非升序被排序），不要在这里清空：
+    # 旧实现直接覆盖成 []，会让"倒序谱被静默排序"这条唯一提示消失。
+    result["warnings"] = list(core.get("warnings") or [])
 
     if independent:
         try:
@@ -374,7 +350,7 @@ def orbital_alignment(te_path: str | Path, aims_out: str | Path, *,
                       mode: str = "fermi", target_e_ev: float | None = None,
                       output: str | Path | None = None) -> dict:
     """可选：把 TE.dat 的费米窗与 FHI-aims 轨道本征值对齐（vendored spectra）。"""
-    from smj._vendor.junction.spectra import match_orbital  # lazy: vendored
+    from smj.junction.spectra import match_orbital  # lazy: vendored
     return match_orbital(te_path, aims_out, mode=mode, target_e_ev=target_e_ev,
                          output=output)
 

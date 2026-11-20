@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .._vendor.junction.geometry import read_xyz
+from ..junction.geometry import read_xyz
 from ..checks import total_electrons
 from ..engines import DEFAULT_ENGINE, all_engines, engine_for_config, get_engine
 from ..errors import StageError

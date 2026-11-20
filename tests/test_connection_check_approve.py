@@ -123,7 +123,7 @@ def test_refuses_when_audit_not_ok(workdir: Path):
 
 
 def test_refuses_when_figure_fails(workdir: Path, monkeypatch):
-    from smj._vendor.junction import a2_viz
+    from smj.junction import a2_viz
 
     def boom(*args, **kwargs):
         raise RuntimeError("出图需要 matplotlib(可选依赖)")
@@ -191,7 +191,7 @@ def test_force_resigns(workdir: Path):
 
 def test_signature_follows_geometry(workdir: Path):
     """改了几何 -> 旧签名失效（指纹绑字节），重签才回到有效。"""
-    from smj._vendor.junction.fingerprint import check_confirmation
+    from smj.junction.fingerprint import check_confirmation
 
     run_dir, build = _case(workdir)
     assert approve_connection_check(run_dir, who="tester", no_figure=True).ok

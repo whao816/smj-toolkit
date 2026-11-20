@@ -11,11 +11,12 @@ import json
 from pathlib import Path
 
 from .. import aims_out, cube, species as species_mod
-from .._vendor.junction.geometry import read_aims_geometry, read_xyz, write_xyz
-from .._vendor.junction.inputs import make_aims_molecule_opt_input
+from ..junction.geometry import read_aims_geometry, read_xyz, write_xyz
+from ..junction.inputs import make_aims_molecule_opt_input
 from ..checks import check_geometry, total_electrons
 from ..errors import StageError
 from ..provenance import parse_aims_versions, record_observed_software
+from ..spin import record_initial_charge, write_initial_charges
 from . import Engine, EngineCollected, EnginePrepared, register
 
 
@@ -35,8 +36,89 @@ class AimsEngine(Engine):
 
     @staticmethod
     def _spin(molecule) -> str:
+        """FHI-aims 的 ``spin`` 只接受 ``none`` / ``collinear``（不接受数字）。
+
+        多重度 M 由 ``fixed_spin_moment = M - 1 = 2S`` 表达；早期实现把 M−1
+        直接写进 ``spin``（如 ``spin 2``），FHI-aims 会因关键字取值非法而停止。
+        """
         multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
-        return "none" if multiplicity <= 1 else str(multiplicity - 1)
+        return "none" if multiplicity <= 1 else "collinear"
+
+    @staticmethod
+    def _initial_moments(molecule, natoms: int) -> dict[int, float]:
+        """校验并返回 ``molecule.initial_moments``（1-based 原子序号 -> μB）。"""
+        raw = getattr(molecule, "initial_moments", None) or {}
+        moments = {int(key): float(value) for key, value in dict(raw).items()}
+        if not moments:
+            return {}
+        multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
+        if multiplicity <= 1:
+            raise StageError(
+                "molecule.initial_moments 只在 multiplicity > 1（开壳层）时有意义，"
+                "当前 multiplicity=1：请同时设 multiplicity，或删掉 initial_moments")
+        out_of_range = sorted(index for index in moments if not 1 <= index <= natoms)
+        if out_of_range:
+            raise StageError(
+                "molecule.initial_moments 的原子序号越界：结构共 %d 原子（1-based），"
+                "越界序号 %s" % (natoms, out_of_range))
+        return moments
+
+    @staticmethod
+    def _write_initial_moments(geometry: Path, moments: dict[int, float]) -> None:
+        """把 per-atom ``initial_moment`` 子 tag 插到对应 ``atom`` 行之后。
+
+        FHI-aims 的 atom 子 tag 必须**独占一行**（与 ``constrain_relaxation``
+        同一种层级写法）；``read_aims_geometry`` 只认 ``atom`` 行，所以写在末尾
+        同一行会让 collect 解析不到原子，必须单独成行。
+        """
+        if not moments:
+            return
+        lines = Path(geometry).read_text(encoding="utf-8").splitlines()
+        out: list[str] = []
+        index = 0
+        for line in lines:
+            out.append(line)
+            parts = line.split()
+            if parts and parts[0] == "atom":
+                index += 1
+                value = moments.get(index)
+                if value is not None:
+                    out.append("  initial_moment  %g" % value)
+        if index < max(moments):
+            raise StageError(
+                "molecule_opt: geometry.in 只有 %d 个 atom 行，但 initial_moments "
+                "指定到第 %d 号" % (index, max(moments)))
+        Path(geometry).write_text(
+            "\n".join(out) + "\n", encoding="utf-8", newline="\n")
+
+    @staticmethod
+    def _record_initial_moments(summary_path: Path, moments: dict[int, float]) -> None:
+        """把初始磁矩补进 ``input_summary.json``（引擎自己写的输入清单）。"""
+        try:
+            data = json.loads(Path(summary_path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
+        data["initial_moments"] = {str(key): value for key, value in sorted(moments.items())}
+        Path(summary_path).write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    @staticmethod
+    def _write_initial_charges(geometry: Path, charge: float) -> float | None:
+        """非零电荷时把总电荷均分成 per-atom ``initial_charge`` 写进 geometry.in。
+
+        FHI-aims 要求 ``charge q`` 等于 geometry.in 里 ``initial_charge`` 之和（不写
+        这类 per-atom 子 tag 时 q 必须为 0），否则直接停算；项目使用的 221103 不认
+        ``override_initial_charge_check`` 开关（集群实测 parse_control 停算），所以
+        补 per-atom ``initial_charge``。均分只是初始密度猜测，不影响 SCF 自洽结果。
+        """
+        return write_initial_charges(geometry, charge)
+
+    @staticmethod
+    def _record_initial_charges(summary_path: Path, charge: float, per_atom: float) -> None:
+        """把初始电荷分布记进 ``input_summary.json``，便于 truth chain 核对。"""
+        record_initial_charge(summary_path, charge, per_atom)
 
     @staticmethod
     def _vdw(ctx) -> str | None:
@@ -54,11 +136,12 @@ class AimsEngine(Engine):
         functional = getattr(molecule, "opt_functional", "pbe")
         basis = getattr(molecule, "opt_basis", "light")
 
+        charge = float(getattr(molecule, "charge", 0) or 0)
         written = make_aims_molecule_opt_input(
             xyz, stage_dir, species,
             xc=functional,
             spin=self._spin(molecule),
-            charge=float(getattr(molecule, "charge", 0) or 0),
+            charge=charge,
             force_threshold=getattr(molecule, "opt_force_threshold", "1.e-2"),
             basis=basis,
             env=env,
@@ -66,6 +149,20 @@ class AimsEngine(Engine):
             spin_moment=spin_moment,
         )
         geom = Path(written["geometry"])
+        control = Path(written["control"])
+        charge_note = None
+        if charge:
+            per_atom = self._write_initial_charges(geom, charge)
+            self._record_initial_charges(stage_dir / "input_summary.json", charge, per_atom)
+            charge_note = (
+                "电荷 %+g：FHI-aims 要求 charge 等于 geometry.in 的 initial_charge "
+                "之和，已按原子数均分写入 per-atom initial_charge（%.6g e/原子，"
+                "合计 %+g）；这只是初始密度猜测，不影响 SCF 自洽结果"
+                % (charge, per_atom, charge))
+        moments = self._initial_moments(molecule, natoms)
+        if moments:
+            self._write_initial_moments(geom, moments)
+            self._record_initial_moments(stage_dir / "input_summary.json", moments)
         species_json = stage_dir / "species.json"
         species_notes: list[str] = []
         species_artifacts: list[str] = []
@@ -86,6 +183,29 @@ class AimsEngine(Engine):
 
         ctx.log("molecule_opt: 已写 %s（%d 原子，FHI-aims %s/%s，spin=%s）"
                 % (geom.name, natoms, functional, basis, self._spin(molecule)))
+        if spin_moment:
+            shell_note = (
+                "开壳层：spin collinear + fixed_spin_moment %g（μB = 2S = M−1）把总自旋"
+                "固定住，弛豫过程不允许在步间改变自旋态" % spin_moment)
+        else:
+            shell_note = "闭壳层：spin none，不写 fixed_spin_moment / initial_moment"
+        moment_notes: list[str] = []
+        if moments:
+            moment_notes.append(
+                "初始磁矩（geometry.in per-atom initial_moment，1-based）：%s；合计 %g μB"
+                % ("，".join("原子 %d=%g" % (index, value)
+                            for index, value in sorted(moments.items())),
+                   sum(moments.values())))
+            if abs(sum(moments.values()) - float(spin_moment)) > 1e-6:
+                moment_notes.append(
+                    "initial_moments 合计 %g μB ≠ M−1 = %g μB：fixed_spin_moment 仍会强制"
+                    "总自旋，初猜分布只影响收敛路径与落到哪个解"
+                    % (sum(moments.values()), spin_moment))
+        elif spin_moment:
+            moment_notes.append(
+                "未设 molecule.initial_moments：spin collinear 下 FHI-aims 用默认初始"
+                "自旋密度，开壳层 SCF 可能收敛到错误自旋分布（或更慢）；建议把 μB 加在"
+                "自由基中心原子上（molecule.initial_moments，1-based 序号）")
         return EnginePrepared(
             inputs=[geom, Path(written["control"]),
                     Path(written["submit_script"]),
@@ -107,9 +227,9 @@ class AimsEngine(Engine):
                 "SCF 精度显式写进 control.in（与 control_scf.in 同源）："
                 "rho 1E-5、eev 1E-3 eV、etot 1E-6 eV、forces 5E-3 eV/Å，"
                 "最多 1000 次迭代；旧版依赖 FHI-aims 默认（forces 为 not_checked）",
-                ("开壳层：已写 fixed_spin_moment %g（μB），弛豫过程总自旋固定，"
-                 "不允许在步间改变自旋态" % spin_moment) if spin_moment
-                else "闭壳层：不写 fixed_spin_moment",
+                shell_note,
+                *moment_notes,
+                *([charge_note] if charge_note else []),
                 "prepare 只写输入与作业脚本，未提交任何远端命令",
             ] + species_notes,
             script=self.script,
