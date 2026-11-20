@@ -11,8 +11,9 @@
 - **Windows 三个版本全红**：`actions/checkout` 在 Windows 上按 `core.autocrlf=true`
   检出，内核 `.py` 与 `TE.dat` 被转成 CRLF，`PROVENANCE.json` 与
   `demo-reference.json` 里的 sha256 对不上（6 个用例失败）。
-- **`demo` job 红**：`demo/demo-reference.json` 曾以 CRLF 提交，Linux 上
-  `gen_demo_reference.py --check` 直接比对文本 → 必然不一致。
+- **`demo` job 红**：两处原因 —— ① `demo/demo-reference.json` 曾以 CRLF 提交，
+  Linux 上 `gen_demo_reference.py --check` 直接比对文本 → 必然不一致；② 该 job 只装
+  运行时依赖（`pip install -e .`）却调用 `python -m pytest`，缺 pytest → 退出码 1。
 
 处理：新增 `.gitattributes`（`* text=auto eol=lf`，`*.dat -text`），全仓
 `git add --renormalize`；`gen_demo_reference.py` 写文件固定 LF、`--check` 按换行

@@ -57,9 +57,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install runtime dependencies only
-        # demo 回归只走 landauer 积分与容差比对，不需要 matplotlib/rdkit。
-        run: python -m pip install -e .
+      - name: Install package and pytest
+        # demo 回归只走 landauer 积分与容差比对，不需要 matplotlib/rdkit；
+        # 但下一步要用 pytest，必须把 dev extra 一起装上（2026-11-20：漏装后
+        # `python -m pytest` 直接 ModuleNotFoundError，job 一直红）。
+        run: python -m pip install -e ".[dev]"
       - name: demo-reference.json must match the spectra and the integrator
         run: python scripts/gen_demo_reference.py --check
       - name: Recompute demo transport quantities
