@@ -310,3 +310,53 @@ def test_review_flags_protocol_drift(workdir):
 
     assert "provenance_drift" in result.codes()
     assert result.status == "blocked"
+
+# --- 2026-11-20 复核 P2-1 / R8：采样覆盖必须进协议指纹 ------------------ #
+
+def _protocol_config_of(config: RunConfig) -> dict:
+    from smj.provenance import _protocol_config
+    return _protocol_config(config)
+
+
+def test_protocol_hash_ignores_explicit_estep_override(workdir):
+    """复核实测：eV 相对窗下改 transport.estep，哈希必须变。"""
+    from smj.provenance import protocol_sha256
+
+    base = _config(workdir)
+    overridden = _config(workdir)
+    overridden.transport.estep = 0.001
+
+    assert protocol_sha256(base) != protocol_sha256(overridden)
+    assert _protocol_config_of(overridden)["transport"]["estep"] == 0.001
+
+
+def test_protocol_hash_ignores_explicit_window_edges(workdir):
+    from smj.provenance import protocol_sha256
+
+    base = _config(workdir)
+    changed = _config(workdir)
+    changed.transport.ener = -0.2
+    changed.transport.eend = -0.1
+
+    assert protocol_sha256(base) != protocol_sha256(changed)
+    transport = _protocol_config_of(changed)["transport"]
+    assert transport["ener"] == -0.2
+    assert transport["eend"] == -0.1
+
+
+def test_protocol_default_config_keeps_old_shape(workdir):
+    """默认配置（ener/estep/eend 皆 None）不得新增键——否则历史 run_spec 集体漂移。"""
+    transport = _protocol_config_of(_config(workdir))["transport"]
+    for key in ("ener", "estep", "eend"):
+        assert key not in transport
+    assert transport["energy_window_unit"] == "eV"
+
+
+def test_run_spec_records_resolved_window_unit(workdir):
+    config = _config(workdir)
+    runner = _runner(config)
+    runner.prepare("gaussian_opt")
+    transport = _spec(runner.run_dir)["config"]["transport"]
+    # eV 口径需要 efermi 才能解析；resolve 不了时该键可以缺席，出现就必须带单位。
+    if "resolved_window" in transport:
+        assert transport["resolved_window_unit"] == "Hartree"

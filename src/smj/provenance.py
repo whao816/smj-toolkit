@@ -185,6 +185,8 @@ def config_to_dict(config: Any) -> dict[str, Any]:
     try:
         data["transport"]["energy_window"] = list(config.transport.energy_window)
         data["transport"]["resolved_window"] = list(config.transport.resolved_window())
+        # 2026-11-20 复核 P2-1：resolved_window 恒为 Ha 绝对能量，标注单位避免误读。
+        data["transport"]["resolved_window_unit"] = "Hartree"
     except Exception:  # noqa: BLE001 - 兼容手写/旧配置对象
         pass
     # 分子路径按绝对路径入档；实际文件哈希在 spec["molecule"] 里。
@@ -260,9 +262,16 @@ def _protocol_config(config: Any) -> dict[str, Any]:
             transport["energy_window"] = list(config.transport.resolved_window())
     except Exception:  # noqa: BLE001 - 兼容手写/旧配置对象
         pass
-    transport.pop("ener", None)
-    transport.pop("estep", None)
-    transport.pop("eend", None)
+    # 2026-11-20 复核 P2-1：ener/estep/eend 是"采样覆盖"——它们确实会改变
+    # 积分网格（config.resolved_window 里 estep 覆盖生效），所以**显式写了的
+    # 覆盖值必须进协议**。旧实现无条件 pop 掉三个键，于是 eV 相对窗下改
+    # transport.estep 不改变 protocol_sha256（复核实测）。
+    # 默认配置（三者皆 None）不加键，保持 0.2.x 的哈希形状逐字节不变。
+    for key in ("ener", "estep", "eend"):
+        transport.pop(key, None)
+        value = getattr(config.transport, key, None)
+        if value is not None:
+            transport[key] = float(value)
     # 这是"缺 te.out 是否拒绝"的验证策略，不改变物理结果，不进 protocol。
     transport.pop("require_te_out", None)
     return {"molecule": molecule, "electrode": electrode, "transport": transport}
