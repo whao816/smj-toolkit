@@ -4,6 +4,30 @@
 
 ## 未发布
 
+### 修复：让 PDOS 读得懂真实的 FHI-aims 波函数文件（2026-11-20）
+
+P2 的 PDOS 原先只对合成夹具正确，拿 `runs/ttf-release`（88 原子、4348 基函数）实测时
+每通道积分权重 ~6e20——三个真实格式差异一起发作：
+
+- **头行不是 `$scfmo.aims`**：自旋极化写 `$uhfmo_alpha.aims` / `$uhfmo_beta.aims`；
+  两者态头字母**都是 `a`**，所以通道只能由头行决定，不能由态头字母决定。
+- **系数是定宽字段**：`format(4d20.14)` 每行 4 个、每个 20 字符、无分隔符，负号会粘在
+  上一字段尾部（`…D-08-.752…`）。按正则 `findall` 切会把指数尾当新数，得到 `-6.1e-81`
+  这类假系数——现在按声明的宽度切，`format(…)` 里的 `4`（每行个数）与 `20`（宽度）分开解析。
+- **占据数不在波函数文件里**：改从 `aims.out` 的 `State Occupation …` 表读（自旋极化时
+  末尾 α/β 各一张，共 6 张是各迭代的中间结果），核验后取最后两张等长的表。
+- **NAO 基非正交**：`Σc²` 并不等于 1，也没有 Mulliken 意义；现在按每个态的 `Σ_all c²`
+  归一（`w_g = Σ_{ν∈g} c² / Σ_all c²`），并在 `notes` 里写明"真正的 Mulliken 需要
+  `omat.aims` 的重叠矩阵，本地只有表头"。
+- 解析改为**流式**（`_scan_states` 逐态累加，不保留系数）：`ttf-release` 的
+  383 MB `alpha.aims` + 383 MB `beta.aims` 全程 23 s、内存平稳。
+- 实测：`smj pdos runs/ttf-release/ttf-release --groups molecule=1-14,left=15-51,right=52-88 --fetch`
+  → 每通道积分权重 `molecule≈52.94`、`left≈1461.09`、`right≈1460.47`，合计 2974.5，
+  与 `aims.out` 里该自旋通道的占据数之和逐位一致；图见 `junction_analyze/PDOS.png`
+  （上栏 T(E)、下栏 α 实线/β 虚线，共享 E − E_F 轴）。
+- `tests/test_pdos.py` 增到 15 例：定宽 `$uhfmo_*` 夹具、`Σc²=9` 也必须归一、
+  占据数来自 `aims.out`、截断文件报错必须指向 `smj pdos --fetch`。全量 **456 passed**。
+
 ### 新增：分组 PDOS 与收敛扫描（P2，2026-11-20）
 
 P1 补了"有没有自旋证据"，P2 补"这些态在哪里"和"参数改动是否改变结论"：

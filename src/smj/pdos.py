@@ -40,7 +40,9 @@ HARTREE_TO_EV = 27.211386245988
 PDOS_SCHEMA = "smj.pdos.v1"
 DEFAULT_SIGMA_EV = 0.1
 
-_MOS_HEADER_RE = re.compile(r"^\s*\$scfmo\.aims")
+_MOS_HEADER_RE = re.compile(
+    r"^\s*\$(?P<kind>scfmo|uhfmo_alpha|uhfmo_beta)\.aims(?:.*?iteration:\s*(?P<iteration>\d+))?"
+    r"(?:.*?format\(\s*(?P<per_line>\d+)[dD](?P<width>\d+)\.(?P<decimals>\d+)\s*\))?")
 _STATE_RE = re.compile(
     r"^\s*(\d+)\s+([ab])\s+eigenvalue=\s*(\S+)\s+"
     r"(?:occupation=\s*(\S+)\s+)?nsaos=\s*(\d+)\s*$"
@@ -106,74 +108,177 @@ def parse_basis_indices(path: str | Path) -> dict[str, Any]:
     return {"path": str(path), "nsaos": declared, "atom_of_fn": atom_of_fn}
 
 
-def parse_mos(path: str | Path) -> dict[str, Any]:
-    """解析 ``mos.aims`` / ``alpha.aims`` / ``beta.aims``。
+def _channel_of(kind: str) -> str:
+    return {"scfmo": "closed", "uhfmo_alpha": "alpha", "uhfmo_beta": "beta"}.get(kind, "closed")
 
-    每个态一条头行（``<序号> <a|b> eigenvalue=… nsaos=…``，占据数可选），随后是
-    ``ceil(nsaos/4)`` 行、每行 4 个 ``d20.14`` 格式的系数。文件被截断（只有头行、
-    没有系数行）时抛 :class:`PdosError`，并说明"本地只有 head"。
+
+def _split_coefficients(line: str, width: int | None) -> list[float]:
+    """切一行系数。
+
+    FHI-aims 用 ``format(4d20.14)`` 写定宽字段（无分隔符），相邻负数会粘成
+    ``…D-08-.752…``；按 20 字符定宽切才安全。测试夹具用空白分隔，``width``
+    为 ``None`` 时退回 token 切分。
     """
-    text = _read(path)
-    lines = text.splitlines()
+    if width:
+        values: list[float] = []
+        for start in range(0, len(line), width):
+            chunk = line[start:start + width].strip()
+            if chunk:
+                values.append(_float(chunk))
+        return values
+    return [_float(token) for token in _FLOAT_RE.findall(line)]
+
+
+def _scan_states(path: str | Path, *, group_of_fn: Sequence[int | None] | None = None):
+    """流式扫描波函数文件，逐态产出 meta + 按分组的投影权重。
+
+    FHI-aims 的本征向量满足 ``cᵀ S c = 1``（NAO 基不是正交基），``Σc²`` 本身
+    不是归一化权重，也没有 Mulliken 意义。这里按每个态的 ``Σ_all c²`` 归一：
+    ``w_g = Σ_{ν∈g} c² / Σ_all c²``（Mulliken 需要 ``omat.aims`` 的重叠矩阵，
+    本地只有 60 字节的 head）。组间比例可读，绝对量不能当 Mulliken 布居。
+
+    不保留系数，383 MB 的 ``alpha.aims`` 也不会把内存撑爆。
+    """
+    p = Path(path)
+    if not p.is_file():
+        raise PdosError("找不到文件：%s" % p)
+    groups = len({g for g in (group_of_fn or []) if g is not None})
+    current: dict[str, Any] | None = None
+    weights: list[float] = [0.0] * groups
+    count = 0
+    total_sq = 0.0
+    width: int | None = None
+    channel = "closed"
+    iteration: int | None = None
+    nsaos_declared: int | None = None
+
+    def _close():
+        nonlocal current, weights, count, total_sq
+        if current is None:
+            return
+        want = int(current["nsaos"])
+        if count != want:
+            raise PdosError(
+                "%s 的第 %d 个态只有 %d/%d 个系数：这是被截断的波函数文件"
+                "（本地通常只回取了 head）。PDOS 需要完整的本征向量；请用 "
+                "`smj pdos --fetch` 按显式清单整取，或重跑 aims_scf 后保留完整文件。"
+                % (path, current["index"], count, want)
+            )
+        if group_of_fn is not None:
+            scale = 1.0 / total_sq if total_sq > 0 else 0.0
+            current["weights"] = [value * scale for value in weights]
+            current["sum_c_squared"] = total_sq
+        else:
+            current["weights"] = None
+        yield_state = dict(current)
+        current, weights, count, total_sq = None, [0.0] * groups, 0, 0.0
+        return yield_state
+
+    with p.open("r", encoding="utf-8", errors="ignore") as handle:
+        for line in handle:
+            header = _MOS_HEADER_RE.match(line)
+            if header:
+                channel = _channel_of(header.group("kind"))
+                if header.group("iteration"):
+                    iteration = int(header.group("iteration"))
+                if header.group("width"):
+                    width = int(header.group("width"))
+                continue
+            state = _STATE_RE.match(line)
+            if state:
+                ready = _close()
+                if ready is not None:
+                    yield ready
+                idx, _spin, eig, occ, nsaos = state.groups()
+                nsaos_declared = int(nsaos)
+                current = {
+                    "index": int(idx),
+                    "spin": channel,
+                    "eigenvalue_Ha": _float(eig),
+                    "occupation": _float(occ) if occ is not None else None,
+                    "nsaos": int(nsaos),
+                    "iteration": iteration,
+                }
+                continue
+            if current is None:
+                continue
+            if line.lstrip().startswith("$"):
+                break
+            values = _split_coefficients(line, width)
+            if not values:
+                continue
+            for offset, value in enumerate(values):
+                fn = count + offset + 1              # 1-based
+                if nsaos_declared is not None and fn > nsaos_declared:
+                    break
+                total_sq += value * value
+                if group_of_fn is not None:
+                    gi = group_of_fn[fn - 1]
+                    if gi is not None:
+                        weights[gi] += value * value
+            count += len(values)
+    ready = _close()
+    if ready is not None:
+        yield ready
+
+
+def parse_mos(path: str | Path) -> dict[str, Any]:
+    """解析 ``mos.aims`` / ``alpha.aims`` / ``beta.aims``（测试与调试用）。
+
+    生产路径走 :func:`_scan_states` 的流式投影，不会把整个文件读进内存。
+    """
     states: list[dict[str, Any]] = []
+    channel = "closed"
+    nsaos: int | None = None
+    # 需要系数本身时走一遍定宽/分词解析（文件通常很小；大文件请用 _scan_states）
+    text = _read(path)
+    width: int | None = None
     current: dict[str, Any] | None = None
     coefficients: list[float] = []
-    nsaos_declared: int | None = None
-    iteration: int | None = None
 
-    def _close() -> None:
+    def _flush() -> None:
         nonlocal current, coefficients
         if current is None:
             return
         want = int(current["nsaos"])
         if len(coefficients) != want:
             raise PdosError(
-                "%s 的第 %d 个态只有 %d/%d 个系数：这是被截断的 mos.aims（本地通常只回取了 head）。"
-                "PDOS 需要完整的本征向量；请把 mos.aims 从远端完整取回（当前 artifacts 把它列在 head），"
-                "或重跑 aims_scf 后保留完整文件。"
+                "%s 的第 %d 个态只有 %d/%d 个系数：这是被截断的波函数文件"
+                "（本地通常只回取了 head）。PDOS 需要完整的本征向量；请用 "
+                "`smj pdos --fetch` 按显式清单整取，或重跑 aims_scf 后保留完整文件。"
                 % (path, current["index"], len(coefficients), want)
             )
         current["coefficients"] = list(coefficients)
         states.append(current)
         current, coefficients = None, []
 
-    for line in lines:
-        if _MOS_HEADER_RE.match(line):
-            m = re.search(r"iteration:\s*(\d+)", line)
-            if m:
-                iteration = int(m.group(1))
+    for line in text.splitlines():
+        header = _MOS_HEADER_RE.match(line)
+        if header:
+            channel = _channel_of(header.group("kind"))
+            if header.group("width"):
+                width = int(header.group("width"))
             continue
-        m = _STATE_RE.match(line)
-        if m:
-            _close()
-            idx, spin, eig, occ, nsaos = m.groups()
-            nsaos_declared = int(nsaos)
-            current = {
-                "index": int(idx),
-                "spin": "alpha" if spin == "a" else "beta",
-                "eigenvalue_Ha": _float(eig),
-                "occupation": _float(occ) if occ is not None else None,
-                "nsaos": int(nsaos),
-            }
+        state = _STATE_RE.match(line)
+        if state:
+            _flush()
+            idx, _spin, eig, occ, nsaos_text = state.groups()
+            nsaos = int(nsaos_text)
+            current = {"index": int(idx), "spin": channel,
+                       "eigenvalue_Ha": _float(eig),
+                       "occupation": _float(occ) if occ is not None else None,
+                       "nsaos": nsaos}
             continue
         if current is None:
             continue
         if line.lstrip().startswith("$"):
             break
-        tokens = _FLOAT_RE.findall(line)
-        if tokens:
-            coefficients.extend(_float(tok) for tok in tokens)
-    _close()
+        coefficients.extend(_split_coefficients(line, width))
+    _flush()
     if not states:
         raise PdosError("mos.aims 里没有可识别的 KS 态（%s）" % path)
-    spins = {state["spin"] for state in states}
-    return {
-        "path": str(path),
-        "iteration": iteration,
-        "nsaos": nsaos_declared,
-        "states": states,
-        "channel": "beta" if spins == {"beta"} else ("alpha" if spins == {"alpha"} else "mixed"),
-    }
+    return {"path": str(path), "iteration": None, "nsaos": nsaos,
+            "states": states, "channel": channel}
 
 
 # --------------------------------------------------------------------------- #
@@ -246,6 +351,52 @@ def broaden(values_ev: Iterable[float], weights: Iterable[float], grid_ev: Seque
             dx = (energy - value) / sigma_ev
             out[i] += weight * norm * math.exp(-0.5 * dx * dx)
     return out
+
+
+_OCC_HEADER_RE = re.compile(r"State\s+Occupation\s+Eigenvalue \[Ha\]\s+Eigenvalue \[eV\]")
+_OCC_ROW_RE = re.compile(
+    r"^\s*(\d+)\s+([-+]?\d*\.\d+(?:[DdEe][-+]?\d+)?)\s+"
+    r"[-+]?\d*\.\d+(?:[DdEe][-+]?\d+)?\s+[-+]?\d*\.\d+(?:[DdEe][-+]?\d+)?\s*$")
+
+
+def parse_occupations(aims_out: str | Path) -> dict[str, Any]:
+    """从 ``aims.out`` 的 ``State Occupation Eigenvalue`` 表读占据数。
+
+    FHI-aims 的 ``.aims`` 波函数文件只写本征值、不写占据数；自旋极化时
+    ``aims.out`` 在末尾按 spin 各打一张表（先 α 后 β）。取最后两张等长的表
+    作为 α/β，只有一张则视为闭壳层。
+    """
+    p = Path(aims_out)
+    if not p.is_file():
+        raise PdosError("找不到 aims.out：%s（PDOS 需要它给出态占据数）" % p)
+    tables: list[list[float]] = []
+    current: list[float] | None = None
+    with p.open("r", encoding="utf-8", errors="ignore") as handle:
+        for line in handle:
+            if _OCC_HEADER_RE.search(line):
+                if current:
+                    tables.append(current)
+                current = []
+                continue
+            if current is None:
+                continue
+            row = _OCC_ROW_RE.match(line)
+            if row:
+                current.append(_float(row.group(2)))
+                continue
+            if current:
+                tables.append(current)
+            current = None
+    if current:
+        tables.append(current)
+    if not tables:
+        raise PdosError("aims.out 里没有 State/Occupation 表：%s" % p)
+    same = [t for t in tables if len(t) == len(tables[-1])]
+    if len(same) >= 2:
+        return {"source": str(p), "tables": len(tables),
+                "alpha": same[-2], "beta": same[-1]}
+    return {"source": str(p), "tables": len(tables),
+            "alpha": tables[-1], "beta": None}
 
 
 def energy_grid(te_path: str | Path) -> dict[str, Any]:
@@ -345,10 +496,25 @@ def analyze_pdos(
             "TE.dat 表头没有 efermi，无法把本征值换到 E − E_F 轴（%s）" % te_path
         )
 
+    group_of_fn: list[int | None] = [group_of_atom.get(atom) for atom in basis["atom_of_fn"]]
+    occupation_tables = None
+    aims_out = _find(scf, "aims.out")
+    if aims_out is not None:
+        occupation_tables = parse_occupations(aims_out)
+
     notes: list[str] = [
-        "权重是 Σ_ν∈group c²（正交基上的 Mulliken 型投影），未用 omat.aims 做重叠修正",
+        "权重按每个态的 Σ_all c² 归一（w_group = Σ_{ν∈group} c² / Σ_all c²）：NAO 基非正交，"
+        "真正的 Mulliken 布居需要 omat.aims 的重叠矩阵（本地只有 head）；组间比例可读，"
+        "绝对量不能当 Mulliken 电荷",
         "PDOS 与 T(E) 共用 TE.dat 的 E − E_F 网格（%d 点）；σ = %.3g eV" % (grid["points"], sigma_ev),
     ]
+    if occupation_tables is not None:
+        notes.append(
+            "占据数取自 %s 的 State Occupation 表（共 %d 张%s）"
+            % (occupation_tables["source"], occupation_tables["tables"],
+               "，末两张为 α/β 终态" if occupation_tables["beta"] else "，单张=闭壳层"))
+    else:
+        notes.append("没有 aims.out：按每个态占据 1 计权（只能看态密度形状，不能当占据数解释）")
     result: dict[str, Any] = {
         "schema": PDOS_SCHEMA,
         "run_dir": str(run),
@@ -367,23 +533,31 @@ def analyze_pdos(
         "notes": notes,
     }
     for name, path in channels.items():
-        parsed = parse_mos(path)
-        states = parsed["states"]
-        values_ev = [(state["eigenvalue_Ha"] - float(efermi)) * HARTREE_TO_EV for state in states]
-        occupations = [state["occupation"] if state["occupation"] is not None else 1.0
-                       for state in states]
-        weights = {
-            group["name"]: [occupation * sum(state["coefficients"][fn - 1] ** 2
-                                             for fn in group_functions[gi])
-                            for state, occupation in zip(states, occupations)]
-            for gi, group in enumerate(groups_parsed)
-        }
+        table = None
+        if occupation_tables is not None:
+            table = occupation_tables["beta"] if name == "beta" else occupation_tables["alpha"]
+        values_ev: list[float] = []
+        weights: dict[str, list[float]] = {group["name"]: [] for group in groups_parsed}
+        states = 0
+        for index, state in enumerate(_scan_states(path, group_of_fn=group_of_fn)):
+            occupation = state["occupation"]
+            if occupation is None and table is not None and index < len(table):
+                occupation = table[index]
+            if occupation is None:
+                occupation = 1.0
+            values_ev.append((state["eigenvalue_Ha"] - float(efermi)) * HARTREE_TO_EV)
+            per_group = state["weights"] or [0.0] * len(groups_parsed)
+            for gi, group in enumerate(groups_parsed):
+                weights[group["name"]].append(occupation * per_group[gi])
+            states += 1
+        if not states:
+            raise PdosError("%s 里没有可识别的 KS 态" % path)
         pdos = {key: broaden(values_ev, weight, result["grid_eV"], sigma_ev)
                 for key, weight in weights.items()}
         result["channels"][name] = {
             "file": str(path),
-            "states": len(states),
-            "spin": parsed["channel"],
+            "states": states,
+            "spin": "closed" if name == "mos" else name,
             "integrated_weight": {key: sum(weight) for key, weight in weights.items()},
             "state_energies_eV": values_ev,
             "pdos": pdos,

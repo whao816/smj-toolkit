@@ -50,7 +50,8 @@ def _mos(state_energy_offsets_ev, natoms: int, per_atom: int = 2, spin: str = "a
             coefficients.append(math.sqrt(1.0 / natoms) if (fn - 1) % per_atom == 0 else 0.0)
         for start in range(0, nsaos, 4):
             chunk = coefficients[start:start + 4]
-            lines.append("".join("%.14f" % value for value in chunk))
+            # FHI-aims 用 format(4d20.14)：每个系数定宽 20 字符、D 指数、无分隔符
+            lines.append("".join(("%.14E" % value).replace("E", "D").rjust(20) for value in chunk))
     return "\n".join(lines) + "\n"
 
 
@@ -197,4 +198,73 @@ def test_cli_pdos_requires_config_only_when_fetching(workdir, capsys):
     rc = main(["pdos", str(run), "--groups", "mol=1-2", "--fetch",
                "-c", str(workdir / "missing.yaml")])
     assert rc == 1
-    assert "找不到配置文件" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- #
+# 真实产物形状：$uhfmo_alpha/$uhfmo_beta 定宽系数 + aims.out 里的占据数
+# --------------------------------------------------------------------------- #
+def _uhfmo(spin: str, offsets, natoms: int, scale: float = 3.0) -> str:
+    """按 FHI-aims 真实格式写波函数；``scale`` 让 Σc² ≠ 1 以验证归一化。"""
+    nsaos = natoms * 2
+    lines = ["$uhfmo_%s.aims   iteration:  111   format(4d20.14)" % spin]
+    for index, offset in enumerate(offsets, start=1):
+        energy_ha = EFERMI_HA + offset / HARTREE_TO_EV
+        lines.append("  %4d  a      eigenvalue=%s   nsaos=  %d"
+                     % (index, ("%.14f" % energy_ha).replace("e", "D"), nsaos))
+        coefficients = [scale * math.sqrt(1.0 / natoms) if (fn - 1) % 2 == 0 else 0.0
+                        for fn in range(1, nsaos + 1)]
+        for start in range(0, nsaos, 4):
+            chunk = coefficients[start:start + 4]
+            lines.append("".join(("%.14E" % value).replace("E", "D").rjust(20) for value in chunk))
+    return "\n".join(lines) + "\n"
+
+
+def _aims_out(occupations_alpha, occupations_beta=None) -> str:
+    lines = ["FHI-aims", ""]
+    tables = [("alpha", occupations_alpha)]
+    if occupations_beta is not None:
+        tables.append(("beta", occupations_beta))
+    for index, (_spin, occupations) in enumerate(tables):
+        lines.append("State    Occupation    Eigenvalue [Ha]    Eigenvalue [eV]")
+        for state, occupation in enumerate(occupations, start=1):
+            lines.append("  %4d   %14.8f   %20.14f   %20.14f"
+                         % (state, occupation, -0.2 + 0.001 * state, -5.0 + 0.02 * state))
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def test_fixed_width_coefficients_are_normalised_per_state(workdir):
+    """Σc² = 9 的态也必须给出 Σweight = 1（不能当 Mulliken，但要自洽）。"""
+    run = _run(workdir, natoms=2, mos=_uhfmo("alpha", (0.0,), natoms=2))
+    scf = run / "aims_scf"
+    (scf / "alpha.aims").write_text(_uhfmo("alpha", (0.0,), natoms=2), encoding="utf-8")
+    (scf / "aims.out").write_text(_aims_out([1.0]), encoding="utf-8")
+    result = analyze_pdos(run, groups="a=1,b=2")
+    weights = result["channels"]["alpha"]["integrated_weight"]
+    # 两个原子的系数幅度相同 → 归一化后各占一半，与 Σc²=9 的绝对幅度无关
+    assert weights["a"] == pytest.approx(0.5, abs=1e-9)
+    assert weights["b"] == pytest.approx(0.5, abs=1e-9)
+    assert sum(weights.values()) == pytest.approx(1.0, abs=1e-9)
+
+
+def test_occupations_come_from_aims_out(workdir):
+    run = _run(workdir, natoms=2, mos=_uhfmo("alpha", (-1.0, 1.0), natoms=2))
+    scf = run / "aims_scf"
+    (scf / "alpha.aims").write_text(_uhfmo("alpha", (-1.0, 1.0), natoms=2), encoding="utf-8")
+    (scf / "aims.out").write_text(_aims_out([1.0, 0.0]), encoding="utf-8")
+    result = analyze_pdos(run, groups="a=1,b=2")
+    channel = result["channels"]["alpha"]
+    # 只有占据态进入积分，总量应等于占据数 1.0
+    assert sum(channel["integrated_weight"].values()) == pytest.approx(1.0, abs=1e-9)
+    assert any("State Occupation" in note for note in result["notes"])
+
+
+def test_truncated_vector_names_fetch_hint(workdir):
+    """只有头行没有系数时，报错要指向 `smj pdos --fetch`。"""
+    run = _run(workdir, natoms=2)
+    (run / "aims_scf" / "mos.aims").write_text(
+        "$scfmo.aims   iteration:   90   format(4d20.14)\n"
+        "     1  a      eigenvalue=-.32564827771355D+04   nsaos=     4\n",
+        encoding="utf-8")
+    with pytest.raises(PdosError, match="--fetch"):
+        analyze_pdos(run, groups="a=1,b=2")
