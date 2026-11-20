@@ -4,6 +4,30 @@
 
 ## 未发布
 
+### 修复：开壳层与未登记族不再借用 BDT 的判据包络（2026-11-20）
+
+`criteria.py` 里只有两条判据声明了适用域（`applies_to={'families': ('Au-BDT-Au',)}`）：
+`g_in_theory_band`（派生包络 G/G0 ∈ [0.03, 0.40]）与 `seebeck_sign`（"S 为正"铁律）。
+旧口径在**族未知**时 fail-open（"宁可多判一条"），于是 `runs/ttf-release`——family 未登记、
+多重度 2 的自由基结——因为 G=0.2337 G0 落进 BDT 包络、S=+10.72 µV/K 为正，被写成
+`physics_verdict=passed / 支持 H0`。两条数字碰巧落在别人的带里，不是这个体系的证据。
+
+现在的口径（`criteria.applies(..., open_shell=...)`）：
+
+- **开壳层**（`multiplicity > 1`）：判据族只针对闭壳层标定过，两条判据一律降为记录，
+  detail 尾注写"不适用(开壳层未校准, 仅记录)"；
+- **族未知**：没有该族的标定依据，同样降为记录（"不适用(体系族未知, 无标定依据, 仅记录)"），
+  fail-open 取消；
+- **族已知且匹配**（Au-BDT-Au 闭壳层）：仍作闸门（回归不变）。
+
+`evaluate_run_criteria` / `validate_junction_run` 新增 `multiplicity` 参数；
+`report.build_manifest` 从 `run_spec` 取族、从输入摘要取多重度传下去。
+实测 `runs/ttf-release`：`physics_verdict` 由 `passed` 变 `inconclusive`
+（`inconclusive_criteria=["no_applicable_gate"]`，`not_applicable_criteria` 两条判据，
+`allowed_action="停; 须补数据或降级声明"`），复核仍 `errors: 0`、只剩两条 warning。
+新增 `tests/test_open_shell_gates.py`（12 例）并改写 `tests/test_family.py` 里断言旧
+fail-open 语义的用例。全量 **475 passed**。
+
 ### 修复：输运轴改由电极质心定向、协议 schema 演进不再误判漂移（2026-11-20）
 
 用 `runs/ttf-release` 复核时出现两个 error，都不是物理结论变坏，而是判据口径缺陷：

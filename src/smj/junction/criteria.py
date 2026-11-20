@@ -228,17 +228,36 @@ def system_family(system) -> str | None:
     return SYSTEM_FAMILIES.get(str(system).strip().upper())
 
 
-def applies(criterion, family) -> bool:
-    """该判据是否对 family 作闸门。
+def is_open_shell(multiplicity) -> bool:
+    """多重度 > 1 即开壳层（缺失/非法按闭壳层处理，与旧行为一致）。"""
+    try:
+        return int(multiplicity) > 1
+    except (TypeError, ValueError):
+        return False
 
-    未声明 applies_to 的判据普适; family 未知(None)时也按适用处理 —— fail-safe:
-    宁可多判一条(报告里看得见), 不可漏判(静默放过)。
+
+def applies(criterion, family, *, open_shell: bool = False) -> bool:
+    """该判据是否对当前体系作闸门。
+
+    未声明 applies_to 的判据普适。**按族标定的判据只在"族被登记且匹配"时作闸门**：
+
+    - 开壳层（multiplicity>1）：判据族从未针对自旋分裂的 α/β 双通道标定过，
+      借来的 G 带与 S 符号约定不能当闸门；
+    - 族未知（None）：没有该族的标定依据，把别的族的数字当闸门就是过度断言；
+    - 族已知但不匹配：同样只记录（2026-10-24 窄口径）。
+
+    2026-11-20：旧实现在 family=None 时 fail-open（"宁可多判一条"），于是
+    ``runs/ttf-release``（family=null、多重度 2）被 BDT 的 ``G∈[0.03,0.40]``
+    与 ``S>0`` 判成 ``passed / 支持 H0``——两条数字碰巧落在 BDT 包络里，
+    不是该自由基结的证据。
     """
     spec = (criterion or {}).get('applies_to') if isinstance(criterion, dict) else None
     if not spec:
         return True
+    if open_shell:
+        return False
     if family is None:
-        return True
+        return False
     return family in (spec.get('families') or ())
 
 
@@ -380,17 +399,25 @@ def _bf(name):
     return None
 
 
-def _applicability_tail(spec, app_: bool, family) -> str:
+def _applicability_tail(spec, app_: bool, family, *,
+                        open_shell: bool = False) -> str:
     """带 applies_to 的判据 -> detail 尾注; 未声明适用域则返回空串。
 
     单一出口: 所有带适用域的判据共用同一文案, 避免某条判据漏写"不适用"而让读者
-    误以为它仍是闸门(2026-10-24 第二刀)。
+    误以为它仍是闸门(2026-10-24 第二刀)。2026-11-20 起把"为什么不作闸门"写清楚:
+    开壳层未校准 / 体系族未知 / 该族不在名单里，三者含义不同。
     """
     if not (spec or {}).get('applies_to'):
         return ''
-    return '[适用域: %s; 体系族 %s]' % (
-        '适用' if app_ else '不适用(仅记录, 不作闸门)',
-        family or '未知(按适用处理)')
+    if app_:
+        reason = '适用'
+    elif open_shell:
+        reason = '不适用(开壳层未校准, 仅记录)'
+    elif family is None:
+        reason = '不适用(体系族未知, 无标定依据, 仅记录)'
+    else:
+        reason = '不适用(该族未标定, 仅记录)'
+    return '[适用域: %s; 体系族 %s]' % (reason, family or '未知')
 
 
 def significant_peaks(rows, prominence=PEAK_PROMINENCE, half_window=200):
@@ -411,18 +438,23 @@ def significant_peaks(rows, prominence=PEAK_PROMINENCE, half_window=200):
     return out
 
 
-def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None) -> list:
+def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
+                          multiplicity=None) -> list:
     """从 run 产物实算物理判据; 无产物则返回一条 error 级 ``te_present``。
 
     2026-11-11 本地补丁 (smj F2): 旧实现返回 ``[]``, 而 ``physics_verdict([])``
     会落到 ``else: 'passed'`` —— 一个只有空 ``aitranss_te/`` 目录的 run 因此被
     判"支持 H0"。缺产物只能意味着"无法评估", 不能意味着"通过"。
 
-    system: 体系标识(TaskCard.material 等), 决定带 applies_to 的判据是否作闸门;
-    未登记体系按适用处理(fail-safe, 见 system_family/applies)。
+    system: 体系标识(TaskCard.material 等), 决定带 applies_to 的判据是否作闸门。
+    未登记体系 -> 族未知 -> 按族标定的判据只记录不作闸门（2026-11-20 起；旧实现
+    fail-open，把 BDT 的包络套到别的体系上）。
+    multiplicity: 分子多重度; >1 即开壳层, 按族标定的判据一律不作闸门（判据族
+    只针对闭壳层标定过）。
     """
     from .landauer import analyze_te, read_te
     family = system_family(system)
+    open_shell = is_open_shell(multiplicity)
     d = Path(run_dir)
     te = d / 'TE.dat'
     if not te.exists():
@@ -492,24 +524,25 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None) -> l
                                  'E_F 近旁 %+.4f eV 处有显著峰(T=%.4f); %s; 需解释; %s'
                                  % (delta, dpk[1], reason, why)))
 
-    # ② G 落在理论带(G/G0 = L0)
+    # ② G 落在理论带(G/G0 = L0) —— 2026-11-20: 开壳层/未知族只记录不作闸门
     g = res.get('L0')
     spec = _spec('g_in_theory_band') or {}
-    app_ = applies(spec, family)
+    app_ = applies(spec, family, open_shell=open_shell)
     glo, ghi = _bf('g_in_theory_band') or (None, None)
     if g is not None:
         checks.append(_check('g_in_theory_band', g, glo <= g <= ghi,
                              'G=%.4f G0 带 %.2f-%.2f (派生包络, Thygesen 2005 §V.2)%s'
-                             % (g, glo, ghi, _applicability_tail(spec, app_, family)),
+                             % (g, glo, ghi, _applicability_tail(
+                                 spec, app_, family, open_shell=open_shell)),
                              applicable=app_))
 
     # ③ Seebeck 符号(铁律: Au-BDT-Au 为正) —— A(2026-10-24): 带适用域, 仅该族作闸门
     s = res.get('S_uV_per_K')
     if s is not None:
         spec = _spec('seebeck_sign') or {}
-        app_ = applies(spec, family)
+        app_ = applies(spec, family, open_shell=open_shell)
         detail = ('S=%+.4f uV/K 应为正(Reddy 2007 +8.7+-2.1)' % s
-                  + _applicability_tail(spec, app_, family))
+                  + _applicability_tail(spec, app_, family, open_shell=open_shell))
         checks.append(_check('seebeck_sign', s, s > 0, detail, applicable=app_))
 
     # ④ k_e / ZT_e 非负(来源待补, 故 warn)

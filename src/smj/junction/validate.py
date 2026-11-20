@@ -56,14 +56,18 @@ def _find_artifact(run_dir: Path, name: str):
 
 
 def validate_junction_run(run_dir, task_card=None, results=None, system=None,
-                          temperature: float | None = None) -> dict:
+                          temperature: float | None = None,
+                          multiplicity=None) -> dict:
     """smj run 校验: 按 run_dir(扁平阶段目录或含阶段子目录的 run 根)内实际产物判定。
 
     system: 体系标识(缺省取 task_card.material), 供 criteria 的判据适用域使用;
-    未登记体系按"全部判据适用"处理(A, 2026-10-24 窄口径)。
+    未登记体系 -> 族未知 -> 按族标定的判据只记录不作闸门(2026-11-20 起; 旧实现
+    fail-open, 把 BDT 的 G 带与 S 符号套到别的体系, ttf-release 因此被误判 passed)。
     temperature: 判据评估温度(K)。None -> 300.0(旧行为); 生产路径应由调用方
     传 ``transport.temperature``(2026-11-11 本地补丁 F2), 否则同一 run 的
     results.json 与 verdict 用的不是同一个温度。
+    multiplicity: 分子多重度(>1 即开壳层)。开壳层的判据族未校准, 带 applies_to
+    的判据一律降为记录 —— 由判据层(``criteria.applies``)统一处理。
     """
     run_dir = Path(run_dir)
     if system is None and task_card is not None:
@@ -147,6 +151,7 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
     # 判据读取 TE.dat; 用实际定位到的目录(阶段子目录布局)而不是 run_dir 本身
     checks.extend(evaluate_run_criteria(te.parent if te is not None else run_dir,
                                         system=system,
+                                        multiplicity=multiplicity,
                                         temperature=300.0 if temperature is None
                                         else float(temperature)))
     # A(2026-10-24): applicable=False(判据不适用于该体系族)的 check 不作闸门, 不计入

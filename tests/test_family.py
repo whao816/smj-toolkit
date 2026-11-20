@@ -60,9 +60,16 @@ def test_family_marks_bdt_bands_not_applicable(workdir, capsys):
     assert {"g_in_theory_band", "seebeck_sign"} <= names
     assert "g_in_theory_band" not in (verdict.get("failed_criteria") or [])
 
+    # 2026-11-20：未知族不再 fail-open。旧实现 family=None 时"按适用处理"，
+    # 于是 ttf-release（family 未登记、多重度 2）被 BDT 的 G∈[0.03,0.40] 与
+    # S>0 判成 passed / "支持 H0"。没有该族的标定依据时只能记录，不能当闸门。
     unknown = validate_junction_run(project, system="NOPE")
-    assert all(c.get("applicable") is not False for c in unknown["checks"]
-               if c["name"] in ("g_in_theory_band",))
+    unknown_names = {c["name"]: c for c in unknown["checks"]}
+    assert unknown_names["g_in_theory_band"]["applicable"] is False
+    assert unknown_names["seebeck_sign"]["applicable"] is False
+    assert "该族未标定" in unknown_names["g_in_theory_band"]["detail"] or \
+        "体系族未知" in unknown_names["g_in_theory_band"]["detail"]
+    assert unknown["physics_verdict"] == "inconclusive"
 
 
 def test_bpy_family_registered():

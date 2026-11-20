@@ -541,9 +541,18 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         try:
             from smj.junction.validate import validate_junction_run  # lazy: vendored
             from smj.verdict import apply_completeness, missing_stages
+            # 2026-11-20：判据适用域要"族 + 多重度"两个输入。族优先取 run_spec
+            # （run 时快照），而不是当前配置；开壳层由 multiplicity 驱动，判据层
+            # 会把按族标定的闸门降为记录。
+            run_family = system
+            if run_family is None and run_spec is not None:
+                run_family = (((run_spec.get("config") or {}).get("molecule")
+                               or {}).get("family"))
+            multiplicity = (input_summary.get("molecule") or {}).get("multiplicity")
             verdict = validate_junction_run(
-                run_dir, results={"junction": transport or {}}, system=system,
-                temperature=input_summary.get("temperature_K"))
+                run_dir, results={"junction": transport or {}}, system=run_family,
+                temperature=input_summary.get("temperature_K"),
+                multiplicity=multiplicity)
             # 2026-11-20 复核 P1-6：产物驱动的判定看不到"该跑的阶段没跑"。
             # 由 state 生成 run_incomplete 合成判据并重算工程判定/errors。
             statuses = state.statuses()

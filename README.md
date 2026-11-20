@@ -250,9 +250,12 @@ FHI-aims 阶段（`aims_tip_relax`/`aims_scf`）还需要 `cluster.species_dir` 
 也在场——它是 aitranss 主输出，缺了就无法复核这次透射计算；外部/历史 run 才显式设
 `false` 豁免。
 
-`molecule.family` 声明判据标定族（`AZ` = Au-(2,6-azulenedithiol)-Au、`BDT` 等）；
-未登记体系按"全部判据适用"处理（fail-safe）。BDT 的绿带（T(E_F)/G ∈ [0.03, 0.40]、
-Seebeck 为正）不该给薁作闸门，声明 `family: AZ` 后这三条记"不适用"，判定不再误判 failed。
+`molecule.family` 声明判据标定族（`AZ` = Au-(2,6-azulenedithiol)-Au、`BDT` 等）。
+BDT 的绿带（T(E_F)/G ∈ [0.03, 0.40]、Seebeck 为正）只对 `Au-BDT-Au` 闭壳层作闸门：
+**族未登记**或**开壳层**（`multiplicity > 1`）时两条判据只记录、不作闸门，物理判定回落
+`inconclusive`（`no_applicable_gate`），不会把别的族的包络套到当前体系上——参见
+`runs/ttf-release` 的复核记录（G=0.2337 G0、S=+10.72 µV/K 落在 BDT 带内，但那不是
+该自由基结的证据）。
 
 动作开关（每个阶段通用）：
 
