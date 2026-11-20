@@ -110,3 +110,130 @@ def test_report_marks_te_only_run_as_incomplete(workdir):
     text = render_report(manifest)
     assert "| 完工度 | 未完成" in text
     assert "molecule_opt" in text
+
+
+# --- 2026-11-20 复审 P2-7 / R7：工程错误、物理失败与警告分账 ---------------- #
+def _split_verdict():
+    return {
+        "checks": [
+            {"name": "scf_geometry_consistency", "kind": "engineering",
+             "severity": "error", "passed": False, "applicable": True},
+            {"name": "g_in_theory_band", "kind": "physical",
+             "severity": "error", "passed": False, "applicable": True},
+            {"name": "k_e_zt_order", "kind": "physical",
+             "severity": "warn", "passed": False, "applicable": True},
+            {"name": "te_window_covers_efermi", "kind": "physical",
+             "severity": "error", "passed": True, "applicable": True},
+        ],
+        "passed": False, "engineering_passed": False,
+        "errors": 2, "warnings": 0, "physics_verdict": "failed",
+        "failed_criteria": ["g_in_theory_band"],
+    }
+
+
+def test_engineering_and_physics_failures_are_counted_separately():
+    from smj.verdict import apply_completeness
+
+    out = apply_completeness(_split_verdict(), is_done=True,
+                             first_incomplete=None, missing=[])
+
+    assert out["engineering_errors"] == 1
+    assert out["physics_failures"] == 1
+    assert out["errors"] == 2          # 总体口径仍是"所有 error 级失败"
+    assert out["engineering_passed"] is False
+    assert out["warnings"] == 1        # 源头的 severity 是 "warn"
+
+
+def test_physics_failure_alone_does_not_fail_engineering():
+    from smj.verdict import apply_completeness
+
+    verdict = _split_verdict()
+    verdict["checks"] = [c for c in verdict["checks"]
+                         if c["name"] != "scf_geometry_consistency"]
+    out = apply_completeness(verdict, is_done=True,
+                             first_incomplete=None, missing=[])
+
+    assert out["engineering_errors"] == 0
+    assert out["engineering_passed"] is True   # 物理失败不该拖垮工程判定
+    assert out["passed"] is False              # 总体判定仍然是否证
+
+
+# --- 2026-11-20 复审 P2-6 / R6：finished ≠ 已验收 --------------------------- #
+def test_finished_stage_is_awaiting_not_accepted():
+    from smj.verdict import apply_completeness, stage_acceptance
+
+    statuses = {"molecule_opt": "collected", "aims_scf": "finished",
+                "aitranss_te": "pending"}
+    awaiting, missing = stage_acceptance(
+        statuses, ["molecule_opt", "aims_scf", "aitranss_te"])
+    assert awaiting == ["aims_scf"]
+    assert missing == ["aitranss_te"]
+
+    out = apply_completeness(
+        {"checks": [], "passed": True, "engineering_passed": True,
+         "errors": 0, "warnings": 0, "physics_verdict": "inconclusive",
+         "failed_criteria": []},
+        is_done=False, first_incomplete="aims_scf",
+        missing=missing, awaiting=awaiting)
+
+    assert out["completeness"]["stages_awaiting"] == ["aims_scf"]
+    assert out["passed"] is False and out["engineering_passed"] is False
+    detail = out["checks"][-1]["detail"]
+    assert "待验收" in detail and "aims_scf" in detail
+
+
+def test_skipped_stage_counts_as_accepted():
+    from smj.verdict import stage_acceptance
+
+    awaiting, missing = stage_acceptance(
+        {"molecule_opt": "skipped", "aims_scf": "collected"},
+        ["molecule_opt", "aims_scf"])
+    assert awaiting == [] and missing == []
+
+
+def test_manifest_does_not_call_finished_stage_done(workdir):
+    import json
+
+    from smj.report import build_manifest
+    from smj.state import STAGE_ORDER
+
+    run_dir = workdir / "run"
+    run_dir.mkdir()
+    stages = {s: {"status": "collected"} for s in STAGE_ORDER}
+    stages["aims_scf"] = {"status": "finished"}
+    (run_dir / "state.json").write_text(
+        json.dumps({"schema": "smj.state.v1", "stages": stages}),
+        encoding="utf-8")
+
+    manifest = build_manifest(run_dir, run_id="t", include_checks=True)
+    verdict = manifest["verdict"]
+    assert verdict["completeness"]["is_done"] is False
+    assert "aims_scf" in verdict["completeness"]["stages_awaiting"]
+    assert verdict["engineering_passed"] is False
+    text = render_report(manifest)
+    assert "待验收" in text
+
+
+def test_manifest_reports_skipped_stage_reason(workdir):
+    """skipped 属于"已验收"（有替代证据），报告要说明为什么跳过。"""
+    import json
+
+    from smj.report import build_manifest
+    from smj.state import STAGE_ORDER
+
+    run_dir = workdir / "run"
+    run_dir.mkdir()
+    stages = {s: {"status": "collected"} for s in STAGE_ORDER}
+    stages["molecule_opt"] = {
+        "status": "skipped",
+        "note": "直接使用库里的优化结构（library: azulene-26-dithiol）",
+    }
+    (run_dir / "state.json").write_text(
+        json.dumps({"schema": "smj.state.v1", "stages": stages}),
+        encoding="utf-8")
+
+    manifest = build_manifest(run_dir, run_id="t", include_checks=True)
+    assert manifest["verdict"]["completeness"]["is_done"] is True
+    assert manifest["verdict"]["completeness"]["stages_awaiting"] == []
+    text = render_report(manifest)
+    assert "library: azulene-26-dithiol" in text

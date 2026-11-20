@@ -499,6 +499,11 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         "gib": round(sum(item["bytes"] for item in inventory.values()) / (1024 ** 3), 3),
         "stages": len(inventory),
     }
+    # 2026-11-20 复审 R6：finished 只表示远端作业结束，不算验收通过。
+    from .verdict import stage_acceptance  # lazy: verdict 依赖 junction 注册表
+    statuses_now = state.statuses()
+    awaiting_now, missing_now = stage_acceptance(statuses_now, STAGE_ORDER)
+    run_complete = not awaiting_now and not missing_now
     manifest: dict[str, Any] = {
         "schema": REPORT_SCHEMA,
         "run_id": rid,
@@ -522,7 +527,8 @@ def build_manifest(target: Any, *, run_id: str | None = None,
                 for stage in STAGE_ORDER
             },
             "first_incomplete": state.first_incomplete(),
-            "is_done": all(state.is_done(s) for s in STAGE_ORDER),
+            "is_done": run_complete,
+            "stages_awaiting": awaiting_now,
             "warnings": list(state.warnings),
         },
         "inputs": input_summary,
@@ -540,7 +546,7 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         # criteria 会给出 error 级 te_present, 结果是 failed 而不是"支持 H0"。
         try:
             from smj.junction.validate import validate_junction_run  # lazy: vendored
-            from smj.verdict import apply_completeness, missing_stages
+            from smj.verdict import apply_completeness
             # 2026-11-20：判据适用域要"族 + 多重度"两个输入。族优先取 run_spec
             # （run 时快照），而不是当前配置；开壳层由 multiplicity 驱动，判据层
             # 会把按族标定的闸门降为记录。
@@ -553,17 +559,20 @@ def build_manifest(target: Any, *, run_id: str | None = None,
                 run_dir, results={"junction": transport or {}}, system=run_family,
                 temperature=input_summary.get("temperature_K"),
                 multiplicity=multiplicity)
-            # 2026-11-20 复核 P1-6：产物驱动的判定看不到"该跑的阶段没跑"。
-            # 由 state 生成 run_incomplete 合成判据并重算工程判定/errors。
+            # 2026-11-20 复核 P1-6 / R6：产物驱动的判定看不到"该跑的阶段没跑"。
+            # finished（作业结束、产物已取回但未 collect/验收）单独进 awaiting，
+            # 不算完成；run_incomplete 合成判据随之不过。
             statuses = state.statuses()
-            is_done = all(state.is_done(s) for s in STAGE_ORDER)
-            missing = missing_stages(statuses, STAGE_ORDER)
+            awaiting, missing = stage_acceptance(statuses, STAGE_ORDER)
+            is_done = not awaiting and not missing
             verdict = apply_completeness(
                 verdict, is_done=is_done,
-                first_incomplete=state.first_incomplete(), missing=missing)
+                first_incomplete=state.first_incomplete(), missing=missing,
+                awaiting=awaiting)
             manifest["verdict"] = {
                 key: verdict.get(key) for key in
                 ("passed", "engineering_passed", "errors", "warnings",
+                 "engineering_errors", "physics_failures",
                  "physics_verdict", "wording", "allowed_action",
                  "failed_criteria", "inconclusive_criteria",
                  "missing_evidence_criteria",
@@ -680,23 +689,45 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         engineering = verdict.get("engineering_passed")
         if engineering is None:
             engineering = verdict.get("passed")
+        eng_errs = verdict.get("engineering_errors")
+        if eng_errs is None:
+            eng_errs = verdict.get("errors")
         lines.append("| 工程判定 | %s |"
                      % ("通过" if engineering else
-                        "未通过（errors=%s）" % _cell(verdict.get("errors"))))
+                        "未通过（工程错误=%s）" % _cell(eng_errs)))
+        if "physics_failures" in verdict:
+            lines.append("| 判据分账 | 工程错误 %s / 物理失败 %s / 警告 %s |"
+                         % (_cell(verdict.get("engineering_errors")),
+                            _cell(verdict.get("physics_failures")),
+                            _cell(verdict.get("warnings"))))
         comp = verdict.get("completeness")
         if isinstance(comp, dict):
+            awaiting = list(comp.get("stages_awaiting") or [])
             if comp.get("is_done"):
                 lines.append("| 完工度 | 已走完全部阶段 |")
             else:
-                lines.append("| 完工度 | 未完成：首个未完成阶段 `%s`；缺少 %s |"
+                parts = []
+                if awaiting:
+                    parts.append("已采集待验收 %s" % _cell(", ".join(awaiting)))
+                stages_missing = list(comp.get("stages_missing") or [])
+                if stages_missing or not awaiting:
+                    parts.append("缺少 %s" % _cell(", ".join(stages_missing) or "—"))
+                lines.append("| 完工度 | 未完成：首个未完成阶段 `%s`；%s |"
                              % (_cell(comp.get("first_incomplete")),
-                                _cell(", ".join(comp.get("stages_missing") or [])))
-                             )
+                                "；".join(parts)))
         lines.append("| 物理判定 | %s（%s） |"
                      % (_cell(verdict.get("wording")),
                         _cell(verdict.get("physics_verdict"))))
         lines.append("| 允许动作 | %s |" % _cell(verdict.get("allowed_action")))
         lines.append("")
+        # 2026-11-20 复审 R6：skipped 算已验收，但报告要说明为什么跳过。
+        details = state.get("details") or {}
+        for name in STAGE_ORDER:
+            if (statuses or {}).get(name) != "skipped":
+                continue
+            note = (details.get(name) or {}).get("note")
+            lines.append("- 阶段 `%s` 已跳过：%s"
+                         % (name, _cell(note) if note else "（未记录原因）"))
         failed = list(verdict.get("failed_criteria") or [])
         inconclusive = list(verdict.get("inconclusive_criteria") or [])
         missing = list(verdict.get("missing_evidence_criteria") or [])
