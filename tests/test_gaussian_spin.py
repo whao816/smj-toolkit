@@ -53,8 +53,8 @@ def _log(*, s2: str = "", converged: bool = True,
     return "".join(parts)
 
 
-def test_parse_gaussian_log_reads_s2_and_scf(tmp_path: Path):
-    log = tmp_path / "mol.log"
+def test_parse_gaussian_log_reads_s2_and_scf(workdir: Path):
+    log = workdir / "mol.log"
     log.write_text(_log(s2="0.7601,   after     0.7500"), encoding="utf-8")
     summary = parse_gaussian_log(log)
     assert summary["scf_converged"] is True
@@ -63,8 +63,8 @@ def test_parse_gaussian_log_reads_s2_and_scf(tmp_path: Path):
     assert summary["s2_after_annihilation"] == pytest.approx(0.7500)
 
 
-def test_parse_gaussian_log_without_s2_lines(tmp_path: Path):
-    log = tmp_path / "mol.log"
+def test_parse_gaussian_log_without_s2_lines(workdir: Path):
+    log = workdir / "mol.log"
     log.write_text(_log(), encoding="utf-8")
     summary = parse_gaussian_log(log)
     assert summary["s2_before_annihilation"] is None
@@ -72,18 +72,18 @@ def test_parse_gaussian_log_without_s2_lines(tmp_path: Path):
     assert summary["scf_converged"] is True
 
 
-def test_parse_gaussian_log_flags_convergence_failure(tmp_path: Path):
-    log = tmp_path / "mol.log"
+def test_parse_gaussian_log_flags_convergence_failure(workdir: Path):
+    log = workdir / "mol.log"
     log.write_text(_log(converged=False), encoding="utf-8")
     summary = parse_gaussian_log(log)
     assert summary["scf_converged"] is False
 
 
-def test_parse_gaussian_log_takes_last_s2_block(tmp_path: Path):
+def test_parse_gaussian_log_takes_last_s2_block(workdir: Path):
     """优化有多步，取最后一段（最终解）的自旋期望值。"""
     first = _log(s2="0.9000,   after     0.8900")
     second = _log(s2="0.7601,   after     0.7500")
-    log = tmp_path / "mol.log"
+    log = workdir / "mol.log"
     log.write_text(first + second, encoding="utf-8")
     summary = parse_gaussian_log(log)
     assert summary["s2_after_annihilation"] == pytest.approx(0.7500)

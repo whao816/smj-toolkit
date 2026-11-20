@@ -4,6 +4,55 @@
 
 ## 未发布
 
+### 修复：2026-11-20 复审 7 项问题（批 1–4）
+
+复审报告（针对 0.2.2rc1 / `04739baa`）列了 5 个 P1 + 2 个 P2，附 8 条断言；在本仓 HEAD
+上逐条复现后 7 项全部成立，按 `docs/fix-plan-2026-11-20-r2.md` 的 R1–R7 分三批修完。
+
+**批 1：输运积分只有一个能量序，费米窗覆盖成为闸门。**
+`landauer.py` 新增 `sort_by_energy` / `read_te_ordered(path) -> (rows_asc, order)`，
+`criteria.py`、`spectra.py`、`pdos.py`（`energy_grid` / `plot_pdos`）、`plotting.read_curve`、
+`aitranss_te.collect` 全部改走它；`analyze_te_spin` 分通道积分前同样排序，并记录
+`input_energy_order`。旧行为下同一份 TE.dat 打乱行序，`g_over_g0_total` 会从 0.2498 变成
+0.5413、峰检测还会凭空报出 +0.025 eV 的伪峰并判 inconclusive——两个数字是同一根因（按文件
+行序 trapz / 相邻行当能量相邻）。新增判据 `te_thermal_window_coverage`
+（physical/error，`MIN_THERMAL_COVERAGE=0.95`，即窗口至少覆盖 ±3.66 kBT 的费米导数权重）：
+覆盖不足时判据 `missing=True`，物理判定归约为 inconclusive，截窗积分仍照常输出；报告输运表
+加"费米窗覆盖 / 能量窗"两行。实测窄窗样例（±0.025 eV、300 K、T=0.25）原来 G=0.0586
+（解析 0.25）、S=+38.4 µV/K 还判 passed，现在如实标"证据不足"。52 份既有 run 的覆盖率都在
+0.9999 以上，没有一份被翻转。
+
+**批 2：波的"存在"要按通道逐个校验，归档序号要能续接。**
+`aims_scf.collect` 先由 `spin_state(config).open_shell` 或已落盘的 alpha/beta 决定是否自旋
+极化，再对 `("basis-indices.out", "omat.aims", *required_wf)` 逐个 `probe` + `problem`：
+零字节、头部被截断、规模 ≤0 都直接 `StageError`/`StageBlocked`，`has_mos/has_alpha/has_beta`
+与新增的 `wavefunction_files` / `wavefunction_bytes` 都来自观测而不是 `is_file()`；
+`aitranss_te._spin_nsaos` 也补了同样的表头校验。`structure_archive` 新增
+`_recover_entries`（清单缺失或损坏时从现存快照重建条目，坏清单仍留 `.bad` 副本）、
+`_next_seq`（清单序号与现存文件名的 max+1）与 `open("xb")` 排他创建：清单写坏后再归档
+不会从 0001 重新开始、更不会覆盖首份结构，结果快照重名时追加 `.N`。
+
+**批 3：工程判定与物理判定分账，`finished` 不再算完成。**
+`verdict.apply_completeness` 现在分别累计 `engineering_errors` / `physics_failures`，
+`engineering_passed = not engineering_errors`（物理失败不再拖垮工程判定），`warnings` 同时
+认 `warn` 与 `warning`（`validate.py` 产出的正是 `warn`，旧口径把它们全丢了）；
+`completeness_check` / `apply_completeness` 接受 `awaiting=()`，新增
+`stage_acceptance(statuses, expected) -> (awaiting, missing)`：`collected`/`skipped` 算验收，
+`finished` 单列"已采集待验收"，只有 `pending`/`running` 才算缺。manifest 的
+`verdict.completeness` 带上 `stages_awaiting`，报告渲染"已采集待验收 / 缺少"两段、
+"判据分账"一行，并把 skipped 阶段的 `note` 打印成跳过原因（无 note 时写"未记录原因"）。
+`state.DONE_STATUSES` 保持不动（runner 的跳过逻辑依赖它）。
+
+**批 4：复审断言入库，测试不再用 `tmp_path`。**
+评审附件 `test_smj_review_20261120.py` 的 8 条断言逐条移植为
+`tests/test_review_20261120_regressions.py`（夹具换仓库 `workdir`），并在文件头注明每条
+对应哪一批。`tests/test_gaussian_spin.py` 最后 4 处 `tmp_path` 也迁到 `workdir`——Python 3.12
+把 POSIX `0700` 落成本机不可读的 Windows ACL，`tmp_path`/`tempfile.mkdtemp` 必然踩雷。
+顺带把 `tests/test_spin_transport.py` 的假产物补成带 `$uhfmo_alpha.aims` / `$uhfmo_beta.aims`
+头行的真实形状（旧占位被新校验正确拒绝）。全量 **505 passed / 0 errors**
+（此前长期是 476 passed / 4 errors），`gen_junction_provenance.py --check` 与
+`gen_demo_reference.py --check` 均无偏差。
+
 ### 修复：开壳层与未登记族不再借用 BDT 的判据包络（2026-11-20）
 
 `criteria.py` 里只有两条判据声明了适用域（`applies_to={'families': ('Au-BDT-Au',)}`）：
