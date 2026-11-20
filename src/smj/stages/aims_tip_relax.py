@@ -14,9 +14,12 @@ from pathlib import Path
 from .._vendor.junction.geometry import read_xyz
 from .._vendor.junction.inputs import make_tip_relax_input, measure_au_s_bonds
 from ..errors import StageBlocked, StageError
+from ..spin import (DEFAULT_INITIAL_MOMENT, insert_control_lines, map_molecule_moments,
+                    record_initial_charge, record_junction_spin, spin_control_lines,
+                    spin_state, write_initial_charges, write_initial_moments)
 from ..structure_archive import safe_archive
-from ._helpers import (est_record, resolve_anchor_indices, resolve_geometry_anchor_indices,
-                       submit_command, vdw_mode)
+from ._helpers import (est_record, resolve_anchor_indices,
+                       resolve_geometry_anchor_indices, submit_command, vdw_mode)
 from .base import Collected, Prepared, Stage, register
 
 
@@ -31,6 +34,9 @@ class AimsTipRelaxStage(Stage):
     # -- prepare ----------------------------------------------------------- #
     def prepare(self, ctx, stage_dir: Path) -> Prepared:
         stage_dir = Path(stage_dir)
+        # 开壳层结：tip 弛豫同样要 spin collinear + fixed_spin_moment=M−1，
+        # 否则自由基的未配对电子在弛豫阶段就被 SCF 抹成闭壳层。
+        state = spin_state(ctx.config)
         # --geometry 允许跳过 molecule_opt，直接把已优化分子结构喂给本阶段。
         xyz = ctx.upstream(self.name, "opt.xyz", override=ctx.override_path("geometry"))
         species = self._species_dir(ctx)
@@ -48,6 +54,7 @@ class AimsTipRelaxStage(Stage):
             au_tip_distance=electrode.au_tip_distance,
             left_direction=left_dir, right_direction=right_dir,
             species_dir=species, env=env,
+            spin=state.spin, charge=float(state.charge),
             strip_thiol_h=electrode.strip_thiol_h,
             anchor_au_s_target=electrode.anchor_au_s_target,
             pin_contact=electrode.pin_contact,
@@ -55,6 +62,43 @@ class AimsTipRelaxStage(Stage):
             tip_element=electrode.element,
         )
         summary = written["summary"]
+        control = Path(written["control"])
+        geometry = Path(written["geometry"])
+        # 初始磁矩：molecule.initial_moments 是分子坐标系的 1-based 序号；tips 追加在
+        # 分子之后，去质子只会删掉锚定 S–H 的氢，所以映射 = 减掉前面被删的氢。
+        molecule = getattr(ctx.config, "molecule", None)
+        moments = dict(getattr(molecule, "initial_moments", None) or {})
+        default_moment: float | None = DEFAULT_INITIAL_MOMENT
+        written_moments: dict[int, float] = {}
+        if moments:
+            if not state.open_shell:
+                raise StageError(
+                    "molecule.initial_moments 只在开壳层（multiplicity>1）下有效")
+            strip_info = summary.get("strip_thiol_h") or {}
+            removed = (strip_info.get("removed_h_indices") or []
+                       if isinstance(strip_info, dict) else [])
+            try:
+                mapped = map_molecule_moments(
+                    moments, removed, molecule_atoms=natoms - 2)
+                written_moments = write_initial_moments(geometry, mapped)
+            except ValueError as exc:
+                raise StageError("aims_tip_relax 写初始磁矩失败: %s" % exc) from exc
+            default_moment = None
+        # relax 模板只有 spin_moment_line 占位（make_tip_relax_input 没传），
+        # fixed_spin_moment / default_initial_moment 在这里补。
+        inserted = insert_control_lines(
+            control, spin_control_lines(state, with_fixed_spin_moment=True,
+                                        default_initial_moment=default_moment))
+        if inserted or written_moments:
+            record_junction_spin(stage_dir / "input_summary.json", state,
+                                 default_initial_moment=default_moment,
+                                 initial_moments=written_moments)
+        if state.charge:
+            per_atom = write_initial_charges(
+                Path(written["geometry"]), float(state.charge))
+            if per_atom is not None:
+                record_initial_charge(
+                    stage_dir / "input_summary.json", float(state.charge), per_atom)
         element = electrode.element
         anchor_element = summary.get("anchor_element") or electrode.left_anchor
         notes = [
@@ -76,6 +120,28 @@ class AimsTipRelaxStage(Stage):
         elif electrode.strip_thiol_h is None and anchor_element != "S":
             notes.append("锚定原子 %s 非 S：strip_thiol_h=null 默认保留 H"
                          "（确需去质子请设 strip_thiol_h: true）" % anchor_element)
+        if state.open_shell:
+            if state.fix_spin_moment:
+                constraint = ("fixed_spin_moment %g（=2S=M−1）；弛豫全程固定总自旋"
+                              % state.fixed_spin_moment)
+            else:
+                constraint = ("未写 fixed_spin_moment：解除总自旋约束，让 SCF 自寻自旋态"
+                              "（release-fixed-spin 对照）")
+            guess = ("default_initial_moment %g" % default_moment
+                     if default_moment is not None else "per-atom initial_moment")
+            notes.append("开壳层结：control.in 写 spin collinear + %s + %s（初猜）"
+                         % (constraint, guess))
+        if written_moments:
+            notes.append(
+                "初始磁矩（分子坐标系 %s）→ 结几何 1-based %s：%s"
+                % (sorted(moments), sorted(written_moments),
+                   "、".join("原子 %d=%.3g μB" % (index, value)
+                            for index, value in written_moments.items())))
+        if state.charge:
+            notes.append(
+                "电荷 %+d：geometry.in 已按原子数均分写 per-atom initial_charge"
+                "（合计 = charge，满足 FHI-aims 一致性检查；初始电荷分布交给 "
+                "SCF 自洽）" % state.charge)
         ctx.log("aims_tip_relax: 已写 geometry.in（%d 原子）" % natoms)
         return self.prepared(
             ctx, stage_dir,

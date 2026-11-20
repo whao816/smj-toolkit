@@ -19,7 +19,7 @@ from .._vendor.junction.electrode import append_au60
 from .._vendor.junction.fingerprint import attach_fingerprint
 from ..electrode_library import resolve_cluster
 from ..errors import StageError
-from ..provenance import sha256_file
+from ..provenance import sha256_file, structural_fingerprint
 from ..structure_archive import safe_archive
 from ._helpers import est_record
 from .base import Collected, Prepared, Stage, register
@@ -75,6 +75,15 @@ class ElectrodeBuildStage(Stage):
         # 指纹写回 metadata：surface_fingerprint = sha256(geometry.in)，
         # 下游 review 用它确认"确认过的表面"和"实际算的表面"是同一份文件。
         metadata = attach_fingerprint(stage_dir)
+        # 2026-11-19：再记一份**结构**指纹（只哈希原子行）。开壳层/带电结的
+        # aims_scf 会往 geometry.in 里追加 initial_charge/initial_moment 子 tag，
+        # 字节 sha256 随之变化；下游核对几何同源时应看结构指纹。
+        structural = structural_fingerprint(geometry)
+        if structural:
+            metadata["surface_fingerprint_structural"] = structural
+            Path(metadata_path).write_text(
+                json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8")
         natoms = self.count_aims_atoms(geometry)
         estimate = ctx.estimate(self.name, natoms)
         surface = metadata.get("surface_indices") or {}

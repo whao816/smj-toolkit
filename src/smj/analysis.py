@@ -224,41 +224,15 @@ def _log_floor(values: list[float]) -> float:
 
 def plot_transmission(te_path: str | Path, result: Mapping[str, Any],
                       out_png: str | Path, *, title: str | None = None) -> dict:
-    """T(E) 曲线（E-E_F vs T，**纵轴对数**）；需要 matplotlib（extra ``plot``），缺失即抛错。"""
-    import matplotlib  # lazy: optional dependency
+    """T(E) 曲线（E-E_F vs T，**纵轴对数**）。兼容入口：版式与导出统一走
+    :func:`smj.plotting.plot_te`（需要 matplotlib，extra ``plot``），缺失即抛错。
+    """
+    from .plotting import plot_te
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    from smj._vendor.junction.landauer import read_te  # lazy: vendored
-
-    rows = read_te(te_path)
-    e_ev = [r[1] for r in rows]
-    trans = [r[2] for r in rows]
-    floor = _log_floor(trans)
-    clipped = [max(float(v), floor) for v in trans]
-    target = Path(out_png)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(7.2, 4.2))
-    ax.plot(e_ev, clipped, color="#1f4e9c", lw=1.2, label="T(E) per spin")
-    nearest = result.get("fermi_nearest") or {}
-    e_f = nearest.get("E_minus_Ef_eV")
-    if e_f is not None:
-        ax.axvline(0.0, color="#999999", lw=0.8, ls="--", label="E_F")
-        ax.plot([e_f], [max(float(nearest.get("T", 0.0)), floor)], "o",
-                color="#c02020", ms=4, label="nearest to E_F")
-    ax.set_yscale("log")
-    ax.set_ylim(floor, max(max(clipped) * 1.15, floor * 10.0))
-    ax.set_xlabel("E - E_F (eV)")
-    ax.set_ylabel("T(E) (G0)")
-    ax.set_title(title or "transmission %s (log scale)" % Path(te_path).name)
-    ax.grid(alpha=0.25, which="both")
-    ax.legend(fontsize=8, frameon=False)
-    fig.tight_layout()
-    fig.savefig(target, dpi=150)
-    plt.close(fig)
-    return {"path": str(target), "points": len(rows), "log_scale": True,
-            "floor": floor}
+    meta = plot_te(te_path, out_png, scale="log", title=title, result=result,
+                   formats=("png",), annotate=True)
+    return {"path": meta["path"], "points": meta["points"],
+            "log_scale": True, "floor": meta["floor"]}
 
 
 # --------------------------------------------------------------------------- #

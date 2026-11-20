@@ -74,6 +74,47 @@ def test_missing_must_is_reported_not_silently_collected(workdir: Path):
     assert "mos.aims" not in out["head_fetched"]
 
 
+def test_download_fetches_alpha_beta_head_for_spin_polarized_scf(workdir: Path):
+    """2026-11-19 结级自旋：自旋极化 SCF 的 alpha.aims/beta.aims 也要走 head。"""
+    transport = FakeTransport()
+    _seed_aims_scf(transport)
+    d = "%s/aims_scf" % REMOTE
+    transport.add_text("%s/alpha.aims" % d,
+                       "nsaos = 4210\n" + ("0.123456 0.234567\n" * 20000))
+    transport.add_text("%s/beta.aims" % d,
+                       "nsaos = 4210\n" + ("0.654321 0.765432\n" * 20000))
+    session = RemoteSession(_Ctx(transport), transport=transport)
+    out = session.download("aims_scf", workdir / "scf")
+
+    assert out["missing"] == []
+    assert "alpha.aims" in out["head_fetched"]
+    assert "beta.aims" in out["head_fetched"]
+    for name in ("alpha.aims", "beta.aims"):
+        local = (workdir / "scf" / name).read_text(encoding="utf-8")
+        assert local.startswith("nsaos = 4210")
+        assert len(local) < 200, "head 模式必须只取表头"
+        assert parse_mos_nsaos(workdir / "scf" / name) == 4210
+
+
+def test_spin_polarized_download_treats_missing_mos_as_optional(workdir: Path):
+    """自旋极化 SCF 不写 mos.aims；alpha/beta 都取到表头时 mos 缺席不算缺件。"""
+    transport = FakeTransport()
+    d = "%s/aims_scf" % REMOTE
+    for name in ("geometry.in", "control.in", "aims.out", "basis-indices.out",
+                 "sub_aims.sh", ".dsh_done"):
+        transport.add_text("%s/%s" % (d, name), "placeholder\n")
+    transport.add_text("%s/omat.aims" % d, "omat header\n" + ("1.0\n" * 20000))
+    transport.add_text("%s/alpha.aims" % d, "nsaos = 4210\n" + ("0.1 0.2\n" * 200))
+    transport.add_text("%s/beta.aims" % d, "nsaos = 4210\n" + ("0.3 0.4\n" * 200))
+    session = RemoteSession(_Ctx(transport), transport=transport)
+    out = session.download("aims_scf", workdir / "scf")
+
+    assert out["missing"] == []
+    assert "mos.aims" in out["optional_missing"]
+    assert "alpha.aims" in out["head_fetched"]
+    assert "beta.aims" in out["head_fetched"]
+
+
 def test_aitranss_input_builds_after_head_retrieval(workdir: Path):
     """P0 闭环：head 回取 -> aitranss_te.prepare 的 make_tcontrol 不再 FileNotFoundError。"""
     transport = FakeTransport()

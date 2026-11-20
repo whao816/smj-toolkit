@@ -232,6 +232,47 @@ def test_guard_geometry_fingerprint_rejects_mismatch(workdir):
     assert verify_parent_geometry("aims_scf", geometry, metadata)
 
 
+def test_guard_geometry_fingerprint_accepts_structural_when_tags_added(workdir):
+    """开壳层/带电 SCF 往 geometry.in 追加 initial_* 子 tag 后，
+    字节 sha256 变了，但结构没变 —— 结构指纹仍应通过。"""
+    from smj.provenance import structural_fingerprint, verify_parent_geometry
+
+    base = "atom 0.0 0.0 0.0 Au\natom 1.0 0.0 0.0 S\n"
+    geometry = workdir / "geometry.in"
+    geometry.write_text(base, encoding="utf-8")
+    tagged = base + "  initial_charge  0.5\n  initial_moment  0.1\n"
+    scf_geometry = workdir / "scf_geometry.in"
+    scf_geometry.write_text(tagged, encoding="utf-8")
+
+    meta = {"surface_fingerprint": _sha256_file(geometry),
+            "surface_fingerprint_structural": structural_fingerprint(geometry)}
+    metadata = workdir / "electrode_metadata.json"
+    metadata.write_text(json.dumps(meta), encoding="utf-8")
+
+    assert structural_fingerprint(geometry) == structural_fingerprint(scf_geometry)
+    assert verify_parent_geometry("aims_scf", scf_geometry, metadata)
+
+    meta_bad = dict(meta, surface_fingerprint_structural="0" * 64)
+    metadata.write_text(json.dumps(meta_bad), encoding="utf-8")
+    with pytest.raises(StageBlocked, match="结构指纹"):
+        verify_parent_geometry("aims_scf", scf_geometry, metadata)
+
+
+def test_structural_fingerprint_ignores_initial_tags_only(workdir):
+    from smj.provenance import structural_fingerprint
+
+    a = workdir / "a.in"
+    a.write_text("atom 0 0 0 Au\n", encoding="utf-8")
+    b = workdir / "b.in"
+    b.write_text("atom 0 0 0 Au\n  initial_charge 1.0\n", encoding="utf-8")
+    c = workdir / "c.in"
+    c.write_text("atom 0 0 0 Ag\n", encoding="utf-8")
+
+    assert structural_fingerprint(a) == structural_fingerprint(b)
+    assert structural_fingerprint(a) != structural_fingerprint(c)
+    assert structural_fingerprint(workdir / "missing.in") is None
+
+
 def test_discover_stages_uses_state_order_not_vendored(
         workdir, monkeypatch):
     from smj import report as report_mod

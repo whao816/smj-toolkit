@@ -4,6 +4,132 @@
 
 ## 未发布
 
+### 结级自旋初猜与释放约束（2026-11-19）
+
+- `molecule.initial_moments` 现在会映射到结几何：`aims_tip_relax`/`aims_scf`
+  把分子坐标系的 1-based 序号写到 `geometry.in` 对应 `atom` 行的 per-atom
+  `initial_moment`（`strip_thiol_h` 删掉锚定 S–H 后自动左移；指向被删氢会报错）。
+  有逐原子初猜时不再写全体统一的 `default_initial_moment 0.1`。
+- 新增 `molecule.fixed_spin_moment: true|false`（默认 `true`）：`false` 时
+  `control.in` 不写 `fixed_spin_moment`，只留 `spin collinear` + 初猜，用于
+  "解除总自旋约束"的 release 对照；`input_summary.json` 记
+  `spin_constraint: released`。`smj/spin.py` 的 `SpinState.fix_spin_moment` 统一
+  两处 stage；`protocol_sha256` 对默认值不敏感（只在显式 `false` 时入协议）。
+- 对照实测（`runs/ttf-fixed` vs `runs/ttf-release`，同一 88 原子几何）：两解都
+  收敛；fixed（S=1/2）总能低 3.88 meV，但 1 μB 的 98.9% 在 Au 电极、分子 1–14
+  仅 0.0055 μB；release 解收敛到 S≈0（分子 −0.0001 μB，gap 0.89 meV）。详见
+  `runs/ttf-spin-comparison.md` 与开发规划文档 §5.1。
+- 接触构型复核（2026-11-20）：`tip_direction: lone_pair` 重建（review 通过）后
+  重跑 fixed/release，结论相同——ΔE 仍为 +3.88 meV、分子局域自旋仍 ≈0；
+  四套 SCF 见 `runs/ttf-lone-pair*`。
+
+### 自由基结实现对照文档（2026-11-19）
+
+- 新增 `docs/自由基单分子结-实现对照与开发规划.md`：把外部调研文档
+  （Gaussian/FHI-aims/AITRANSS 自由基输运核查整合版）翻译成 smj 口径，
+  逐阶段对照自旋/电荷/输运链，列出与源文档一致处、口径差异（整结电荷 vs
+  片段电荷、固定总自旋、initial_moment 粒度、OpenMP aitranss 等）、
+  未实现项与后续优先级；`docs/README.md` 与根 README §9 已加链接。
+
+### 开壳层分子输入修正（2026-11-19）
+
+- 修 `molecule_opt` 的 FHI-aims `spin` 关键字：原先按多重度写 `spin 2` 这类数字，
+  而 FHI-aims 的 `spin` 只接受 `none`/`collinear`（数字会因关键字取值非法而停止）。
+  现在 `multiplicity > 1` 写 `spin collinear`，总自旋仍由
+  `fixed_spin_moment = M−1`（=2S，不是多重度）固定。
+- 新增 `molecule.initial_moments`（1-based 原子序号 -> μB）：写成 geometry.in 的
+  per-atom `initial_moment` 子 tag（独占一行，不影响 `read_aims_geometry` 解析）；
+  FHI-aims 在 `spin collinear` 下要求给出初始自旋密度。未给时 notes 警告；
+  闭壳层设置或序号越界直接报错。
+- `aims_tip_relax` / `aims_scf` 对 `multiplicity > 1` 先 fail-closed（当时结级自旋
+  尚未接线；现已按下一节「结级自旋接线」打通）。
+- 非零 `molecule.charge` 时把总电荷均分成 per-atom `initial_charge` 写进
+  geometry.in：FHI-aims 要求 `charge` 等于这些行之和；项目使用的 221103 不认
+  `override_initial_charge_check`（2026-11-19 集群实测 parse_control 停算），
+  所以改用满足一致性检查的 per-atom 写法。写入值记入 `input_summary.json`
+  的 `initial_charge_total/initial_charge_per_atom` 与 notes。
+- `protocol_sha256` 只在 `initial_moments` 非空时纳入，历史 run_spec 不判漂移。
+- 新增 `tests/test_open_shell_junction.py`、更新 `tests/test_aims_molecule_opt.py`；
+  全量 306 passed。
+
+### 结级自旋接线（2026-11-19）
+
+- 新增 `src/smj/spin.py`：`SpinState` 统一分子/结的自旋口径（`multiplicity>1`
+  → `spin collinear` + `fixed_spin_moment=M−1` + `default_initial_moment 0.1`
+  初猜；`charge≠0` → 把总电荷均分成 per-atom `initial_charge` 写进 geometry.in），
+  并负责把关键字插进 control.in 的 general 段、写入 `input_summary.json`。
+- `aims_tip_relax` / `aims_scf` 不再 fail-closed：prepare 把 `spin`/`charge`/
+  `fixed_spin_moment` 传进 FHI-aims 输入；开壳层 SCF 产出 `alpha.aims` +
+  `beta.aims`（collect 接受两者替代 `mos.aims`，`results.json` 记
+  `has_mos/has_alpha/has_beta/spin_unpolarized`）。
+- `aitranss_te` 开壳层时从 `alpha.aims` 解析 `nsaos`（自旋极化无 `mos.aims`），
+  把 tcontrol 的 `$scfmo` 换成 `$uhfmo_alpha file=alpha.aims` +
+  `$uhfmo_beta file=beta.aims`；带电结按电荷修正 `$valence_electrons`；
+  `input_summary.json` 记 `spin_polarized/wavefunction_files/valence_electrons`。
+- 新增 `src/smj/landauer_spin.py`：解析 `TE.dat` 的 α/β 双列，给出 per-channel
+  `L0`/`G/G0`、`E_F` 处与 L0 积分后的自旋极化率；`junction_analyze` 在开壳层
+  时把 `spin` 块并入 `results.json`（总 G/S/ke/ZT 仍按双通道均值）。
+- 新增 `tests/test_spin_transport.py`，重写 `tests/test_open_shell_junction.py`；
+  全量 315 passed。口径限制（无 SOC、非共线、Kondo；平均透射不是自旋分辨结论）
+  写入 README §9。
+- 阶段间几何核对改用**结构指纹**（只哈希 atom/lattice_vector 行）：带电/开壳层
+  SCF 会往 geometry.in 追加 `initial_charge`/`initial_moment` 子 tag，字节 sha256
+  变化会让 aitranss_te 误判「几何与 metadata 不一致」。`electrode_build` 的
+  metadata 新增 `surface_fingerprint_structural`；旧 run 缺该键时仍按字节
+  sha256 回退（2026-11-19 TTF 实跑 prepare 时发现）。
+- 远端回取补 `alpha.aims`/`beta.aims` 的表头（head，2 行）：vendored 台账只认
+  `mos.aims`，否则自旋极化 SCF 在 slurm-ssh 模式下本地拿不到 `nsaos`；闭壳层
+  run 里两者缺席记为 `optional_missing`，不算缺件。自旋极化 run 反之：取到
+  α/β 表头时 `mos.aims` 缺席同样记 `optional_missing`，不再判回取缺件
+  （2026-11-19 TTF 实跑 collect 时发现）。全量 317 passed。
+
+### 统一 T(E) 绘图版式（2026-11-19）
+
+- 新增 `src/smj/plotting.py`：单一版式实现（四边框、刻度朝内、`E_F` 虚线、
+  log 纵轴、固定配色 `PALETTE`、单栏/双栏/宽幅尺寸 `FIG_SIZES`、600 dpi
+  PNG+PDF 同源导出、panel 角标、`T(E_F)`/`G/G0` 注释）。版式常量集中在
+  `STYLE` / `STYLE_VERSION`，顶层不 import matplotlib（渲染时才加载，且强制 Agg）。
+- 新增 `smj plot` 子命令：输入可为 `TE.dat`、run 目录或阶段目录，支持单图与
+  多 run 叠加（固定配色、带框图例）、`--scale log|linear`、`--figsize
+  single|double|wide`、`--formats`、`--dpi`、`--xlim/--ylim`、`--panel`、
+  `--no-annotate`；缺省输出到 run 根的 `T_E.png`（多图 `T_E_overlay.png`）。
+- `junction_analyze` 阶段在写 `results.json` 的同时按同一版式出
+  `T_E.png` + `T_E.pdf`（matplotlib 未安装时只记 note、不阻断数值结果）。
+- `smj analyze --plot` 与 `smj.analysis.plot_transmission` 均委托新实现，
+  旧返回键（`path`/`points`/`log_scale`/`floor`）保持不变。
+- 版式依据用户 Zotero 中 Yi 2016 *Chin. Phys. B* Fig. 6 与 Guan 2022
+  *Nanotechnology* Figs. 2–3；说明见 `docs/plot_style.md`，新增
+  `tests/test_plotting.py`（含 CLI 与阶段出图）；全量 296 passed。
+- ET7H-BS2 结果图按新版式重绘（`runs/et7h-bs2/ET7H-BS2_TE.png` +
+  同源 `.pdf`），删除该 run 下各画各的临时脚本 `plot_te.py`。
+
+### T(E) 自旋分辨自适应绘图（2026-11-19）
+
+- `read_curve` 改用 `landauer_spin.read_te_channels`，返回 `t`（双通道均值，
+  与旧口径一致）、`t_alpha`/`t_beta` 与 `channels`；旧调用不受影响。
+- `plot_te` 新增 `spin="auto"|"mean"|"channels"|"polarization"`：`auto` 在
+  TE.dat 有 α/β 两列时自动出双 panel——(a) `Tα`/`Tβ`（固定配色
+  `PALETTE[0]`/`PALETTE[1]`），(b) 自旋极化率 `P(E)=(Tα−Tβ)/(Tα+Tβ)`；
+  单列数据、或 `channels`/`polarization` 遇到单列时退化为旧版式 `mean`。
+  双 panel 在 `figsize="single"` 下自动升到 `FIG_SIZES["double"]`，panel 角标
+  自动 `(a)`/`(b)`；`meta` 增加 `spin`/`channels`。
+- `smj plot` 新增 `--spin`；`smj analyze --plot` 与 `junction_analyze` 仍走
+  默认 `auto`，因此自旋极化 run 会自动得到自旋分辨图。
+- `docs/plot_style.md` 补自旋双 panel 说明；`tests/test_plotting.py` 增加
+  四列 TE.dat 用例（通道拆分、自动双 panel、`mean`/`channels` 降级、非法值、
+  `smj plot --spin`），全量 325 passed。
+
+### 运行范围策略（2026-11-18）
+
+- 新增仓库级 `AGENTS.md`：只跑用户明确点名的分子/异构体/协议；不默认加跑
+  pinned 对照、敏感性扫描、替代锚定、团簇尺寸扫描、空结对照等控制计算；需要
+  对照时先说明理由和代价，等用户明确同意。
+- `electrode.pin_contact: true` 现在在配置加载时给出警告，提示它是 pinned 对照/
+  距离扫描口径、不是生产默认；`smj plan` / `smj run` / `smj preflight` 等命令都会
+  打印。README §0 "不承诺"同步写明不自动加对照臂/敏感性计算。
+- 新增 `tests/test_full_relax_protocol.py::test_pinned_contact_is_flagged_as_control`；
+  全量 286 passed。
+
 ### 脚本整理（2026-11-18）
 
 - 原仓库根的一次性脚本 `_azo.py` 整理为 `scripts/azo_ez_ratio.py`：两个 run 的

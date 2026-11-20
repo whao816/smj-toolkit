@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from smj._vendor.junction.geometry import read_aims_geometry
 from smj.config import ElectrodeConfig, MoleculeConfig, load_config
 from smj.errors import ConfigError, StageError
 from smj.stages.molecule_opt import MoleculeOptStage
@@ -97,7 +98,7 @@ def _species(root: Path) -> Path:
 
 
 def _ctx(root: Path, *, engine: str = "aims", multiplicity: int = 1,
-         charge: int = 0) -> SimpleNamespace:
+         charge: int = 0, initial_moments=None) -> SimpleNamespace:
     run_dir = root / "run"
     run_dir.mkdir(parents=True, exist_ok=True)
     xyz = root / "molecule.xyz"
@@ -107,6 +108,7 @@ def _ctx(root: Path, *, engine: str = "aims", multiplicity: int = 1,
         xyz=str(xyz), opt_engine=engine, opt_functional="pbe",
         opt_basis="light", opt_force_threshold="1.e-2",
         charge=charge, multiplicity=multiplicity,
+        initial_moments=initial_moments,
     )
     config = SimpleNamespace(molecule=molecule, electrode=ElectrodeConfig(vdw=True))
     return SimpleNamespace(
@@ -166,13 +168,51 @@ def test_aims_prepare_writes_three_files_without_gaussian(workdir):
 def test_aims_prepare_maps_multiplicity_to_spin(workdir):
     ctx = _ctx(workdir, multiplicity=3)
     stage_dir = workdir / "run" / "molecule_opt"
-    MoleculeOptStage().prepare(ctx, stage_dir)
+    prepared = MoleculeOptStage().prepare(ctx, stage_dir)
     control = (stage_dir / "control.in").read_text(encoding="utf-8")
-    assert "spin" in control and "2" in control
-    # 开壳层把总自旋固定住（μB = M-1），避免弛豫步间自旋态漂移。
+    # FHI-aims 的 spin 只接受 none/collinear（写 M-1 这类数字会被拒）；
+    # 多重度由 fixed_spin_moment = M-1 = 2S 表达。
+    spin_line = [line for line in control.splitlines()
+                 if line.strip().startswith("spin")][0]
+    assert spin_line.split() == ["spin", "collinear"]
     assert "fixed_spin_moment  2" in control
+    # 中性体系不触发 charge/initial_charge 一致性检查。
+    assert "override_initial_charge_check" not in control
     summary = json.loads((stage_dir / "input_summary.json").read_text(encoding="utf-8"))
+    assert summary["spin"] == "collinear"
     assert summary["spin_moment"] == 2.0
+    # 没给初始磁矩时必须提醒：FHI-aims 在 collinear 下要求给出初始自旋密度。
+    assert any("initial_moments" in note for note in prepared.notes)
+
+
+def test_aims_prepare_writes_per_atom_initial_moments(workdir):
+    ctx = _ctx(workdir, multiplicity=3, initial_moments={1: 2.0})
+    stage_dir = workdir / "run" / "molecule_opt"
+    prepared = MoleculeOptStage().prepare(ctx, stage_dir)
+
+    geometry = (stage_dir / "geometry.in").read_text(encoding="utf-8")
+    lines = geometry.splitlines()
+    assert "  initial_moment  2" in lines
+    # 子 tag 必须独占一行：同一行追加会让 read_aims_geometry 解析不到原子。
+    assert lines[0].startswith("atom")
+    assert "initial_moment" not in lines[0]
+    atoms = read_aims_geometry(stage_dir / "geometry.in")
+    assert [atom.element for atom in atoms] == ["H", "H"]
+    summary = json.loads((stage_dir / "input_summary.json").read_text(encoding="utf-8"))
+    assert summary["initial_moments"] == {"1": 2.0}
+    assert any("原子 1=2" in note for note in prepared.notes)
+
+
+def test_aims_prepare_rejects_initial_moments_for_closed_shell(workdir):
+    ctx = _ctx(workdir, multiplicity=1, initial_moments={1: 1.0})
+    with pytest.raises(StageError, match="initial_moments"):
+        MoleculeOptStage().prepare(ctx, workdir / "run" / "molecule_opt")
+
+
+def test_aims_prepare_rejects_initial_moment_index_out_of_range(workdir):
+    ctx = _ctx(workdir, multiplicity=3, initial_moments={9: 2.0})
+    with pytest.raises(StageError, match="越界"):
+        MoleculeOptStage().prepare(ctx, workdir / "run" / "molecule_opt")
 
 
 def test_aims_collect_writes_opt_xyz_and_records_software(workdir):
@@ -423,7 +463,22 @@ def test_prepare_accepts_open_shell_cation(workdir):
         encoding="utf-8")
     spin_line = [line for line in control.splitlines()
                  if line.strip().startswith("spin")][0]
-    assert spin_line.split()[-1] == "1"
+    assert spin_line.split() == ["spin", "collinear"]
+    assert "fixed_spin_moment  1" in control
+    # 非零电荷：FHI-aims 221103 不认 override_initial_charge_check，改为把总电荷
+    # 均分成 per-atom initial_charge 写进 geometry.in，使其和 = charge。
+    assert "override_initial_charge_check" not in control
+    geometry = (workdir / "run" / "molecule_opt" / "geometry.in").read_text(
+        encoding="utf-8")
+    charge_lines = [line for line in geometry.splitlines()
+                    if line.split()[:1] == ["initial_charge"]]
+    assert len(charge_lines) == 2  # H2：两个原子各一行
+    assert sum(float(line.split()[1]) for line in charge_lines) == pytest.approx(1.0)
+    summary = json.loads(
+        (workdir / "run" / "molecule_opt" / "input_summary.json").read_text(
+            encoding="utf-8"))
+    assert summary["initial_charge_total"] == pytest.approx(1.0)
+    assert any("initial_charge" in note for note in prepared.notes)
 
 
 def _write_cube(path: Path, *, counts=(11, 11, 11), step_a=0.2, sigma=0.45):

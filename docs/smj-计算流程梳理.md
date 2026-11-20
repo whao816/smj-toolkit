@@ -46,7 +46,7 @@ molecule.xyz
 | 3 | 加金属 tip 并弛豫 | `smj stage aims_tip_relax` | FHI-aims | 每个锚定原子接一个电极金属 tip（默认 Au），得到 锚–金属 接触几何；锚定原子可以是 S（默认）、N、Se 等 | 放置距离 2.35 Å，`strip_thiol_h=null`（仅 S 锚自动去质子），`pin_contact=false`，全原子自由弛豫；tip 元素 = `electrode.element` | `geometry.in.next_step` |
 | 4 | 构建电极 | `smj stage electrode_build` | 纯 Python（本地） | 按 `source` 选构建方式、按 `element` 选电极金属，把 tip 扩展为完整 fcc(111) 电极团簇，冻结结几何 | 构建方式 `source=library`（默认）/`builtin`；电极类型 `element=Au`、`a_lattice=null` | `geometry.in` + `electrode_metadata.json` |
 | 4.5 | 结构复核 + 连接核对 | `smj review [--approve --who] [--connection-check\|--no-connection-check]` | — | 确认建结几何没被换错：结构闸门 + 连接核对（原 A2，默认自动登记） | `review.connection_check=true`、`connection_check_deviation=0.15`、`auto_connection_check=true`；CLI 可临时覆盖 | `review.json`、`connection_check.json`（+ `connection_check_audit.json`、`connection_check_viz.png`） |
-| 5 | 静态 SCF | `smj stage aims_scf` | FHI-aims | 为 aitranss 准备冻结几何的单点波函数 | PBE，`KS_method serial`，sc_accuracy_rho 1e-5 / eev 1e-3 / etot 1e-6，sc_iter_limit 500 | `aims.out`、`omat.aims`、`mos.aims`、`basis-indices.out` |
+| 5 | 静态 SCF | `smj stage aims_scf` | FHI-aims | 为 aitranss 准备冻结几何的单点波函数 | PBE，`KS_method serial`，sc_accuracy_rho 1e-5 / eev 1e-3 / etot 1e-6，sc_iter_limit 500；开壳层加 `spin collinear` + `fixed_spin_moment=M−1` | `aims.out`、`omat.aims`、`mos.aims`（闭壳层）或 `alpha.aims`+`beta.aims`（开壳层）、`basis-indices.out` |
 | 6 | 透射谱 | `smj stage aitranss_te` | Aitranss | NEGF + 自能，算 T(E) | 能量窗默认 `[-2.0, 0.005, 2.0]` eV 相对 E_F（即 E_F ±2 eV，801 点）；prepare 时按 SCF 的 efermi 换成 Ha 绝对值；σ_near 0.05 / σ_far 0.10 Ha | `TE.dat`（+`te.out`） |
 | 7 | Landauer 后处理 | `smj stage junction_analyze` | 纯 Python（本地） | 积分得 G/G0、S、k_e、ZT_e | `temperature=300 K` | `results.json` |
 | 8 | 报告与判定 | `smj report` | — | 汇总 + 物理判据 verdict | 缺 TE.dat 判 `inconclusive` | `manifest.json`、`report.md` |
@@ -100,13 +100,15 @@ molecule.xyz
 | 配置键 | 默认 | 说明 |
 |--------|------|------|
 | `molecule.opt_engine` | `aims` | `aims`（PBE/light，与 tip/SCF 同栈）或 `gaussian`（B3LYP/6-31G(d)，需 G16 许可） |
-| `molecule.charge` | `0` | |
-| `molecule.multiplicity` | `1` | `>1` 时转成 FHI-aims `spin = multiplicity-1`，并写 `fixed_spin_moment = multiplicity-1`（μB）把总自旋在弛豫中固定住 |
+| `molecule.charge` | `0` | 非零时把总电荷均分成 per-atom `initial_charge` 写进 geometry.in：FHI-aims 要求 `charge` 等于这些行之和，而 221103 不认 `override_initial_charge_check`（实测 parse_control 停算） |
+| `molecule.multiplicity` | `1` | `>1` 时写 FHI-aims `spin collinear`（`spin` 只接受 `none`/`collinear`，不接受数字）并用 `fixed_spin_moment = multiplicity-1`（=2S，μB；与多重度不是同一个数）把总自旋在弛豫中固定住 |
+| `molecule.initial_moments` | `null` | 开壳层初始磁矩 `{1-based 原子序号: μB}`，写成 geometry.in 的 per-atom `initial_moment` 子 tag（独占一行）；FHI-aims 在 collinear 下要求初始自旋密度，未设只给警告。闭壳层设置会报错。结级 `aims_tip_relax`/`aims_scf` 会把分子坐标系的序号映射到结几何（去质子后自动左移） |
+| `molecule.fixed_spin_moment` | `true` | `false` 时结级 control.in 不写 `fixed_spin_moment`（=M−1），只留 `spin collinear` + 初猜，用于"解除总自旋约束"的 release 对照 |
 | `molecule.opt_functional` / `opt_basis` | `pbe` / `light` | `opt_basis` 只记录；实际基组由 species 目录决定，`smj species` / prepare 写出的 `species.json` 记录真实档位与逐文件 sha256 |
 | `molecule.opt_force_threshold` | `1.e-2` | 写进 `relax_geometry bfgs`；单位 **eV/Å**，判据是**最大力分量**（日志 `Maximum force component ... eV/A`），不是 Hartree/Bohr；合法范围 `(0, 0.1]` |
 | `electrode.vdw` | `true` | → `vdw_correction_hirshfeld`；只改能量/力（几何），不改固定几何的 T(E) |
 
-- **写出的输入**（aims 分支）：`geometry.in`、`control.in`（`control_relax.in` 模板：`xc pbe`、`spin`、`charge`、开壳层另有 `fixed_spin_moment`、`relativistic atomic_zora scalar`、**显式 SCF 精度块**（`occupation_type gaussian 0.01`、`mixer pulay`、`n_max_pulay 10`、`charge_mix_param 0.2`、`sc_accuracy_rho 1E-5`、`sc_accuracy_eev 1E-3`、`sc_accuracy_etot 1E-6`、`sc_accuracy_forces 5E-3`、`sc_iter_limit 1000`）、`relax_geometry bfgs 1.e-2`、`aggregated_energy_tolerance 1.0e-1`、`output cube eigenstate HOMO-1/HOMO/LUMO/LUMO+1`、`output dipole`、species 块）、`sub_aims.sh`、`input_summary.json`。
+- **写出的输入**（aims 分支）：`geometry.in`、`control.in`（`control_relax.in` 模板：`xc pbe`、`spin none|collinear`、`charge`（≠0 时另有 per-atom `initial_charge`）、开壳层另有 `fixed_spin_moment`、`relativistic atomic_zora scalar`、**显式 SCF 精度块**（`occupation_type gaussian 0.01`、`mixer pulay`、`n_max_pulay 10`、`charge_mix_param 0.2`、`sc_accuracy_rho 1E-5`、`sc_accuracy_eev 1E-3`、`sc_accuracy_etot 1E-6`、`sc_accuracy_forces 5E-3`、`sc_iter_limit 1000`）、`relax_geometry bfgs 1.e-2`、`aggregated_energy_tolerance 1.0e-1`、`output cube eigenstate HOMO-1/HOMO/LUMO/LUMO+1`、`output dipole`、species 块）、`sub_aims.sh`、`input_summary.json`。
 - **SCF 精度为什么必须显式写**：旧模板只写几何相关的键，FHI-aims 会打印 `No s.c.f. convergence criteria (sc_accuracy_*) were provided`，自行挑 `sc_accuracy_rho`（实测 `0.300000E-05`，随版本/体系变）并把 `sc_accuracy_forces` 设为 `not_checked`——**BFGS 吃的力没有独立精度保证**。现在与 `control_scf.in` 同源给出，`sc_accuracy_forces 5E-3 eV/Å` 取几何阈值（`1.e-2`）的一半，`sc_iter_limit` 保留 1000（FHI-aims 自带默认，不收紧成 SCF 模板的 500）。这些值同时写进 `input_summary.json` 的 `scf` 段，collect 再从 `control.in` 读回、写进 `results.json`。
 - **产物**：`opt.xyz`（下游统一契约）、`aims.out`、`geometry.in.next_step`（aims 还会写出 4 个 `cube_*_eigenstate_*.cube`）；Gaussian 分支为 `mol.gjf` → `mol.log` → `opt.xyz` + `gaussian_summary.json`。
 - **验收（collect 闸门，fail-closed）**：
@@ -235,7 +237,7 @@ smj ensemble --dir ensemble/ --report                             # 汇总 gap /
 | 条目 | 默认 | 目的/说明 |
 |------|------|-----------|
 | `xc` | `pbe` | + `vdw_correction_hirshfeld`（若 `electrode.vdw=true`） |
-| `spin` / `fixed_spin_moment` | `none` / `0.0` | 非极化 |
+| `spin` / `fixed_spin_moment` | `none` / `0.0`；开壳层 `collinear` / `M−1` | 闭壳层非极化不变。`molecule.multiplicity > 1` 时 prepare 写 `spin collinear` + `fixed_spin_moment = M−1` + 初猜自旋密度（`molecule.initial_moments` 映射成 per-atom `initial_moment`；未指定时退回 `default_initial_moment 0.1`），非零 `charge` 把总电荷均分成 per-atom `initial_charge` 写进 geometry.in；`molecule.fixed_spin_moment: false` 则不写约束行（release 对照）；SCF 改产 `alpha.aims` + `beta.aims`（不再写 `mos.aims`） |
 | `charge` | `0` | |
 | `relativistic` | `atomic_zora scalar` | Au 必须（模板对所有元素统一开启；Ag/Cu/Ni/Pt/Pd/Al 同样适用） |
 | `occupation_type` | `gaussian 0.01` | 展宽，帮助收敛 |
@@ -257,7 +259,7 @@ smj ensemble --dir ensemble/ --report                             # 汇总 gap /
 
 - **阶段名**：`aitranss_te`（别名 `te` / `aitranss` / `transport`）；依赖：`aims_scf`；远端（`sub_te.sh`）。
 - **目的**：用 Aitranss 在 SCF 结果上做自能 + Landauer 透射，输出 `TE.dat`（第 1 列绝对能量 Hartree，第 2 列 `E−E_F` eV，第 3/4 列自旋通道）。
-- **输入**：`aims_scf/{aims.out, mos.aims, geometry.in}`（可 `--scf-dir` 覆盖）+ `electrode_build/electrode_metadata.json`（可 `--metadata` 覆盖）。
+- **输入**：`aims_scf/{aims.out, mos.aims, geometry.in}`（闭壳层）或 `aims_scf/{aims.out, alpha.aims, beta.aims, geometry.in}`（开壳层；FHI-aims 在 `spin collinear` 下不写 `mos.aims`，nsaos 从 `alpha.aims` 解析）+ `electrode_build/electrode_metadata.json`（可 `--metadata` 覆盖）。
 - **默认参数**：
 
 | 配置键 | 默认 | 说明 |
@@ -270,7 +272,7 @@ smj ensemble --dir ensemble/ --report                             # 汇总 gap /
 | `electrode.nlayers` | `null` | 解析顺序：显式值 → metadata 库建议 → 回退 3 |
 | 自能 `σ_near` / `σ_far` | `0.05` / `0.10` Ha | **模型常数，不是收敛参数**：离 tip 最近的 3 个电极原子 0.05、其余 6 个 0.10；tip 与分子为 `empty`(0.0)；生产必须原样使用，否则不再与本仓冻结基准可比 |
 
-- **写出输入**：`tcontrol`（`$coord/geom`、`$basis=basis-indices.out`、`$read_omat=omat.aims`、`$scfmo=mos.aims`、`$nsaos`、六个表面索引、`$nlayers`、`$s1i 0.1/$s2i 0.05/$s3i 0.025`、`$ener/$estep/$eend`、`$output file=TE.dat`、`$testing off`、`$ecp off`、`$valence_electrons`（按几何里出现的元素自动求和：Au 4f 计入价层=31，Ag/Cu=11，Pt/Pd/Ni=10，Al=3）、`$efermi`）；`self.energy.in`（逐原子虚部自能，Fortran D 格式）；`sub_te.sh`（`LD_LIBRARY_PATH=$mkl_lib`，`te_cpus` 默认 16）。
+- **写出输入**：`tcontrol`（`$coord/geom`、`$basis=basis-indices.out`、`$read_omat=omat.aims`、`$scfmo=mos.aims`（闭壳层）或 `$uhfmo_alpha file=alpha.aims` + `$uhfmo_beta file=beta.aims`（开壳层）、`$nsaos`、六个表面索引、`$nlayers`、`$s1i 0.1/$s2i 0.05/$s3i 0.025`、`$ener/$estep/$eend`、`$output file=TE.dat`、`$testing off`、`$ecp off`、`$valence_electrons`（按几何里出现的元素自动求和：Au 4f 计入价层=31，Ag/Cu=11，Pt/Pd/Ni=10，Al=3；开壳层带电结按 `分子电荷` 扣减/增加）、`$efermi`）；`self.energy.in`（逐原子虚部自能，Fortran D 格式）；`sub_te.sh`（`LD_LIBRARY_PATH=$mkl_lib`，`te_cpus` 默认 16）。
 - **闸门**：tcontrol 的 `$coord` 几何与 `self.energy.in` 用的几何必须**同一份**（sha256 相等，否则 StageBlocked）；六个表面索引必须恰好 3+3；电极金属数 ≥4 且为偶数（元素取 `electrode_metadata.json` 的 `electrode_element`，缺键按 Au）；`TE.dat` 可解析；`te.out` 缺失且 `require_te_out=true` → StageError。
 - **资源默认**：132 原子锚点 2552 s / 8.0 GiB，墙钟指数 3.0、内存指数 1.5；`ntasks 1`、`cpus 1`（该构建 Aitranss 不并行，`-c 16` 实测反而慢 ~10%）；墙钟下限 1800 s。
 
@@ -285,8 +287,8 @@ smj ensemble --dir ensemble/ --report                             # 汇总 gap /
   - `S_uV_per_K = 1e6 · (−L1/(L0·T))`；
   - `k_e_pW_per_K = 1.602e-7 · (L2 − L1²/L0) · 2/(h·T)`；
   - `ZT_electronic = 1 / ((L0·L2)/L1² − 1)`（**只是电子项，不是总 ZT**，未测晶格热导）。
-- **默认参数**：`temperature = transport.temperature`（默认 300 K）；常数 `k_B=8.6173324e-5 eV/K`、`h=4.135667662e-15 eV·s`；自旋极化时两列取平均。
-- **产物**：`junction_analyze/results.json`（含 `fermi_nearest`、`max_transmission`）。
+- **默认参数**：`temperature = transport.temperature`（默认 300 K）；常数 `k_B=8.6173324e-5 eV/K`、`h=4.135667662e-15 eV·s`；自旋极化时主指标仍按两列取平均（与 vendored Landauer 口径一致）。
+- **产物**：`junction_analyze/results.json`（含 `fermi_nearest`、`max_transmission`；开壳层另含 `spin` 块：`L0_alpha/L0_beta`、per-channel `g_over_g0`、`T_alpha_at_ef/T_beta_at_ef`、`spin_polarization_at_ef`、`spin_polarization_L0`、`max_transmission_alpha/beta`）。
 - **免责**：点数 ≤7 时 note「7 点样本免责：仅验证管线，非生产科学结论（`_like` 语义）」。
 - **可选**：`smj analyze` 生成 `analysis.json`（schema `smj.analysis.v1`），用**独立解析器 + Simpson 求积 + CODATA 常数**复核主结果，并可 `plot=True` 出 `T_E_plot.png`（matplotlib 属可选 extra `plot`）。图**纵轴为对数**：下限取最小正值的一半（`T_LOG_FLOOR=1e-12` 兜底），`T≤0` 的点在轴上截断而非丢弃，否则 T(E) 的 1e-3 量级深谷（反共振/干涉谷）在线性轴上会被压成一条贴底的线。
 

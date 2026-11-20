@@ -17,7 +17,7 @@
 | 输入 | 分子 `.xyz`（锚定原子默认硫醇 -SH 的 S，也支持 `-SCH3` 等硫醚，或 N/Se 等任意元素符号 / 1-based 序号指定锚）+ 电极/锚点/输运窗口参数（`smj.yaml`） |
 | 输出 | `TE.dat`（透射谱）、`results.json`（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`）；`smj report` 另生成 `manifest.json`、`report.md` 与判定（`manifest.verdict`） |
 | 适用 | 单分子结 / 分子电子学：fcc(111) 电极（默认且已完整验证 Au(111)）间硫醇/硫醚及杂原子（N/Se 等）锚定分子的电输运与热电 |
-| 不承诺 | 自带 Gaussian/FHI-aims/aitranss；自动替人选方法/基组/锚点；替代人工结构确认；把 20 Au/侧与 Au60 口径混比 |
+| 不承诺 | 自带 Gaussian/FHI-aims/aitranss；自动替人选方法/基组/锚点；替代人工结构确认；把 20 Au/侧与 Au60 口径混比；**自动加对照臂/敏感性计算（pinned、变锚定、变团簇、空结等）——这些只在用户明确要求时跑** |
 
 六阶段链（顺序固定，但可单独执行任意阶段）：
 
@@ -55,7 +55,17 @@ PBE/light，与 tip/SCF 同一软件栈）；`gaussian` 保留旧口径（B3LYP/
 `results.json`。弛豫的 SCF 精度也显式写进 `control.in`（`sc_accuracy_rho 1E-5`、
 `sc_accuracy_eev 1E-3`、`sc_accuracy_etot 1E-6`、`sc_accuracy_forces 5E-3` eV/Å、
 `sc_iter_limit 1000`）——旧模板靠 FHI-aims 自动默认，力的精度是 `not_checked`；
-开壳层另写 `fixed_spin_moment` 固定总自旋。日志里出现 SCF 未收敛直接拒绝。
+开壳层写 `spin collinear` + `fixed_spin_moment = M−1`（=2S，不是多重度）固定总自旋，
+可用 `molecule.initial_moments` 按 1-based 原子序号给初始磁矩（FHI-aims 在 collinear
+下要求初始自旋密度；不给自己会在 notes 里警告）；结级 `aims_tip_relax`/`aims_scf`
+会把 `molecule.initial_moments` 映射到结几何的原子前缀（tips/Au 追加在后，去质子只删
+锚定 S–H 的氢，序号自动左移），存在逐原子初猜时不再写统一的 `default_initial_moment`；
+`molecule.fixed_spin_moment: false` 则**不写**约束行（只留 `spin collinear` + 初猜），
+用于"释放约束后的解"对照。非零 `molecule.charge` 时把总电荷
+均分成 per-atom `initial_charge` 写进 `geometry.in`（FHI-aims 要求 `charge` 等于
+该行之和；集群上的 221103 不认 `override_initial_charge_check`，实测会 parse_control
+停算，所以采用满足一致性检查的写法）。日志里
+出现 SCF 未收敛直接拒绝。
 FHI-aims 分支仍不做虚频检查（无现成一键 freq）。
 
 柔性分子先用 `smj conformers --smiles "Sc1ccc(S)cc1"` 做 ETKDGv3 + MMFF94s
@@ -178,7 +188,7 @@ smj run --from aims_scf --to aitranss_te
 | `electrode_build` | `aims_tip_relax/geometry.in.next_step`（或 `--geometry`） | `geometry.in`、`electrode_metadata.json`（含电极元素/构建方式/背层索引与库团簇来源）；tip 被扩展为完整电极团簇，S–金属距离/角度沿用弛豫结果 | **否**（本地） | `smj stage electrode_build --run --geometry aims_tip_relax/geometry.in.next_step` |
 | `aims_scf` | `electrode_build/geometry.in`（或 `--geometry`） | `control.in`、`sub_aims.sh`；collect 后 `aims.out`、`mos.aims` | 是（FHI-aims） | `smj stage aims_scf --run` |
 | `aitranss_te` | `aims_scf/`（或 `--scf-dir`） | `tcontrol`、`sub_te.sh`；collect 后 `TE.dat`、`te.out` | 是（aitranss） | `smj stage aitranss_te --run --scf-dir /path/to/scf` |
-| `junction_analyze` | `aitranss_te/TE.dat`（或 `--te`） | `results.json` | **否**（本地） | `smj stage junction_analyze --run --te TE.dat` |
+| `junction_analyze` | `aitranss_te/TE.dat`（或 `--te`） | `results.json` + 统一版式 `T_E.png`/`T_E.pdf`（无 matplotlib 时跳过图） | **否**（本地） | `smj stage junction_analyze --run --te TE.dat` |
 
 FHI-aims 阶段（`aims_tip_relax`/`aims_scf`）还需要 `cluster.species_dir` 或
 `paths.species_defaults` 指向 species 目录；缺失时 `prepare` 直接 `StageBlocked`
@@ -394,7 +404,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 │   ├── tcontrol  sub_te.sh  self.energy.in
 │   └── TE.dat  te.out
 └── junction_analyze/
-    └── results.json
+    └── results.json  T_E.png  T_E.pdf
 ```
 
 `state.json` 是唯一状态来源：`smj status` 读它；`smj report` 由它 + 产物目录生成
@@ -421,7 +431,8 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj preflight` | 提交前检查：分子可读/原子重叠、species 覆盖、建结几何闸门、资源上限；非 `dry-run` 时再加集群/SSH 连通、远端目录可写、二进制/许可 | 结构化 issues（error/warning/info），有 error 退出 1 |
 | `smj status` | 读 `state.json`，打印阶段/状态/job id/远端目录/耗时/备注 | 终端表格（`--json` 机器可读） |
 | `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（7 节：概览/判定/阶段状态/输入摘要/资源/输运/失败原因/产物清单）；缺 `TE.dat` 时物理判定为「无法判定」而不是通过 | 报告文件；默认跳过已存在文件，`--force` 重写，`--no-checks` 不算判定 |
-| `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；出图与参考值比较用 Python API（`smj.analysis.analyze_run(..., plot=True, reference=...)`，需 `[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
+| `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；`--plot` 可顺手按统一版式出 `T_E_plot.png`（`[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
+| `smj plot` | 按**统一版式**画 T(E)（四边框/刻度朝内/E_F 虚线/log 纵轴/固定配色，见 `docs/plot_style.md`）；可给 TE.dat、run 目录或逗号标签叠加多条 | `T_E.png` + `T_E.pdf`（默认 PNG+PDF 同源导出，600 dpi） |
 | `smj review` | 结构复核门：建结几何 + 连接核对（原 A2：指纹/表面索引偏差）。默认由管线在 `electrode_build` 之后自动登记（`who=auto`，审计不过则拒绝登记并阻断）；也可人工签 `--approve --who <名字>`（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用，`--connection-check/--no-connection-check` 临时覆盖 `review.connection_check` | `review.json`、`electrode_build/connection_check.json`（旧 `a2_confirmation.json` / `surface_check.json` 仍可读）；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、vendored junction、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
@@ -519,6 +530,24 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   默认 `anchor_au_s_target: null`、`pin_contact: false`：只用
   `au_tip_distance` 放初始几何，最终锚–金属键长/角度由 `aims_tip_relax` 的全原子弛豫决定；
   不要把 2.40 Å 当作目标键长或约束。
+- **开壳层结（自由基）已接线，但口径有限**：`molecule.multiplicity > 1` 会一路带到
+  `aims_tip_relax`/`aims_scf`（`spin collinear` + `fixed_spin_moment = M−1` +
+  逐原子 `initial_moment` 初猜，`molecule.initial_moments` 会按结几何的分子前缀映射；
+  不指定时退回 `default_initial_moment 0.1`；`molecule.fixed_spin_moment: false` 可
+  释放总自旋约束做对照；非零 `charge` 把总电荷均分成 per-atom
+  `initial_charge` 写进 `geometry.in`），
+  SCF 产出 `alpha.aims`/`beta.aims`，`aitranss_te` 用 `$uhfmo_alpha`/`$uhfmo_beta`
+  读双通道（远端回取时 `alpha.aims`/`beta.aims` 与 `mos.aims` 一样只取表头行）。
+  `junction_analyze` 在 `results.json` 里另给 `spin` 块（每个通道的
+  G/G0、E_F 处与积分后的自旋极化率）。**但**：总 G/S/ke/ZT 仍按
+  `(Tα+Tβ)/2` 的双通道均值口径（与 vendored Landauer 一致），且未考虑自旋轨道
+  耦合、非共线磁构型、SOMO 与电极的强关联近藤效应；这些仍需人工判断，不要
+  把平均透射当自旋分辨结论。另注意 `molecule.charge` 是整个模型的电荷（不是
+  分子片段电荷），`fixed_spin_moment` 固定的是整个结——源文档建议把"释放约束
+  后的解"作为对照，现在可用 `molecule.fixed_spin_moment: false` 直接跑；逐条对照
+  与缺口清单见
+  [自由基单分子结：实现对照与开发规划](docs/自由基单分子结-实现对照与开发规划.md)。
+
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。
 - **资源估算是申请下限**：132 原子锚点外推，体系明显偏离时应按实测回填，不要当保证值。
