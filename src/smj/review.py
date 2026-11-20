@@ -39,7 +39,13 @@ from pathlib import Path
 from typing import Any
 
 from .config import ReviewConfig
-from .provenance import load_run_spec, protocol_sha256
+from .provenance import (
+    PROTOCOL_SCHEMA,
+    compare_protocol_configs,
+    load_run_spec,
+    protocol_components,
+    protocol_sha256,
+)
 from .errors import SmjError
 from .spin_summary import findings as spin_findings, normalize as normalize_spin
 from .state import RunLayout, normalize_stage, now_iso
@@ -554,6 +560,33 @@ def _family_drift(config: Any, spec: Mapping[str, Any]) -> Any:
     return _NOT_FAMILY_ONLY
 
 
+def _schema_shape_drift(spec: dict, config: Any) -> dict | None:
+    """协议指纹不同但只是 schema 形状演进时，返回比对明细；否则 None。
+
+    代码升级会给协议子集新增/移除只影响记录方式的键（``stable_check``、
+    ``xyz``→``xyz_sha256``、``library_dir`` 等），此时哈希必然变，但物理参数
+    没变。判据：两侧都有的键取值全同 + :data:`PROTOCOL_CRITICAL` 一个不缺 +
+    确实存在只在单侧的键（否则哈希不同就无法解释，仍按漂移 fail-closed）。
+    """
+    stored_config = spec.get("config")
+    if not isinstance(stored_config, dict):
+        return None
+    stored = {key: stored_config.get(key) or {}
+              for key in ("molecule", "electrode", "transport")}
+    try:
+        current = protocol_components(config)
+    except Exception:  # noqa: BLE001 - 复核不应因配置对象异常崩掉
+        return None
+    comparison = compare_protocol_configs(stored, current)
+    if comparison["differences"] or comparison["critical_missing"]:
+        return None
+    if not (comparison["only_run"] or comparison["only_now"]):
+        return None
+    comparison["run_schema"] = spec.get("protocol_schema")
+    comparison["now_schema"] = PROTOCOL_SCHEMA
+    return comparison
+
+
 def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     """检查 ``run_spec.json``：缺失/重建只告警，协议漂移是阻断项。"""
     spec = load_run_spec(run_dir)
@@ -588,12 +621,27 @@ def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None
                     run_spec_protocol=stored, current_protocol=current,
                     family_run=family_run, family_current=family_now)
             else:
-                result.add(
-                    "error", "provenance_drift",
-                    "run_spec.protocol_sha256=%s，当前配置=%s；配置在 run 开始后发生"
-                    "物理相关变化，本次结果不能按原参数解读（需重建 run 或显式豁免）"
-                    % (str(stored)[:12], current[:12]),
-                    run_spec_protocol=stored, current_protocol=current)
+                shaped = _schema_shape_drift(spec, config)
+                if shaped is not None:
+                    result.add(
+                        "warning", "provenance_schema_evolved",
+                        "run_spec.protocol_sha256=%s，当前配置=%s；协议 schema 已演进"
+                        "（run 时 %s → 当前 %s），两侧都存在的 %d 个键取值完全相同，"
+                        "仅 %d 个键只在 run 侧、%d 个只在当前侧。属记录方式变化，"
+                        "不是物理参数变化"
+                        % (str(stored)[:12], current[:12],
+                           shaped.get("run_schema"), shaped.get("now_schema"),
+                           shaped["shared"], len(shaped["only_run"]),
+                           len(shaped["only_now"])),
+                        run_spec_protocol=stored, current_protocol=current,
+                        **shaped)
+                else:
+                    result.add(
+                        "error", "provenance_drift",
+                        "run_spec.protocol_sha256=%s，当前配置=%s；配置在 run 开始后发生"
+                        "物理相关变化，本次结果不能按原参数解读（需重建 run 或显式豁免）"
+                        % (str(stored)[:12], current[:12]),
+                        run_spec_protocol=stored, current_protocol=current)
 
 
 def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:

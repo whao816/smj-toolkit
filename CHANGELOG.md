@@ -4,6 +4,27 @@
 
 ## 未发布
 
+### 修复：输运轴改由电极质心定向、协议 schema 演进不再误判漂移（2026-11-20）
+
+用 `runs/ttf-release` 复核时出现两个 error，都不是物理结论变坏，而是判据口径缺陷：
+
+- **表面索引被判到"错误一侧"**：`validate_junction_geometry` 原来用两锚定原子连线的主方向
+  定输运轴。分子相对电极倾斜时，锚定连线会被分子内几何主导——实测 S6→S10 主要沿 y，
+  而两电极质心沿 z 分离 19.66 Å，于是合法的 82 号表面原子（越过中线仅 0.25 Å）被判 error。
+  现在**优先用左右电极质心连线**定向，锚定连线只作兜底；check 的 `value` 多了
+  `basis: electrode_centroids | linkers`，报告里写明轴是由什么定的。
+- **代码升级把老 run 判成协议漂移**：`protocol_sha256` 会因新增/改名的记录键（`stable_check`、
+  `xyz`→`xyz_sha256`、`library_dir`、`tip_direction` 等）变化，原实现一律报
+  `provenance_drift` error。现在 `run_spec.json` 增 `protocol_schema`，复核时逐键比较：
+  两侧都有的键取值全同、`PROTOCOL_CRITICAL` 一个不缺、且差异只来自单侧键 → 降为
+  `warning: provenance_schema_evolved`（写明 shared / only_run / only_now 计数）；
+  只要物理参数变了、或关键键缺失，仍是 error。
+- 实测 `runs/ttf-release` 复核：两个 error 消失，`status: warning`，只剩
+  `open_shell_uncalibrated` 与 `provenance_schema_evolved` 两条 warning。
+- 新增 `tests/test_transport_axis.py`（3 例：质心定向、锚定兜底在倾斜分子上复现误判、
+  两者都缺时 warn 而不误判）与 `tests/test_review_provenance.py`（4 例：形状演进只告警、
+  改温度仍 error、关键键缺失仍 error、比对函数本身）。全量 **463 passed**。
+
 ### 修复：让 PDOS 读得懂真实的 FHI-aims 波函数文件（2026-11-20）
 
 P2 的 PDOS 原先只对合成夹具正确，拿 `runs/ttf-release`（88 原子、4348 基函数）实测时

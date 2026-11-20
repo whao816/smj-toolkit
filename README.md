@@ -491,9 +491,11 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `run_spec.json` 时允许用当前配置重建，但标记 `reconstructed: true` 并告警。
 - **复核门**：`smj review` 对缺 run_spec/重建只告警，对协议漂移记
   `provenance_drift` 并 `blocked`——结果不能按原参数解读时不会静默放行。
-  唯一例外是**只差 `molecule.family`**（判据标定族，不参与物理计算）：记
-  `provenance_family_relabel` warning 而不阻断——run 做完再补登记族（如
-  `null → BPY`）不必重建 run，判据按当前标注重算。
+  两个例外都不改物理参数：**只差 `molecule.family`**（判据标定族，不参与物理计算）记
+  `provenance_family_relabel`；**只差协议 schema 形状**（`run_spec.json` 记
+  `protocol_schema`；新增/改名的记录键使哈希变化，但两侧都有的键取值全同、
+  `PROTOCOL_CRITICAL` 一个不缺）记 `provenance_schema_evolved` warning——代码升级不必
+  把历史 run 集体打成"不可解读"。物理参数一变或关键键缺失仍是 error。
 
 ### 7.3 收敛扫描（`scripts/scan_convergence.py`）
 

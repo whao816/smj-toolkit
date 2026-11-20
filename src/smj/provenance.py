@@ -45,6 +45,10 @@ RUN_SPEC_SCHEMA = "smj.run_spec.v1"
 RUN_SPEC_FILE = "run_spec.json"
 RUN_SPEC_PREVIOUS = "run_spec.previous.json"
 
+#: 协议指纹的"形状版本"。新增/移除只影响记录方式的配置键时递增；老 run 的
+#: ``protocol_sha256`` 会因此不同，但物理参数没变，不该判成漂移。
+PROTOCOL_SCHEMA = 2
+
 #: 单文件哈希上限。超过这个大小只记 path/size，不把 GB 级 ``mos.aims`` 读进内存。
 MAX_HASH_BYTES = 128 * 1024 * 1024
 
@@ -285,6 +289,83 @@ def protocol_sha256(config: Any) -> str:
     return sha256_text(canonical_json(_protocol_config(config)))
 
 
+def protocol_components(config: Any) -> dict[str, Any]:
+    """``protocol_sha256`` 的输入字典（供 drift 明细/比对使用）。"""
+    return _protocol_config(config)
+
+
+#: 会直接改变物理结果的键：schema 演进时也必须两边都在且相等，否则仍判漂移。
+PROTOCOL_CRITICAL = (
+    "molecule.charge",
+    "molecule.multiplicity",
+    "molecule.fixed_spin_moment",
+    "transport.temperature",
+    "transport.energy_window",
+    "transport.energy_window_unit",
+    "electrode.left_anchor",
+    "electrode.right_anchor",
+    "electrode.au_tip_distance",
+)
+
+#: 这些键"缺失"等价于某个默认值（``True`` 是旧行为，协议里不落键）。
+PROTOCOL_CRITICAL_DEFAULTS: dict[str, Any] = {
+    "molecule.fixed_spin_moment": True,
+}
+
+
+def _flatten_protocol(data: Any, prefix: str = "") -> dict[str, str]:
+    """把协议 dict 摊平成 ``路径 -> 规范化 JSON 标量``。"""
+    flat: dict[str, str] = {}
+    if isinstance(data, dict):
+        for key, value in data.items():
+            path = "%s.%s" % (prefix, key) if prefix else str(key)
+            flat.update(_flatten_protocol(value, path))
+    elif isinstance(data, (list, tuple)):
+        flat[prefix] = canonical_json(list(data))
+    else:
+        flat[prefix] = canonical_json(data)
+    return flat
+
+
+def compare_protocol_configs(stored: Any, current: Any) -> dict[str, Any]:
+    """比较 run 时与当前的协议子集，区分"形状变了"和"物理参数变了"。
+
+    协议 schema 会随版本演进（新增/移除只影响记录方式的键），此时
+    ``protocol_sha256`` 必然不同，但只要**两边都有的键**全部相同、且
+    :data:`PROTOCOL_CRITICAL` 一个不缺，就不能判成物理漂移。
+    """
+    a = _flatten_protocol(stored or {})
+    b = _flatten_protocol(current or {})
+    shared = sorted(set(a) & set(b))
+    differences = [
+        {"path": path, "run": a[path], "now": b[path]}
+        for path in shared if a[path] != b[path]
+    ]
+    only_run = sorted(set(a) - set(b))
+    only_now = sorted(set(b) - set(a))
+    critical_missing: list[str] = []
+    for path in PROTOCOL_CRITICAL:
+        if path in a and path in b:
+            continue                      # 已落在 shared 的相等/差异比较里
+        if path in PROTOCOL_CRITICAL_DEFAULTS:
+            # 缺键等价于默认值（旧行为不落键），按默认值补上再比。
+            default = canonical_json(PROTOCOL_CRITICAL_DEFAULTS[path])
+            run_value = a.get(path, default)
+            now_value = b.get(path, default)
+            if run_value != now_value:
+                differences.append({"path": path, "run": run_value,
+                                    "now": now_value})
+            continue
+        critical_missing.append(path)
+    return {
+        "shared": len(shared),
+        "differences": differences,
+        "only_run": only_run,
+        "only_now": only_now,
+        "critical_missing": critical_missing,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # 软件/代码信息
 # --------------------------------------------------------------------------- #
@@ -461,6 +542,7 @@ def run_spec_payload(config: Any, run_dir: str | Path, *,
         "run_dir": str(root),
         "config_sha256": sha256_text(canonical_json(config_data)),
         "protocol_sha256": protocol_sha256(config),
+        "protocol_schema": PROTOCOL_SCHEMA,
         "config": config_data,
         "electrode_library": _electrode_library_info(config),
         "software": _software_info(config),
@@ -621,6 +703,7 @@ __all__ = [
     "RUN_SPEC_SCHEMA",
     "RUN_SPEC_FILE",
     "RUN_SPEC_PREVIOUS",
+    "PROTOCOL_SCHEMA",
     "MAX_HASH_BYTES",
     "sha256_file",
     "sha256_text",
@@ -629,6 +712,10 @@ __all__ = [
     "hash_stage_outputs",
     "config_to_dict",
     "protocol_sha256",
+    "protocol_components",
+    "PROTOCOL_CRITICAL",
+    "PROTOCOL_CRITICAL_DEFAULTS",
+    "compare_protocol_configs",
     "run_spec_payload",
     "load_run_spec",
     "run_spec_sha256",

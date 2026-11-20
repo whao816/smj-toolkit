@@ -291,34 +291,58 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
                           '左右表面索引合法且不相交(左 %d / 右 %d 个, 共 %d 原子)'
                           % (len(L), len(R), n)))
 
-    # ② 输运轴与左右侧一致性: 轴取两锚定原子连线的主方向(不预设 x/y/z)
+    # ② 输运轴与左右侧一致性: 轴优先取**左右电极质心连线**，缺电极索引时退回
+    # 两锚定原子连线。锚定原子在分子内部，分子相对电极倾斜时它们的连线方向会被
+    # 分子内几何主导（实测 ttf-release：S6→S10 主要沿 y，而两电极沿 z 分离
+    # 19.7 Å），用锚定连线定向会把合法表面索引判到"错误一侧"。
     lk = metadata.get('left_linker_index')
     rk = metadata.get('right_linker_index')
-    if lk and rk and 1 <= int(lk) <= n and 1 <= int(rk) <= n:
+    axis = None                                  # (ax, u_axial, mid, basis)
+    le = [int(i) for i in (metadata.get('left_electrode_indices') or [])
+          if 1 <= int(i) <= n]
+    re_ = [int(i) for i in (metadata.get('right_electrode_indices') or [])
+           if 1 <= int(i) <= n]
+    if len(le) >= 3 and len(re_) >= 3:
+        cl = [sum(atoms[i - 1][k] for i in le) / len(le) for k in range(3)]
+        cr = [sum(atoms[i - 1][k] for i in re_) / len(re_) for k in range(3)]
+        d = [cr[k] - cl[k] for k in range(3)]
+        ax = max(range(3), key=lambda i: abs(d[i]))
+        if abs(d[ax]) > 1e-6:
+            axis = (ax, 1.0 if d[ax] > 0 else -1.0,
+                    [(cl[k] + cr[k]) / 2.0 for k in range(3)], 'electrode_centroids')
+    if axis is None and lk and rk and 1 <= int(lk) <= n and 1 <= int(rk) <= n:
         sl = atoms[int(lk) - 1][:3]
         sr = atoms[int(rk) - 1][:3]
         d = [sr[i] - sl[i] for i in range(3)]
         ax = max(range(3), key=lambda i: abs(d[i]))
-        u = [0.0, 0.0, 0.0]
-        u[ax] = 1.0 if d[ax] >= 0 else -1.0      # 左锚 -> 右锚 的单位方向
-        mid = [(sl[i] + sr[i]) / 2.0 for i in range(3)]
+        axis = (ax, 1.0 if d[ax] >= 0 else -1.0,
+                [(sl[i] + sr[i]) / 2.0 for i in range(3)], 'linkers')
+    if axis is not None:
+        ax, u_ax, mid, basis = axis
 
-        def side(idx):                      # >0 表示偏向"右锚"一侧
+        def side(idx):                      # >0 表示偏向"右侧"一侧
             a = atoms[int(idx) - 1][:3]
-            return (a[ax] - mid[ax]) * u[ax]
+            return (a[ax] - mid[ax]) * u_ax
 
         wrong = [i for i in L if side(i) >= 0] + [i for i in R if side(i) <= 0]
         axis_name = 'xyz'[ax]
         if wrong:
-            checks.append(_err('junction_geom_surface_side', {'axis': axis_name, 'wrong': wrong},
-                               '表面索引落在输运轴(%s)错误一侧: %s —— 该索引不稳定正是 '
-                               'aitranss "share the same atoms" 的成因' % (axis_name, wrong)))
+            checks.append(_err('junction_geom_surface_side',
+                               {'axis': axis_name, 'basis': basis, 'wrong': wrong},
+                               '表面索引落在输运轴(%s, 由%s定向)错误一侧: %s —— 该索引不稳定'
+                               '正是 aitranss "share the same atoms" 的成因'
+                               % (axis_name, '左右电极质心' if basis == 'electrode_centroids'
+                                  else '锚定原子连线', wrong)))
         else:
-            checks.append(_ok('junction_geom_surface_side', {'axis': axis_name},
-                              '左右表面索引均位于输运轴(%s)正确一侧' % axis_name))
+            checks.append(_ok('junction_geom_surface_side',
+                              {'axis': axis_name, 'basis': basis},
+                              '左右表面索引均位于输运轴(%s, 由%s定向)正确一侧'
+                              % (axis_name, '左右电极质心' if basis == 'electrode_centroids'
+                                 else '锚定原子连线')))
     else:
         checks.append(_warn('junction_geom_surface_side', None,
-                            '缺 left/right_linker_index, 无法定向输运轴'))
+                            '缺 left/right_electrode_indices 与 left/right_linker_index, '
+                            '无法定向输运轴'))
 
     # ③ 接触重叠: 元素对 + 共价半径下限(替代过松的"任一原子对 <1.0 A")
     overlaps = []
