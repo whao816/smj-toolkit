@@ -174,6 +174,18 @@ LOCAL_PATCHES = [
                "sync_core.py 全量同步并删除本条。",
         "tests": ["scripts/sync_core.py --check"],
     },
+    {
+        "id": "F-RECHECK-2026-11-20-aims-out-stage",
+        "commit": "2026-11-20",
+        "files": ["validate.py"],
+        "what": "_ARTIFACT_STAGE_HOME['aims.out'] 从 ('aims_scf','aims_tip_relax') 收紧为 "
+                "('aims_scf',)：静态 SCF 判据只认 aims_scf 阶段（扁平布局仍由 "
+                "run_dir/aims.out 命中），不再回落到弛豫日志。",
+        "why": "复核 R13b：弛豫日志每一步都写 Self-consistency cycle converged，"
+               "回落到 tip_relax/aims.out 时，一个「静态 SCF 阶段根本没跑」的 run 也会拿到 "
+               "aims_scf=OK 判据，报告把弛豫里的某一步 SCF 当成了送 aitranss 的静态 SCF。",
+        "tests": ["tests/test_validate_artifacts.py"],
+    },
 ]
 
 
@@ -208,7 +220,11 @@ def build_manifest() -> dict:
         "files": files,
         "local_patches": LOCAL_PATCHES,
         "note": "0.1.1 本地补丁的权威记录；回迁主仓后应删除对应条目并重新 sync。"
-                "本文件由 scripts/gen_vendor_json.py 生成，勿手改。",
+                "本文件由 scripts/gen_vendor_json.py 生成，勿手改。"
+                "已知偏离（2026-11-20 复核 R12）：vendored criteria.py 是 0.2.1 版注册表，"
+                "k_e_zt_order 的元数据仍写 implemented=False（实际评估器会 emit 该判据），"
+                "与主仓新注册表不一致；该判据不参与闸门，本轮按要求不改 vendored 判定语义，"
+                "仅在此登记，待回迁主仓时一并对齐。",
     }
 
 

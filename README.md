@@ -530,6 +530,10 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `true`，没有有效签名时 `smj review` 为 `blocked`。
 - **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
   （未测晶格热导就不下总 ZT 结论）。
+- **已知登记偏离**：vendored `criteria.py` 是 0.2.1 版注册表（本地补丁），
+  `k_e_zt_order` 的元数据仍写 `implemented=False`，而实际评估器会 emit 该判据——
+  与主仓新注册表不一致。该判据是非闸门的物理提示，不影响 `passed`；按复核 R12
+  只在 `VENDOR.json` 的 `note` 与这里登记，等回迁主仓时一并对齐。
 - **电极厚度口径**：`electrode.au_per_electrode` 只在 `source: builtin` 生效
   （`null` = 完整 60 Au/侧；整数按完整原子层截断，30 → 35/侧；上限 30）。默认
   `source: library` 时该键被完全忽略，团簇大小由 `electrodes.library` 文件决定。

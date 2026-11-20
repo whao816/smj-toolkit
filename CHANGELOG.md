@@ -4,6 +4,23 @@
 
 ## 未发布
 
+### 复核修复 R12/R13：产物定位去歧义、已知偏离登记（2026-11-20）
+
+- **R13b 产物定位**：vendored `validate.py` 的 `_ARTIFACT_STAGE_HOME['aims.out']` 原为
+  `('aims_scf', 'aims_tip_relax')`。弛豫日志每一步都写
+  `Self-consistency cycle converged.`，于是"静态 SCF 阶段根本没跑"的 run 也能拿到一条
+  `aims_scf=OK` 判据——它证明的是弛豫里的某一步 SCF。收紧为只认 `aims_scf` 阶段
+  （扁平布局仍由 `run_dir/aims.out` 命中），以本地补丁
+  `F-RECHECK-2026-11-20-aims-out-stage` 登记。
+- **R13a 两级一致**：`tests/test_scf_artifacts.py` 新增一条用例，同一份未收敛日志
+  必须同时让 stage 抛 `StageError` 与 validate 报 error——任何一边漏掉即红。
+- **R12 已知偏离登记**：vendored `criteria.py` 里 `k_e_zt_order` 的元数据仍写
+  `implemented=False`（实际会 emit），与主仓新注册表不一致。该判据不参与闸门，
+  按计划**不改 vendored 判定语义**，只在 `VENDOR.json` 的 `note` 与 README §9 登记，
+  待回迁主仓时一并对齐。
+- **测试**：`tests/test_validate_artifacts.py`（4 例）+ `test_scf_artifacts.py` +1。
+
+
 ### 复核修复 R9/R10：demo 回归基线、VENDOR 校验语义（2026-11-20）
 
 - **demo 回归（R9）**：新增 `demo/demo-reference.json` 与 `scripts/gen_demo_reference.py`

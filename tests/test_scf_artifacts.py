@@ -108,3 +108,24 @@ def test_scf_collect_rejects_alpha_only_without_beta(workdir: Path):
 
     with pytest.raises(StageError, match="alpha.aims \\+ beta.aims"):
         AimsScfStage().collect(_Ctx(run_dir), stage_dir)
+
+def test_stage_and_report_agree_on_unconverged_log(workdir: Path):
+    """两级判定必须一致（复核 R13a）。
+
+    R5 之前：stage 照收、validate 报 ``aims_scf`` error；同一份日志两套结论。
+    R5 之后：stage 抛 StageError，validate 也报 error——任何一边漏掉，这个用例都会红。
+    """
+    from smj._vendor.junction.validate import validate_junction_run
+
+    run_dir = workdir / "run"
+    stage_dir = run_dir / "aims_scf"
+    _seed(stage_dir, converged=False)
+    (stage_dir / "aims.out").write_text(
+        "SCF is not yet converged\nHave a nice day.\n", encoding="utf-8")
+
+    with pytest.raises(StageError, match="SCF 未收敛"):
+        AimsScfStage().collect(_Ctx(run_dir), stage_dir)
+
+    checks = [c for c in validate_junction_run(run_dir)["checks"] if c["name"] == "aims_scf"]
+    assert len(checks) == 1 and checks[0]["passed"] is False
+    assert checks[0]["severity"] == "error"
