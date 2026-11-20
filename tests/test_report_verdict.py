@@ -50,3 +50,63 @@ def test_report_still_reports_physics_failure():
     text = render_report(_manifest())
     assert "否证 H0" in text
     assert "t_ef_magnitude" in text
+
+# --- 2026-11-20 复核 P1-6 / R7：完工度闸门 -------------------------------- #
+
+def test_completeness_check_fails_when_run_incomplete():
+    from smj.verdict import apply_completeness
+
+    verdict = {
+        "checks": [], "passed": True, "engineering_passed": True,
+        "errors": 0, "warnings": 0, "physics_verdict": "inconclusive",
+        "failed_criteria": [], "inconclusive_criteria": [],
+    }
+    out = apply_completeness(verdict, is_done=False,
+                             first_incomplete="molecule_opt",
+                             missing=["molecule_opt", "aims_scf"])
+
+    assert out["passed"] is False
+    assert out["engineering_passed"] is False
+    assert out["errors"] == 1
+    assert "run_incomplete" in out["failed_criteria"]
+    assert out["completeness"]["is_done"] is False
+    assert out["completeness"]["stages_missing"] == ["molecule_opt", "aims_scf"]
+    # 物理判定是独立归约，完工度不改它。
+    assert out["physics_verdict"] == "inconclusive"
+
+
+def test_completeness_check_passes_when_done():
+    from smj.verdict import apply_completeness
+
+    verdict = {"checks": [], "passed": True, "engineering_passed": True,
+               "errors": 0, "warnings": 0, "physics_verdict": "passed",
+               "failed_criteria": []}
+    out = apply_completeness(verdict, is_done=True, first_incomplete=None,
+                             missing=[])
+
+    assert out["passed"] is True
+    assert out["engineering_passed"] is True
+    assert out["errors"] == 0
+    assert out["completeness"]["is_done"] is True
+
+
+def test_report_marks_te_only_run_as_incomplete(workdir):
+    """复核现场：只放 aitranss_te/TE.dat 的 run 曾经 passed=true。"""
+    from smj.report import build_manifest
+
+    run_dir = workdir / "demo"
+    (run_dir / "aitranss_te").mkdir(parents=True)
+    manifest = build_manifest(run_dir, run_id="demo", include_checks=True)
+
+    verdict = manifest["verdict"]
+    assert verdict["passed"] is False
+    assert verdict["engineering_passed"] is False
+    assert verdict["errors"] >= 1
+    assert verdict["completeness"]["is_done"] is False
+    assert verdict["completeness"]["first_incomplete"] == "molecule_opt"
+    names = [c["name"] for c in manifest["checks"]]
+    assert "run_incomplete" in names
+
+    text = render_report(manifest)
+    assert "| 完工度 | 未完成" in text
+    assert "molecule_opt" in text

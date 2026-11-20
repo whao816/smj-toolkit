@@ -478,16 +478,25 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         # criteria 会给出 error 级 te_present, 结果是 failed 而不是"支持 H0"。
         try:
             from smj._vendor.junction.validate import validate_junction_run  # lazy: vendored
+            from smj.verdict import apply_completeness, missing_stages
             verdict = validate_junction_run(
                 run_dir, results={"junction": transport or {}}, system=system,
                 temperature=input_summary.get("temperature_K"))
+            # 2026-11-20 复核 P1-6：产物驱动的判定看不到"该跑的阶段没跑"。
+            # 由 state 生成 run_incomplete 合成判据并重算工程判定/errors。
+            statuses = state.statuses()
+            is_done = all(state.is_done(s) for s in STAGE_ORDER)
+            missing = missing_stages(statuses, STAGE_ORDER)
+            verdict = apply_completeness(
+                verdict, is_done=is_done,
+                first_incomplete=state.first_incomplete(), missing=missing)
             manifest["verdict"] = {
                 key: verdict.get(key) for key in
                 ("passed", "engineering_passed", "errors", "warnings",
                  "physics_verdict", "wording", "allowed_action",
                  "failed_criteria", "inconclusive_criteria",
                  "missing_evidence_criteria",
-                 "not_applicable_criteria")
+                 "not_applicable_criteria", "completeness")
             }
             manifest["checks"] = verdict.get("checks", [])
         except Exception as exc:  # noqa: BLE001
@@ -564,6 +573,15 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         lines.append("| 工程判定 | %s |"
                      % ("通过" if engineering else
                         "未通过（errors=%s）" % _cell(verdict.get("errors"))))
+        comp = verdict.get("completeness")
+        if isinstance(comp, dict):
+            if comp.get("is_done"):
+                lines.append("| 完工度 | 已走完全部阶段 |")
+            else:
+                lines.append("| 完工度 | 未完成：首个未完成阶段 `%s`；缺少 %s |"
+                             % (_cell(comp.get("first_incomplete")),
+                                _cell(", ".join(comp.get("stages_missing") or [])))
+                             )
         lines.append("| 物理判定 | %s（%s） |"
                      % (_cell(verdict.get("wording")),
                         _cell(verdict.get("physics_verdict"))))
