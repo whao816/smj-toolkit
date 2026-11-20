@@ -4,6 +4,29 @@
 
 ## 未发布
 
+### 复核修复 R4/R5：弛豫与 SCF 必须"真收敛、真产物"（2026-11-20）
+
+- **问题**：`aims_tip_relax.collect` 只判 `geometry.in.next_step` 存在，从不打开
+  `aims.out`；`au_relax.collect` 同样不解析收敛标记却在 metadata 里硬写
+  `converged: True`。`aims_scf.collect` 只 `is_file()`，零字节
+  `basis-indices.out`/`omat.aims`/`mos.aims` + 未收敛日志都能 collected，且
+  `normal_termination`/`has_*` 是写死的常量。
+- **新增** `src/smj/stages/_aims_log.py`：`relax_status()` 取**最后一次**
+  `Present geometry (is|is not yet) converged.`、要求日志以 `Have a nice day.` 结束、
+  识别步数上限（排除 "No maximum number of relaxation steps, defaulting to 1000"），
+  大日志只读尾部 1 MB。
+- **新增** `src/smj/stages/_aims_artifacts.py`：按 FHI-aims 头部（`$basis.indices.aims`、
+  `$omat.aims`、`$scfmo.aims`）校验产物真实性，顺带解析 `nsaos`/基函数数量。
+- **阶段行为**：`aims_tip_relax` / `au_relax` 未收敛或日志缺失 → `StageError`（不采集）；
+  `aims_scf` 缺 SCF 收敛标记、零字节或头部不符 → `StageError`；`results` 改为观测值
+  （`scf_converged`、`basis_functions`、各文件字节数等）；`electrode_build.prepare`
+  与 `aitranss_te.prepare` 各加一道上游复核（`StageBlocked`）。
+- **测试**：新增 `tests/test_relax_convergence.py`（7 例）、`tests/test_scf_artifacts.py`
+  （9 例）、`tests/_aims_fixtures.py`（真实形状的最小产物片段）；既有测试的
+  `placeholder` 产物改为走 fixtures。
+- **实测**：4 份 demo 的 `aims_tip_relax/aims.out` 全部判 converged，4 套
+  `aims_scf` 产物全部通过头部校验（无回归）。
+
 ### 复核修复 R2/R3：能量窗必须跨 E_F，"无适用闸门"不再判通过（2026-11-20）
 
 - **问题**：`transport.energy_window`（eV 口径）只校验 `eend > ener`，不要求窗口跨越 E_F；

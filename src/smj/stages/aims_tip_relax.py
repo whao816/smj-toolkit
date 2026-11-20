@@ -18,6 +18,7 @@ from ..spin import (DEFAULT_INITIAL_MOMENT, insert_control_lines, map_molecule_m
                     record_initial_charge, record_junction_spin, spin_control_lines,
                     spin_state, write_initial_charges, write_initial_moments)
 from ..structure_archive import safe_archive
+from ._aims_log import describe, relax_status
 from ._helpers import (est_record, resolve_anchor_indices,
                        resolve_geometry_anchor_indices, submit_command, vdw_mode)
 from .base import Collected, Prepared, Stage, register
@@ -189,13 +190,24 @@ class AimsTipRelaxStage(Stage):
     # -- collect ----------------------------------------------------------- #
     def collect(self, ctx, stage_dir: Path) -> Collected:
         stage_dir = Path(stage_dir)
+        # 2026-11-20 复核 P1-3：先验收弛豫收敛，再谈"弛豫后的键长"。
+        # 不读日志时，未收敛的 next_step 会被当成弛豫结果直接送去建电极。
+        status = relax_status(stage_dir / "aims.out")
+        if status is None:
+            raise StageError(
+                "aims_tip_relax 缺少 aims.out：无法验收弛豫是否收敛，拒绝采集（%s）。"
+                "若日志未回取，请先回取 aims.out 再 collect。" % stage_dir)
+        if not status["converged"]:
+            raise StageError(
+                "aims_tip_relax 未收敛，拒绝采集：%s（日志 %s）。接触几何不是弛豫结果，"
+                "不能用于建电极；请调整弛豫步数/收敛阈值后重跑。"
+                % (describe(status), status["path"]))
         next_step = stage_dir / "geometry.in.next_step"
-        if next_step.is_file():
-            geometry, source = next_step, "geometry.in.next_step"
-        else:
-            # BFGS 未写出 next_step 时 FHI-aims 只留下初始几何：照样记录，但在 notes 里说清。
-            geometry = ctx.require_stage_file(self.name, "geometry.in")
-            source = "geometry.in"
+        if not next_step.is_file():
+            raise StageError(
+                "aims_tip_relax 日志显示已收敛，但缺少 geometry.in.next_step：产物不完整"
+                "（可能只回取了日志），请重新回取或重跑")
+        geometry, source = next_step, "geometry.in.next_step"
         left, right = self._anchors(ctx, stage_dir, geometry)
         summary = self._input_summary(stage_dir)
         tip_element = summary.get("tip_element") or ctx.config.electrode.element
@@ -215,6 +227,10 @@ class AimsTipRelaxStage(Stage):
             "contact_pinned": summary.get("contact_pinned"),
             "tip_element": tip_element,
             "anchor_element": anchor_element,
+            "relax_converged": True,
+            "relax_steps": status["steps"],
+            "relax_last_marker": status["last_marker"],
+            "relax_log_bytes": status["bytes"],
         }
         notes: list[str] = []
         if target is not None:
@@ -225,6 +241,7 @@ class AimsTipRelaxStage(Stage):
             if target_value is not None:
                 payload["target_A"] = target_value
                 payload["delta_A"] = {side: distances[side] - target_value for side in distances}
+        # 未收敛的日志在上面已被拒绝，这里 source 恒为 next_step；断言式保留提示。
         if source != "geometry.in.next_step":
             notes.append("未找到 geometry.in.next_step：BFGS 未写出最终几何，按初始 geometry.in 记录")
         # 「分子 + 两枚 tip」是后续装配电极的中间结构，同样进 saved_structures，

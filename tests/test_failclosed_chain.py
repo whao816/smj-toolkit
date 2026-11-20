@@ -24,6 +24,7 @@ from smj.errors import StageBlocked, StageError
 from smj.provenance import sha256_file
 from smj.stages.aims_scf import AimsScfStage
 from smj.stages.aitranss_te import AitranssTeStage
+from _aims_fixtures import write_scf_artifacts, write_scf_log
 
 
 class _Ctx:
@@ -47,17 +48,8 @@ def _seed_aims_scf(stage_dir: Path) -> None:
     stage_dir.mkdir(parents=True)
     (stage_dir / "geometry.in").write_text(
         "atom 0.0 0.0 0.0 Au\natom 1.0 0.0 0.0 Au\n", encoding="utf-8")
-    (stage_dir / "aims.out").write_text(
-        "  FHI-aims created a unique identifier for this run for later identification\n"
-        "  aims_uuid : TEST-UUID-1234\n"
-        "  Build configuration of the current instance of FHI-aims\n"
-        "  FHI-aims version      : 221103\n"
-        "  Commit number         : TEST-COMMIT\n"
-        "  Have a nice day.\n",
-        encoding="utf-8",
-    )
-    for name in ("basis-indices.out", "omat.aims", "mos.aims"):
-        (stage_dir / name).write_text("placeholder\n", encoding="utf-8")
+    write_scf_log(stage_dir)
+    write_scf_artifacts(stage_dir)
 
 
 def _seed_te(stage_dir: Path, *, te_out: bool = True) -> None:

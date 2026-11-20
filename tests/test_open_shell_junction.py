@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from _aims_fixtures import ALPHA, BETA, SCF_CONVERGED, write_scf_sidecars
 from smj.config import ElectrodeConfig, MoleculeConfig, load_config
 from smj.errors import ConfigError
 from smj.stages.aims_scf import AimsScfStage
@@ -179,13 +180,12 @@ def test_scf_collect_accepts_alpha_beta_instead_of_mos(workdir):
     ctx = _ctx(workdir, MoleculeConfig(multiplicity=2))
     stage_dir = workdir / "run" / "aims_scf"
     stage_dir.mkdir(parents=True)
-    (stage_dir / "aims.out").write_text("Have a nice day.\n", encoding="utf-8")
-    (stage_dir / "basis-indices.out").write_text("1\n", encoding="utf-8")
-    (stage_dir / "omat.aims").write_text("omat\n", encoding="utf-8")
+    (stage_dir / "aims.out").write_text(SCF_CONVERGED, encoding="utf-8")
+    write_scf_sidecars(stage_dir)
     (stage_dir / "geometry.in").write_text(
         "atom 0.0 0.0 0.0 S\natom 3.0 0.0 0.0 S\n", encoding="utf-8")
-    (stage_dir / "alpha.aims").write_text("nsaos = 10\n", encoding="utf-8")
-    (stage_dir / "beta.aims").write_text("nsaos = 10\n", encoding="utf-8")
+    (stage_dir / "alpha.aims").write_text(ALPHA, encoding="utf-8")
+    (stage_dir / "beta.aims").write_text(BETA, encoding="utf-8")
     collected = AimsScfStage().collect(ctx, stage_dir)
     payload = collected.results["aims_scf"]
     assert payload["has_alpha"] is True and payload["has_beta"] is True

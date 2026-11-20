@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from _aims_fixtures import write_scf_sidecars
 from smj.config import load_config
 from smj.errors import StageBlocked
 from smj.landauer_spin import analyze_te_spin, read_te_channels
@@ -80,6 +81,7 @@ def _prepare_case(workdir: Path, *, molecule: list[str]):
     (build / "geometry.in").write_text(_AIMS_GEOMETRY, encoding="utf-8")
     (scf / "aims.out").write_text(
         "| Chemical potential (Fermi level):   %.12f Ha\n" % EFERMI, encoding="utf-8")
+    write_scf_sidecars(scf)
     (scf / "alpha.aims").write_text("nsaos = 4210\n", encoding="utf-8")
     (scf / "beta.aims").write_text("nsaos = 4210\n", encoding="utf-8")
     metadata = {

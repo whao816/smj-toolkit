@@ -21,6 +21,7 @@ from smj.config import HARTREE_EV, load_config
 from smj.errors import ConfigError, StageBlocked
 from smj.provenance import sha256_file
 from smj.stages.aitranss_te import AitranssTeStage
+from _aims_fixtures import write_scf_artifacts
 
 EFERMI = -0.180814064867
 
@@ -180,6 +181,7 @@ def _prepare_case(workdir: Path, *, transport: list[str] | None = None,
         (scf / "aims.out").write_text(
             "| Chemical potential (Fermi level):   %.12f Ha\n" % EFERMI,
             encoding="utf-8")
+    write_scf_artifacts(scf)
     (scf / "mos.aims").write_text("nsaos = 4210\n", encoding="utf-8")
     metadata = {
         "left_surface_indices": [1, 2, 3],

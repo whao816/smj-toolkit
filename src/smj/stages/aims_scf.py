@@ -24,6 +24,7 @@ from ..spin import (DEFAULT_INITIAL_MOMENT, insert_control_lines, map_molecule_m
                     record_initial_charge, record_junction_spin, remove_control_lines,
                     spin_control_lines, spin_state, write_initial_charges,
                     write_initial_moments)
+from ._aims_artifacts import probe, problem
 from ._helpers import est_record, submit_command, vdw_mode
 from .base import Collected, Prepared, Stage, register
 
@@ -153,6 +154,12 @@ class AimsScfStage(Stage):
             raise StageError(
                 "FHI-aims 未正常结束（aims.out 无 'Have a nice day'）；"
                 "拒绝 collect 残缺的 SCF 结果")
+        # 2026-11-20 复核 P1-4：日志写着正常结束，但 SCF 可能根本没收敛
+        # （"SCF is not yet converged" / 迭代到上限后仍正常退出）。
+        if "Self-consistency cycle converged" not in text:
+            raise StageError(
+                "aims_scf 的 SCF 未收敛：aims.out 里没有 'Self-consistency cycle converged'"
+                "（可能命中 scf 迭代上限或提前退出）；tcontrol 会把未收敛的密度当输入")
 
         # tcontrol 的 $basis/$read_omat 两个口径共用；$scfmo 在自旋极化 SCF 里
         # 被 alpha.aims + beta.aims 取代——二选一缺了就 fail-closed。
@@ -170,6 +177,17 @@ class AimsScfStage(Stage):
             raise StageError(
                 "FHI-aims SCF 产物不完整（缺 %s）；aitranss_te 的 tcontrol 需要 "
                 "basis-indices.out + omat.aims" % "、".join(missing))
+        # 存在 ≠ 可用：零字节/截断文件会让 tcontrol 读到空矩阵。
+        wavefunction = "mos.aims" if has_mos else "alpha.aims"
+        observed: dict[str, dict] = {}
+        for name in ("basis-indices.out", "omat.aims", wavefunction):
+            info = probe(stage_dir / name)
+            reason = problem(info)
+            if reason is not None:
+                raise StageError(
+                    "aims_scf 产物不可用：%s；tcontrol 需要真实的 basis/omat/波函数文件"
+                    % reason)
+            observed[name] = info
 
         notes: list[str] = []
         software = parse_aims_versions(text)
@@ -180,13 +198,20 @@ class AimsScfStage(Stage):
         results = {
             "aims_scf": {
                 "atom_count": self.count_aims_atoms(stage_dir / "geometry.in"),
-                "normal_termination": True,
-                "has_basis_indices": True,
-                "has_omat": True,
+                "normal_termination": "Have a nice day" in text,
+                "scf_converged": "Self-consistency cycle converged" in text,
+                "has_basis_indices": "basis-indices.out" in observed,
+                "has_omat": "omat.aims" in observed,
                 "has_mos": has_mos,
                 "has_alpha": has_alpha,
                 "has_beta": has_beta,
                 "spin_unpolarized": has_mos,
+                "basis_indices_bytes": observed["basis-indices.out"]["bytes"],
+                "basis_functions": observed["basis-indices.out"]["size_value"],
+                "omat_bytes": observed["omat.aims"]["bytes"],
+                "omat_nsaos": observed["omat.aims"]["size_value"],
+                "wavefunction_bytes": observed[wavefunction]["bytes"],
+                "log_bytes": len(text.encode("utf-8", "replace")),
                 "software": software or None,
             }
         }

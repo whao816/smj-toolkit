@@ -27,6 +27,7 @@ from ..provenance import (
     verify_parent_geometry,
 )
 from ..spin import spin_state
+from ._aims_artifacts import probe, problem
 from ._helpers import est_record, submit_command
 from .base import Collected, Prepared, Stage, register
 
@@ -58,6 +59,17 @@ class AitranssTeStage(Stage):
         # P0-3：透射计算消费的几何必须与 metadata 记录的指纹一致；并且
         # tcontrol 的 $coord 与 self.energy.in 的电极划分必须来自同一份几何。
         self._verify_geometry_chain(geometry, scf_geometry, metadata)
+        # 2026-11-20 复核 P1-4：老 run 的 collect 没有真实性校验，tcontrol 仍会
+        # 直接读 basis-indices.out / omat.aims —— 在这里补一道前置检查。
+        for name in ("basis-indices.out", "omat.aims"):
+            path = scf_dir / name
+            if not path.is_file():
+                raise StageBlocked(self.name, "缺 aims_scf/%s" % name, [str(path)])
+            reason = problem(probe(path))
+            if reason is not None:
+                raise StageBlocked(
+                    self.name, "aims_scf/%s 不可用：%s（tcontrol 会读到空矩阵）"
+                    % (name, reason), [str(path)])
         natoms = self.count_aims_atoms(scf_geometry)
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)
