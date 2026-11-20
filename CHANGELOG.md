@@ -11,14 +11,19 @@
 - **Windows 三个版本全红**：`actions/checkout` 在 Windows 上按 `core.autocrlf=true`
   检出，内核 `.py` 与 `TE.dat` 被转成 CRLF，`PROVENANCE.json` 与
   `demo-reference.json` 里的 sha256 对不上（6 个用例失败）。
-- **`demo` job 红**：两处原因 —— ① `demo/demo-reference.json` 曾以 CRLF 提交，
+- **`demo` job 红**：三处原因 —— ① `demo/demo-reference.json` 曾以 CRLF 提交，
   Linux 上 `gen_demo_reference.py --check` 直接比对文本 → 必然不一致；② 该 job 只装
-  运行时依赖（`pip install -e .`）却调用 `python -m pytest`，缺 pytest → 退出码 1。
+  运行时依赖（`pip install -e .`）却调用 `python -m pytest`，缺 pytest → 退出码 1；
+  ③ 修掉前两条后仍红：`--check` 拿整份文本逐字节比，而 `L0`/`ZT_electronic` 是按
+  完整精度写入的浮点数，`np.exp`/`np.cosh` 在不同平台的 numpy 构建（以及不同 CPU 的
+  SIMD 分派）上有 1 ulp 级差异 → 什么都没改也会红。
 
 处理：新增 `.gitattributes`（`* text=auto eol=lf`，`*.dat -text`），全仓
-`git add --renormalize`；`gen_demo_reference.py` 写文件固定 LF、`--check` 按换行
-归一化后再比；新增 CRLF 容忍用例。修复后本地与两种检出模拟（autocrlf=true/false）
-均 398 passed。
+`git add --renormalize`；`gen_demo_reference.py` 写文件固定 LF；`--check` 改为
+**按字段比较**（哈希/点数/能量顺序精确比，浮点量按相对 `1e-9` 比），失败时逐条打印
+「哪份谱的哪个量、期望/实际、相对差」，CI 再把这段文字写进 check-run annotation
+（匿名也能从 annotations API 读到）；新增 CRLF 容忍与「1e-13 噪声不红、1e-6 漂移仍红」
+两个用例。修复后本地与两种检出模拟（autocrlf=true/false）均 398 passed。
 
 ### A 方案：junction 内核改由本仓维护（2026-11-20）
 

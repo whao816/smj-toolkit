@@ -63,9 +63,34 @@ jobs:
         # `python -m pytest` 直接 ModuleNotFoundError，job 一直红）。
         run: python -m pip install -e ".[dev]"
       - name: demo-reference.json must match the spectra and the integrator
-        run: python scripts/gen_demo_reference.py --check
+        # 失败原因写进 annotation：匿名看不了 Actions 日志时，check-run 的
+        # annotations 是唯一还能拿到的一句话结论（2026-11-20 排查用）。
+        shell: bash
+        run: |
+          set +e
+          python scripts/gen_demo_reference.py --check 2>&1 | tee /tmp/demo-check.log
+          rc=${PIPESTATUS[0]}
+          summary=$(tail -c 900 /tmp/demo-check.log | tr '\n' ' ')
+          if [ "$rc" -eq 0 ]; then
+            echo "::notice title=demo-reference::${summary}"
+          else
+            echo "::error title=demo-reference::${summary}"
+          fi
+          exit "$rc"
       - name: Recompute demo transport quantities
-        run: python -m pytest -q tests/test_demo_regression.py
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q tests/test_demo_regression.py --tb=line 2>&1 | tee /tmp/demo-pytest.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            summary=$(grep -E '^(FAILED|ERROR)' /tmp/demo-pytest.log | head -n 5 | tr '\n' ' ')
+            if [ -z "$summary" ]; then
+              summary=$(tail -c 900 /tmp/demo-pytest.log | tr '\n' ' ')
+            fi
+            echo "::error title=demo-pytest::${summary}"
+          fi
+          exit "$rc"
 
   dist:
     name: build wheel + sdist, install smoke

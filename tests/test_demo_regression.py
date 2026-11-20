@@ -162,6 +162,34 @@ def test_reference_values_are_actually_reproducible():
     assert item["ok"] is False
     assert "limit" in item
 
+def test_reference_check_tolerates_platform_float_noise(workdir):
+    """``L0``/``ZT`` 是全精度浮点：跨平台 numpy 的 1 ulp 级差异不该让 --check 变红。
+
+    2026-11-20：Linux CI 的 demo job 就红在这里——数值逐字节不同，物理上没差别。
+    """
+    script = _demo_script()
+    reference = _reference()
+    key = sorted(reference["demos"])[-1]
+    noisy = json.loads(json.dumps(reference))
+    noisy["demos"][key]["L0"] = reference["demos"][key]["L0"] * (1.0 + 1e-13)
+    noisy["demos"][key]["ZT_electronic"] = reference["demos"][key]["ZT_electronic"] * (1.0 - 1e-13)
+    target = workdir / "noise.json"
+    target.write_text(script.render(noisy), encoding="utf-8", newline="\n")
+    assert script.main(["--check", "--output", str(target)]) == 0
+
+
+def test_reference_check_still_catches_real_drift(workdir):
+    """容差不该掩盖真实漂移：S 改 1e-6 相对也要红，并报出是哪份谱的哪个量。"""
+    script = _demo_script()
+    reference = _reference()
+    key = sorted(reference["demos"])[0]
+    drifted = json.loads(json.dumps(reference))
+    drifted["demos"][key]["S_uV_per_K"] = reference["demos"][key]["S_uV_per_K"] * (1.0 + 1e-6)
+    target = workdir / "drifted.json"
+    target.write_text(script.render(drifted), encoding="utf-8", newline="\n")
+    assert script.main(["--check", "--output", str(target)]) == 1
+
+
 def test_reference_check_tolerates_crlf(workdir):
     """2026-11-20：Windows 检出会把参考值写成 CRLF，Linux CI 的 --check 曾因此变红。
 
