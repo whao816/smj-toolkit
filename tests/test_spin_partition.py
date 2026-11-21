@@ -174,6 +174,112 @@ def test_review_reports_spin_partition(workdir: Path):
     assert issue["severity"] == "info"
 
 
+def test_summarize_flags_localized_antiparallel_moments(workdir: Path):
+    """S4：破缺对称单重态的证据是"分子内正负自旋矩共存且净矩近零"。"""
+    table = parse_hirshfeld(_write(workdir, _section([
+        (1, "C", 0.25), (2, "C", -0.25), (3, "Au", 0.50), (4, "Au", 0.50),
+    ])))
+    summary = summarize(table, {"molecule": [1, 2], "electrode": [3, 4]})
+    molecule = summary["groups"]["molecule"]
+    assert molecule["n_positive"] == 1
+    assert molecule["n_negative"] == 1
+    assert molecule["net"] == pytest.approx(0.0)
+    assert molecule["max_abs"] == pytest.approx(0.25)
+    assert summary["localized_antiparallel"] is True
+    assert summary["molecule_net"] == pytest.approx(0.0)
+    assert summary["molecule_max_abs"] == pytest.approx(0.25)
+    # 全表口径：净矩 1.0、最大绝对值 0.5，不能被分子组的"净零"覆盖。
+    assert summary["net"] == pytest.approx(1.0)
+    assert summary["max_abs"] == pytest.approx(0.5)
+
+
+def test_summarize_does_not_flag_polarized_moments(workdir: Path):
+    """分子内同号自旋矩是普通极化，不能报"局部反平行"。"""
+    table = parse_hirshfeld(_write(workdir, _section([
+        (1, "C", 0.30), (2, "C", 0.50), (3, "Au", 0.10), (4, "Au", 0.10),
+    ])))
+    summary = summarize(table, {"molecule": [1, 2], "electrode": [3, 4]})
+    assert summary["localized_antiparallel"] is False
+    assert summary["groups"]["molecule"]["n_negative"] == 0
+    assert summary["molecule_net"] == pytest.approx(0.80)
+
+
+def test_summarize_does_not_flag_numerical_noise(workdir: Path):
+    """局部矩只有 1e-6 μB 时，净矩/幅度比再小也是噪声，不能报反平行。"""
+    table = parse_hirshfeld(_write(workdir, _section([
+        (1, "C", 1e-6), (2, "C", -1e-6), (3, "Au", 0.0), (4, "Au", 0.0),
+    ])))
+    summary = summarize(table, {"molecule": [1, 2], "electrode": [3, 4]})
+    assert summary["groups"]["molecule"]["n_positive"] == 1
+    assert summary["groups"]["molecule"]["n_negative"] == 1
+    assert summary["localized_antiparallel"] is False
+
+
+def test_render_shows_broken_symmetry_evidence():
+    """BS run 的 §4.1 表下要有局部证据行；普通开壳层不出现该行。"""
+    from smj.report import _render_spin_section
+
+    partition = {
+        "total": 1.0,
+        "localized_antiparallel": True,
+        "molecule_n_positive": 1,
+        "molecule_n_negative": 1,
+        "molecule_net": 0.0,
+        "groups": {
+            "molecule": {"atoms": 2, "spin_moment": 0.0, "fraction": 0.0,
+                         "n_positive": 1, "n_negative": 1, "net": 0.0, "max_abs": 0.25},
+            "electrode": {"atoms": 2, "spin_moment": 1.0, "fraction": 1.0},
+        },
+    }
+    lines: list[str] = []
+    _render_spin_section(lines, {"channels": 2, "broken_symmetry": True}, partition)
+    text = "\n".join(lines)
+    assert "破缺对称证据" in text
+    assert "局部反平行" in text
+    assert "⟨S²⟩" in text and "NOON" in text
+
+    lines = []
+    _render_spin_section(lines, {"channels": 2, "broken_symmetry": False}, partition)
+    assert "破缺对称证据" not in "\n".join(lines)
+
+
+def test_review_reports_broken_symmetry_local_moments(workdir: Path):
+    """BS run 的复核要给局部自旋矩 info，且明确不是 ⟨S²⟩ 级别的证据。"""
+    from smj.review import ReviewResult, _spin_review
+
+    run_dir = workdir / "run"
+    (run_dir / "aims_scf").mkdir(parents=True)
+    (run_dir / "aims_scf" / "spin_partition.json").write_text(json.dumps({
+        "source": "aims.out",
+        "total": 1.0,
+        "atoms": 4,
+        "localized_antiparallel": True,
+        "molecule_n_positive": 1,
+        "molecule_n_negative": 1,
+        "molecule_net": 0.0,
+        "groups": {
+            "molecule": {"atoms": 2, "spin_moment": 0.0, "fraction": 0.0,
+                         "n_positive": 1, "n_negative": 1, "net": 0.0, "max_abs": 0.25},
+            "electrode": {"atoms": 2, "spin_moment": 1.0, "fraction": 1.0},
+        },
+    }), encoding="utf-8")
+    config = SimpleNamespace(molecule=SimpleNamespace(
+        multiplicity=1, charge=0, fixed_spin_moment=False, broken_symmetry=True))
+    result = ReviewResult(run_id="t")
+    _spin_review(result, run_dir, config)
+    assert "broken_symmetry_local_moments" in result.codes()
+    issue = next(i for i in result.issues if i["code"] == "broken_symmetry_local_moments")
+    assert issue["severity"] == "info"
+    assert "局部反平行" in issue["message"]
+
+    # 非 BS 的普通开壳层不产生该 code。
+    config = SimpleNamespace(molecule=SimpleNamespace(
+        multiplicity=2, charge=0, fixed_spin_moment=True, broken_symmetry=False))
+    result = ReviewResult(run_id="t")
+    _spin_review(result, run_dir, config)
+    assert "broken_symmetry_local_moments" not in result.codes()
+
+
 def test_render_shows_spin_partition_rows():
     from smj.report import _render_spin_section
 

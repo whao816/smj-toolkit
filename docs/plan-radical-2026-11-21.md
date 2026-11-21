@@ -164,6 +164,8 @@ Mulliken 投影一致到 1e-3。
 
 **验收**：`runs/ifs-bs` 生成的分区摘要与报告行可读；不改变任何判据结论（只加 info/展示）。
 
+**状态（2026-11-21，批次 C）：✅ 已实现。** `summarize` 的全表新增 `net`/`max_abs`，每个分区新增 `n_positive`/`n_negative`/`net`/`max_abs`，并给出分子组的 `molecule_net`/`molecule_max_abs`/`molecule_n_positive`/`molecule_n_negative` 与 `localized_antiparallel`（正负共存、单个原子至少 0.05 μB 且 `|net| < 0.05·max_abs`；无 `molecule` 分区时为 `None`，不冒充"未检出"）。0.05 μB 下限是为了挡住噪声：`runs/ifs-bs` 实测总自旋矩 0.0017 μB、分子 78 原子净矩 +0.00003 μB，但局部矩只有 ~5e-5 μB（净矩/幅度 0.52）→ `localized_antiparallel=False`，报告如实写"未满足局部反平行判据"——这条 BS 路径实际收敛到近闭壳层解，正是该证据行要暴露的。报告 §4.1 的 BS run 在自旋分布表下加证据行与脚注（明说不提供 ⟨S²⟩/NOON、需 Gaussian 交叉验证且不自动跑）；`review` 记 info `broken_symmetry_local_moments`（非 BS run 不出现）。测试 5 条（`tests/test_spin_partition.py`）；默认全量 560 passed。
+
 ### S5 判据口径与工程一致性（P2）
 
 **改法**
@@ -184,6 +186,8 @@ Mulliken 投影一致到 1e-3。
 
 **验收**：`pytest -m integration` 本机通过；默认全量 pytest 仍 533+ 且不跑集成。
 
+**状态（2026-11-21，批次 C）：✅ 已实现。** `tests/integration/test_radical_runs.py`（`pytestmark = pytest.mark.integration`）；`pyproject.toml` 注册 `integration` marker 并用 `addopts = ... -m "not integration"` 默认排除。两条用例：① 真实资产盘点（六阶段全 collected、`channels==2`、|P(E_F)|<0.05、`total=0.99997791`、分子占比 0.0056、`localized_antiparallel=False`）；② 在 `workdir` 复制整个 run（10.75 MB，测试内 1.7 s），离线重算 `spin` 与 Hirshfeld 分区注入副本，渲染报告断言 §4.1 / Sα/Sβ / 自旋分布 / 0.0056，再 `review_run(force=True)` 断言 `open_shell_uncalibrated` 与 `spin_localized_off_molecule`。默认全量 559 passed + 2 deselected；`-m integration` 2 passed。
+
 ### S7 文档（P0，小）
 
 1. `docs/自由基单分子结-实现对照与开发规划.md`：状态表更新（review ❌→✅；PDOS 待做→已做并加自旋配对；BS 待做→已做；extra_outputs 已接；Hirshfeld 分区标"本计划 S1"），§5.1 补"解析结果"，新增"§7 后续（本计划）"引用。
@@ -201,7 +205,7 @@ Mulliken 投影一致到 1e-3。
 | --- | --- | --- | --- |
 | A | S1 + S3 + S7 | `spin_partition.py`、`aims_scf.py`、`aitranss_te.py`、`config.py`、`report.py`、`review.py`、文档 | ✅ 2026-11-21：报告出现自旋分布；单列 TE 被拦；全量 549 passed |
 | B | S2 | `landauer_spin.py`、`criteria.py`、`junction_analyze.py`、`report.py` | Sα/Sβ 进结果与报告；provenance + demo 校验 | ✅ 2026-11-21（555 passed） |
-| C | S4 + S6 | `spin_partition.py`、`report.py`、`review.py`、`tests/integration/` | BS 证据行；`pytest -m integration` 通过 |
+| C | S4 + S6 | `spin_partition.py`、`report.py`、`review.py`、`tests/integration/` | BS 证据行；`pytest -m integration` 通过 | ✅ 2026-11-21（默认 560 passed；`-m integration` 2 passed） |
 | D | S5（+S8 可选） | `criteria.py`、`report.py` | 口径文案与 open_shell_protocol；无回归 |
 
 顺序理由：S1/S3 是证据与闸门，先落地才能给 S2/S4 提供真实数字；S2 动 junction 内核，单独一批方便 provenance/demo 对账；S4/S6 依赖 S1；S5 只改文案与工程检查，放最后避免反复改文案。

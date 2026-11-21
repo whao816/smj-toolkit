@@ -685,6 +685,14 @@ def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None
                         run_spec_protocol=stored, current_protocol=current)
 
 
+def _count_text(value: Any) -> str:
+    """整数计数 -> 文本；缺失/坏值显示 ``—``（复核信息里不伪造 0）。"""
+    try:
+        return "%d" % int(value)
+    except (TypeError, ValueError):
+        return "—"
+
+
 def _spin_partition(run_dir: Path) -> dict | None:
     """``aims_scf/spin_partition.json``（Hirshfeld 自旋分区，S1）; 缺失返回 None。"""
     path = Path(run_dir) / "aims_scf" / "spin_partition.json"
@@ -785,6 +793,30 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
                     "不能把总磁矩保持解读为自由基在分子上存活"
                     % (float(moment or 0.0), 100.0 * abs(fraction_value)),
                     spin_partition=dict(partition))
+    # 2026-11-21 批次 C（S4）：破缺对称单重态的证据。FHI-aims 的单行列式 BS
+    # 近似不提供 ⟨S²⟩/NOON，能拿到的第一手证据就是"分子内正负自旋矩共存、
+    # 净矩近零"。这里只报数并说明证据强度，不改任何判据结论。
+    if broken and partition is not None:
+        groups = partition.get("groups")
+        molecule_group = groups.get("molecule") if isinstance(groups, Mapping) else None
+        net = partition.get("molecule_net")
+        if net is None and isinstance(molecule_group, Mapping):
+            net = molecule_group.get("net", molecule_group.get("spin_moment"))
+        try:
+            net_value = float(net) if net is not None else None
+        except (TypeError, ValueError):
+            net_value = None
+        localized = partition.get("localized_antiparallel")
+        message = ("分子内 + / − 自旋矩各 %s / %s 个，净矩 %s μB（%s）；"
+                   "FHI-aims 单行列式不提供 ⟨S²⟩/NOON，这是局部证据而非严格反平行证明"
+                   % (_count_text(partition.get("molecule_n_positive")),
+                      _count_text(partition.get("molecule_n_negative")),
+                      "—" if net_value is None else "%+.4f" % net_value,
+                      "局部反平行" if localized is True
+                      else ("未满足局部反平行判据（净矩/幅度）" if localized is False
+                            else "分区数据不完整")))
+        result.add("info", "broken_symmetry_local_moments", message,
+                   spin_partition=dict(partition))
 
 
 # --------------------------------------------------------------------------- #

@@ -635,6 +635,19 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   （相对 1e-6）；旧 `spin` 块（只有 L0）只标"不适用"，不误判故障。
   `runs/ifs-bs` 实测 Sα=+6.1560、Sβ=+6.1589 μV/K（相对差 4.8e-4），P_S=−2.4e-4，
   与 P(E_F)=−1.8e-5 同号且可忽略。
+- **破缺对称（BS）单重态的证据（2026-11-21，S4）**：FHI-aims 单行列式 BS 近似不给
+  ⟨S²⟩/NOON，能拿到的第一手证据是 Hirshfeld 局部自旋矩。`spin_partition.summarize`
+  现在给出分子组内的正/负计数与净矩，正负共存、单个原子 ≥0.05 μB 且
+  `|net| < 0.05·max_abs` 时标 `localized_antiparallel: true`（0.05 μB 下限挡住数值
+  噪声）；`smj report` 的 §4.1 在 BS run 下加"破缺对称证据：分子内 +/− 自旋矩各
+  N₁/N₂ 个，净矩 X μB"一行，`smj review` 记 info `broken_symmetry_local_moments`
+  （只报数，不改任何判据结论）。要严格验证反平行请另跑 Gaussian 模型分子的 ⟨S²⟩
+  交叉验证——默认不自动执行，也不自动跑闭壳层对照。
+- **端到端集成回归（2026-11-21，S6）**：`tests/integration/test_radical_runs.py` 用真实
+  `runs/ttf-cation` 资产重算 Hirshfeld 分区与双通道 S，断言六阶段齐全、通道数 2、
+  |P(E_F)|<0.05、分子自旋占比 <1%，并在 run 副本上渲染报告、重跑 `review`（应出现
+  `open_shell_uncalibrated`）。默认测试集用 `addopts = -m "not integration"` 排除它；
+  要跑：`python -m pytest -m integration tests/integration -q`（本机 2 passed）。
 
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。

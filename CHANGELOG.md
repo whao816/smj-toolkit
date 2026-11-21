@@ -4,6 +4,30 @@
 
 ## 未发布
 
+### 新增：2026-11-21 自由基支线批次 C（BS 局部证据 + 端到端集成回归）
+
+计划见 `docs/plan-radical-2026-11-21.md`（批次 C = S4 + S6）。此前破缺对称（BS）单重态
+只有"反号初猜 + 两条自旋通道"，没有局部自旋证据；真实开壳层 run 也没有任何端到端回归。
+
+- `spin_partition.summarize` 新增全表 `net`/`max_abs` 与每分区 `n_positive`/`n_negative`/
+  `net`/`max_abs`，并给出分子组的 `localized_antiparallel`（正负共存、单个原子至少
+  0.05 μB 且 `|net| < 0.05·max_abs`；0.05 μB 下限挡住数值噪声）；无 `molecule` 分区时
+  为 `None`，不把"缺证据"写成"未检出"。`runs/ifs-bs` 实测：总自旋矩 0.0017 μB、
+  分子 78 原子净矩 +0.00003 μB，但局部矩仅 ~5e-5 μB → 判为 `False`（该 BS 路径实际
+  收敛到近闭壳层解），报告如实写"未满足局部反平行判据"。
+- `smj report` 的 §4.1 在 BS run 的自旋分布表下加"破缺对称证据：分子内 +/− 自旋矩各
+  N₁/N₂ 个，净矩 X μB"一行，并加脚注说明 FHI-aims 单行列式不提供 ⟨S²⟩/NOON、如需严格
+  验证要用 Gaussian 模型分子交叉验证（默认不自动执行，也不自动跑闭壳层对照）。
+- `smj review` 对 BS run 记 info `broken_symmetry_local_moments`（带局部计数与净矩）；
+  非 BS 开壳层不出现该代码，不改任何判据结论。
+- 新增 `tests/integration/test_radical_runs.py`（`pytestmark = pytest.mark.integration`）：
+  真实 `runs/ttf-cation` 资产断言六阶段齐全、`channels==2`、|P(E_F)|<0.05、分子自旋占比
+  0.56%；在 run 副本上离线重算 `spin`/分区后渲染报告并重跑 review（出现
+  `open_shell_uncalibrated`/`spin_localized_off_molecule`）。`pyproject.toml` 注册
+  `integration` marker，并用 `addopts = ... -m "not integration"` 默认排除。
+- 验收：默认全量 560 passed / 2 deselected；`python -m pytest -m integration tests/integration -q`
+  → 2 passed（1.7 s）。
+
 ### 新增：2026-11-21 自由基支线批次 B（自旋分辨热输运）
 
 计划见 `docs/plan-radical-2026-11-21.md`（批次 B = S2）。此前开壳层只有

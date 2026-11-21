@@ -173,6 +173,17 @@ def default_groups(
     }
 
 
+def _moment_stats(values: Sequence[float]) -> dict[str, float | int]:
+    """一组自旋矩的计数/净矩/最大绝对值（正负阈值与 ``localized`` 一致）。"""
+    moments = [float(value) for value in values]
+    return {
+        "n_positive": sum(1 for value in moments if value > 1e-8),
+        "n_negative": sum(1 for value in moments if value < -1e-8),
+        "net": sum(moments),
+        "max_abs": max((abs(value) for value in moments), default=0.0),
+    }
+
+
 def summarize(
     table: HirshfeldTable,
     groups: Mapping[str, Sequence[int]],
@@ -181,6 +192,13 @@ def summarize(
 
     分区必须互不重叠且只引用表里存在的原子，否则抛 ``ValueError``——重复
     计数会让"占比"变成假数字，宁可显式失败。
+
+    破缺对称（BS）单重态的证据是"分子内正负自旋矩共存、净矩近零"：为此除
+    全表的 ``n_positive``/``n_negative``/``net``/``max_abs`` 外，还给出分子组
+    的对应量与 ``localized_antiparallel``（正负共存、单个原子至少 0.05 μB
+    且 ``|net| < 0.05*max_abs``）。0.05 μB 的下限用来挡住数值噪声（``ifs-bs``
+    的局部矩只有 ~5e-5 μB，净矩/幅度比虽小但毫无意义）。没有 ``molecule``
+    分区时这些键为 ``None``——缺证据不冒充"未检出"。
     """
     if not table.atoms:
         return None
@@ -200,24 +218,46 @@ def summarize(
             owner[index] = name
             if atom.spin_moment is not None:
                 values.append(atom.spin_moment)
+        stats = _moment_stats(values)
         by_group[name] = {
             "atoms": len(indices),
-            "spin_moment": sum(values),
+            "spin_moment": stats["net"],
             "fraction": None,
+            **stats,
         }
     total = table.total or 0.0
     if total:
         for data in by_group.values():
             data["fraction"] = data["spin_moment"] / total
     moments = [atom.spin_moment or 0.0 for atom in table.atoms]
-    positive = sum(1 for value in moments if value > 1e-8)
-    negative = sum(1 for value in moments if value < -1e-8)
+    overall = _moment_stats(moments)
+    molecule = by_group.get("molecule")
+    if molecule is not None:
+        molecule_net = molecule["net"]
+        molecule_max_abs = molecule["max_abs"]
+        localized_antiparallel = bool(
+            molecule["n_positive"] > 0 and molecule["n_negative"] > 0
+            and molecule_max_abs >= 0.05
+            and abs(molecule_net) < 0.05 * molecule_max_abs)
+        molecule_positive = molecule["n_positive"]
+        molecule_negative = molecule["n_negative"]
+    else:
+        molecule_net = molecule_max_abs = None
+        molecule_positive = molecule_negative = None
+        localized_antiparallel = None
     return {
         "total": table.total,
         "atoms": len(table.atoms),
         "missing": table.missing,
         "groups": by_group,
-        "n_positive": positive,
-        "n_negative": negative,
-        "localized": positive > 0 and negative > 0,
+        "n_positive": overall["n_positive"],
+        "n_negative": overall["n_negative"],
+        "net": overall["net"],
+        "max_abs": overall["max_abs"],
+        "localized": overall["n_positive"] > 0 and overall["n_negative"] > 0,
+        "molecule_net": molecule_net,
+        "molecule_max_abs": molecule_max_abs,
+        "molecule_n_positive": molecule_positive,
+        "molecule_n_negative": molecule_negative,
+        "localized_antiparallel": localized_antiparallel,
     }

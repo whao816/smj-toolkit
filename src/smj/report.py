@@ -705,6 +705,24 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
         lines.append("")
         lines.append("- 接触区 = 距锚原子 ≤3.0 Å 的电极原子；自旋分布只陈述 "
                      "FHI-aims 的 Hirshfeld 分配，不参与判定。")
+        if spin.get("broken_symmetry"):
+            localized = partition.get("localized_antiparallel")
+            if localized is True:
+                tag = "局部反平行"
+            elif localized is False:
+                tag = "未满足局部反平行判据（净矩/幅度）"
+            else:
+                tag = "分区数据不完整"
+            lines.append(
+                "- 破缺对称证据：分子内 + / − 自旋矩各 %s / %s 个，净矩 %s μB（%s）。"
+                % (_cell(partition.get("molecule_n_positive")),
+                   _cell(partition.get("molecule_n_negative")),
+                   _fmt(partition.get("molecule_net"), "%+.4f"), tag))
+    if spin.get("broken_symmetry"):
+        lines.append("")
+        lines.append("- FHI-aims 单行列式不提供 ⟨S²⟩/NOON；上行的局部自旋矩是"
+                     "证据展示，不改变任何判据结论。如需严格验证，可另跑 Gaussian "
+                     "模型分子的 ⟨S²⟩ 交叉验证（默认不自动执行）。")
 
 
 def render_report(manifest: Mapping[str, Any]) -> str:
