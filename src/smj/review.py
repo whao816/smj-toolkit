@@ -45,6 +45,7 @@ from .provenance import (
     load_run_spec,
     protocol_components,
     protocol_sha256,
+    sha256_file,
 )
 from .errors import SmjError
 from .spin_summary import findings as spin_findings, normalize as normalize_spin
@@ -560,6 +561,34 @@ def _family_drift(config: Any, spec: Mapping[str, Any]) -> Any:
     return _NOT_FAMILY_ONLY
 
 
+def _molecule_content_drift(spec: dict, config: Any) -> tuple[str, str] | None:
+    """分子几何在 run 开始后是否变化（内容哈希比对）。
+
+    协议指纹的 schema 演进判断只能比较"两侧都存在的键"：快照 config 里的
+    ``molecule`` 是 ``xyz`` 路径键，当前协议子集里是 ``xyz_sha256``，任何坐标
+    改动都会退化成"只在单侧出现的键"，被误判成记录方式演进。run_spec 顶层另行
+    保存了 ``molecule.sha256``（``provenance.run_spec_payload``），这里先做内容
+    比对：两侧都有且不同 -> 物理漂移；任一侧拿不到 -> 返回 ``None``，交回既有
+    family/schema 逻辑（fail-closed）。
+    """
+    snapshot = spec.get("molecule")
+    if not isinstance(snapshot, Mapping):
+        return None
+    recorded = snapshot.get("sha256")
+    if not isinstance(recorded, str) or not recorded:
+        return None
+    try:
+        xyz = config.molecule_xyz()
+    except Exception:  # noqa: BLE001 - 配置不完整交给其它检查
+        return None
+    if xyz is None:
+        return None
+    current = sha256_file(xyz)
+    if not current or current == recorded:
+        return None
+    return recorded, current
+
+
 def _schema_shape_drift(spec: dict, config: Any) -> dict | None:
     """协议指纹不同但只是 schema 形状演进时，返回比对明细；否则 None。
 
@@ -621,8 +650,20 @@ def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None
                     run_spec_protocol=stored, current_protocol=current,
                     family_run=family_run, family_current=family_now)
             else:
-                shaped = _schema_shape_drift(spec, config)
-                if shaped is not None:
+                content = _molecule_content_drift(spec, config)
+                shaped = None if content is not None else _schema_shape_drift(spec, config)
+                if content is not None:
+                    run_sha, now_sha = content
+                    result.add(
+                        "error", "provenance_drift",
+                        "分子几何在 run 开始后发生变化：run_spec.molecule.sha256=%s，"
+                        "当前分子文件=%s；同一路径下的坐标已不同，本次结果不能按原"
+                        "几何解读（需重建 run 或显式豁免）"
+                        % (run_sha[:12], now_sha[:12]),
+                        run_spec_protocol=stored, current_protocol=current,
+                        run_spec_molecule_sha256=run_sha,
+                        current_molecule_sha256=now_sha)
+                elif shaped is not None:
                     result.add(
                         "warning", "provenance_schema_evolved",
                         "run_spec.protocol_sha256=%s，当前配置=%s；协议 schema 已演进"

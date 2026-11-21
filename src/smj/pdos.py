@@ -359,12 +359,18 @@ _OCC_ROW_RE = re.compile(
     r"[-+]?\d*\.\d+(?:[DdEe][-+]?\d+)?\s+[-+]?\d*\.\d+(?:[DdEe][-+]?\d+)?\s*$")
 
 
-def parse_occupations(aims_out: str | Path) -> dict[str, Any]:
+def parse_occupations(aims_out: str | Path, *, open_shell: bool = False) -> dict[str, Any]:
     """从 ``aims.out`` 的 ``State Occupation Eigenvalue`` 表读占据数。
 
-    FHI-aims 的 ``.aims`` 波函数文件只写本征值、不写占据数；自旋极化时
-    ``aims.out`` 在末尾按 spin 各打一张表（先 α 后 β）。取最后两张等长的表
-    作为 α/β，只有一张则视为闭壳层。
+    FHI-aims 的 ``.aims`` 波函数文件只写本征值、不写占据数；``aims.out`` 每轮
+    SCF 迭代都会打表，闭壳层每轮一张、开壳层每轮两张（先 α 后 β）。因此**不能**
+    把"最后两张等长表"直接当 α/β —— 闭壳层 run 的倒数第二张是上一轮迭代。
+
+    配对规则由调用方按自旋模式指定：
+
+    * ``open_shell=True``：末两张表 = 终态 α/β（行数可以不同；由调用方再核对
+      每张表与对应通道的态数）；
+    * ``open_shell=False``（默认）：只取最后一张表为 ``alpha``，``beta=None``。
     """
     p = Path(aims_out)
     if not p.is_file():
@@ -391,11 +397,14 @@ def parse_occupations(aims_out: str | Path) -> dict[str, Any]:
         tables.append(current)
     if not tables:
         raise PdosError("aims.out 里没有 State/Occupation 表：%s" % p)
-    same = [t for t in tables if len(t) == len(tables[-1])]
-    if len(same) >= 2:
-        return {"source": str(p), "tables": len(tables),
-                "alpha": same[-2], "beta": same[-1]}
-    return {"source": str(p), "tables": len(tables),
+    if open_shell:
+        if len(tables) < 2:
+            raise PdosError(
+                "开壳层 PDOS 需要 aims.out 里 α/β 两张 State/Occupation 表"
+                "（当前只有 %d 张；开壳层 SCF 每轮会各打一张）" % len(tables))
+        return {"source": str(p), "tables": len(tables), "rows": tables,
+                "alpha": tables[-2], "beta": tables[-1]}
+    return {"source": str(p), "tables": len(tables), "rows": tables,
             "alpha": tables[-1], "beta": None}
 
 
@@ -497,7 +506,9 @@ def analyze_pdos(
     occupation_tables = None
     aims_out = _find(scf, "aims.out")
     if aims_out is not None:
-        occupation_tables = parse_occupations(aims_out)
+        # 只有 alpha+beta 两个通道都在时才是开壳层；单独一个 alpha 通道（远端
+        # 只回取了自旋向上）仍按闭壳层取最后一张表。
+        occupation_tables = parse_occupations(aims_out, open_shell="beta" in channels)
 
     notes: list[str] = [
         "权重按每个态的 Σ_all c² 归一（w_group = Σ_{ν∈group} c² / Σ_all c²）：NAO 基非正交，"
@@ -507,9 +518,9 @@ def analyze_pdos(
     ]
     if occupation_tables is not None:
         notes.append(
-            "占据数取自 %s 的 State Occupation 表（共 %d 张%s）"
+            "占据数取自 %s 的 State Occupation 表（共 %d 张，%s）"
             % (occupation_tables["source"], occupation_tables["tables"],
-               "，末两张为 α/β 终态" if occupation_tables["beta"] else "，单张=闭壳层"))
+               "末两张为 α/β 终态" if occupation_tables["beta"] else "取最后一张=闭壳层"))
     else:
         notes.append("没有 aims.out：按每个态占据 1 计权（只能看态密度形状，不能当占据数解释）")
     result: dict[str, Any] = {
@@ -549,6 +560,11 @@ def analyze_pdos(
             states += 1
         if not states:
             raise PdosError("%s 里没有可识别的 KS 态" % path)
+        if table is not None and len(table) != states:
+            raise PdosError(
+                "aims.out 的占据表有 %d 个态，%s 里有 %d 个 KS 态：无法逐态配对"
+                "（不能按索引静默截断，通常意味着取错了迭代/自旋的表）"
+                % (len(table), path.name, states))
         pdos = {key: broaden(values_ev, weight, result["grid_eV"], sigma_ev)
                 for key, weight in weights.items()}
         result["channels"][name] = {

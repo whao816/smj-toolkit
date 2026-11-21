@@ -17,6 +17,16 @@ R1 用"求积充分性"（权重积分/精确覆盖、权重一阶矩）来区�
   真实阶段写的是 `<variant>/run/<name>/junction_analyze/results.json`。
 - R4 多轴只比较每个轴值的**第一行**，漏掉其余切片；空指标时 `worst` 保持 0.0
   直接判 converged。
+
+批 3 对应附件第 1、7 条：
+
+- R5 run_spec 快照里本来就存了分子内容哈希（`spec["molecule"]["sha256"]`），
+  复核却从不使用它；改了 XYZ 坐标后协议哈希必然变，`_schema_shape_drift`
+  看到 `molecule.xyz` 与 `molecule.xyz_sha256` 只在单侧存在，就把"几何变了"
+  误判成 schema 演进（warning）。
+- R6 `parse_occupations` 把 aims.out 里**最后两张等长表**当 α/β；闭壳层 run
+  的 aims.out 每轮迭代都打一张表，早一轮的表被当成自旋通道，PDOS 权重整片
+  错位（+0.2 eV 的权重 0 → 39.9），绝对量不可用。
 """
 
 from __future__ import annotations
@@ -29,7 +39,11 @@ import pytest
 from smj.config import ConfigError, load_config
 from smj.junction.criteria import evaluate_run_criteria, physics_verdict
 from smj.junction.landauer import analyze_te
+from smj.pdos import PdosError, analyze_pdos
 from smj.runner import StageRunner
+
+from test_pdos import _aims_out, _run as _pdos_run, _uhfmo
+from test_review_provenance import _codes, _prepared_run
 
 ROOT = Path(__file__).resolve().parents[1]
 EF_HARTREE = -0.18
@@ -200,3 +214,72 @@ def test_paths_species_dir_alias_and_conflict(workdir):
         "  species_defaults: " + tight.as_posix() + "\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="species_dir"):
         load_config(clash)
+
+
+# --------------------------------------------------------------------------- #
+# 批 3：R5 结构指纹 + R6 占据表配对（附件第 1、7 条）
+# --------------------------------------------------------------------------- #
+def test_coordinate_change_at_same_path_is_protocol_drift(workdir):
+    """同一路径下改坐标 = 物理漂移，不能降级成 provenance_schema_evolved。"""
+    config, run_dir = _prepared_run(workdir)
+    xyz = config.molecule_xyz()
+    before = xyz.read_text(encoding="utf-8")
+    after = before.replace("H 0 0 1\n", "H 0 0 1.5\n")
+    assert before != after
+    xyz.write_text(after, encoding="utf-8")
+    codes = _codes(config, run_dir)
+    assert "provenance_drift" in codes, codes
+    assert "provenance_schema_evolved" not in codes, codes
+
+
+def test_closed_shell_pdos_ignores_previous_iterations(workdir):
+    """闭壳层 PDOS 只用最后一张占据表；早一轮迭代的表不是 beta 通道。"""
+    run = _pdos_run(workdir, natoms=2, offsets=(-0.2, 0.2), grid=(-0.2, 0.0, 0.2))
+    aims_out = run / "aims_scf" / "aims.out"
+    aims_out.write_text(_aims_out([2.0, 0.0]), encoding="utf-8")
+    expected = analyze_pdos(run, groups="mol=1-2", sigma_ev=0.01)["channels"]["mos"]["pdos"]["mol"]
+
+    # 上一轮迭代：占据 [1, 1]、能量都在 0 附近；终态表在最后。
+    aims_out.write_text(
+        _aims_out([1.0, 1.0]) + "End of iteration\n" + _aims_out([2.0, 0.0]),
+        encoding="utf-8")
+    spectrum = analyze_pdos(run, groups="mol=1-2", sigma_ev=0.01)["channels"]["mos"]["pdos"]["mol"]
+    assert spectrum == pytest.approx(expected)
+
+
+def test_occupation_table_must_match_state_count(workdir):
+    """占据表行数与波函数态数不符 -> PdosError（不能按索引静默截断）。"""
+    run = _pdos_run(workdir, natoms=2, offsets=(-0.2, 0.2), grid=(-0.2, 0.0, 0.2))
+    (run / "aims_scf" / "aims.out").write_text(
+        _aims_out([2.0, 0.0, 0.0]), encoding="utf-8")
+    with pytest.raises(PdosError, match="占据"):
+        analyze_pdos(run, groups="mol=1-2", sigma_ev=0.01)
+
+
+def test_open_shell_pairs_last_two_tables_per_channel(workdir):
+    """开壳层：末两张表（α、β 行数可以不同）各自对本通道，早期迭代表忽略。"""
+    run = _pdos_run(workdir, natoms=2, mos=_uhfmo("alpha", (-0.2, 0.2), natoms=2))
+    scf = run / "aims_scf"
+    (scf / "alpha.aims").write_text(_uhfmo("alpha", (-0.2, 0.2), natoms=2), encoding="utf-8")
+    (scf / "beta.aims").write_text(_uhfmo("beta", (-0.1,), natoms=2), encoding="utf-8")
+    (scf / "aims.out").write_text(
+        _aims_out([1.0, 0.0], [1.0]) + _aims_out([2.0, 0.0], [0.0]),
+        encoding="utf-8")
+    result = analyze_pdos(run, groups="mol=1-2", sigma_ev=0.01)
+    alpha = result["channels"]["alpha"]
+    beta = result["channels"]["beta"]
+    assert alpha["states"] == 2 and beta["states"] == 1
+    assert sum(alpha["integrated_weight"].values()) == pytest.approx(2.0, abs=1e-9)
+    assert sum(beta["integrated_weight"].values()) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_open_shell_table_count_mismatch_raises(workdir):
+    """开壳层占据表行数与通道态数不符 -> PdosError（不按索引截断）。"""
+    run = _pdos_run(workdir, natoms=2, mos=_uhfmo("alpha", (-0.2, 0.2), natoms=2))
+    scf = run / "aims_scf"
+    (scf / "alpha.aims").write_text(_uhfmo("alpha", (-0.2, 0.2), natoms=2), encoding="utf-8")
+    (scf / "beta.aims").write_text(_uhfmo("beta", (-0.1, 0.1), natoms=2), encoding="utf-8")
+    (scf / "aims.out").write_text(
+        _aims_out([1.0, 0.0, 0.0], [1.0, 0.0, 0.0]), encoding="utf-8")
+    with pytest.raises(PdosError, match="占据"):
+        analyze_pdos(run, groups="mol=1-2", sigma_ev=0.01)
