@@ -244,6 +244,11 @@ class TransportConfig:
     #: collect 时是否要求 aitranss 主输出 ``te.out`` 存在（结果可复核的一部分）。
     #: 仅外部/历史 run 才应显式设为 false 豁免；不改变物理结果，故不进 protocol。
     require_te_out: bool = True
+    #: 开壳层 TE.dat 只有 1 个自旋通道时是否放行。默认阻断：tcontrol 若仍用
+    #: ``$scfmo`` 或 beta 波函数缺失，aitranss 会把 α/β 合并成均值，自旋极化不可
+    #: 恢复；只有确知该谱只能单列（外部/历史数据）才显式打开。只影响 collect 闸门，
+    #: 不改变求解与积分口径，故与 ``require_te_out`` 一样**不进** protocol。
+    allow_single_channel: bool = False
     #: 额外请求的 FHI-aims 输出（静态 SCF，``aims_scf``）：``hirshfeld``、``spin_density``。
     #: 开壳层判据要"自旋是否留在分子上"的第一手证据时才打开；默认关闭，避免所有 run
     #: 产物变重。只影响产物、不影响求解参数，故与 ``require_te_out`` 一样**不进** protocol。
@@ -478,8 +483,9 @@ _ELECTRODE_KEYS = {
     "relax", "relax_force_threshold", "relax_freeze",
 }
 _TRANSPORT_KEYS = {"temperature", "energy_window", "energy_window_unit",
-                   "ener", "estep", "eend", "require_te_out", "extra_outputs",
-                   "occupation_width", "charge_mix_param", "n_max_pulay"}
+                   "ener", "estep", "eend", "require_te_out", "allow_single_channel",
+                   "extra_outputs", "occupation_width", "charge_mix_param",
+                   "n_max_pulay"}
 _CLUSTER_KEYS = {
     "host", "user", "port", "key", "remote_root", "partition", "ntasks", "gres",
     "account", "qos", "species_dir", "poll_seconds", "timeout_hours", "env",
@@ -732,6 +738,8 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
         eend=_as_float(data["eend"], "transport.eend") if data.get("eend") is not None else None,
         require_te_out=_as_bool(data.get("require_te_out", True),
                                 "transport.require_te_out"),
+        allow_single_channel=_as_bool(data.get("allow_single_channel", False),
+                                      "transport.allow_single_channel"),
         extra_outputs=_parse_extra_outputs(data.get("extra_outputs")),
         occupation_width=_as_float(data.get("occupation_width", 0.01),
                                    "transport.occupation_width"),

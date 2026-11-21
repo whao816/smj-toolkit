@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,6 +33,12 @@ class _Ctx:
         self.config = SimpleNamespace()
 
     def require_stage_file(self, stage: str, name: str) -> Path:
+        path = self.layout.run_dir / stage / name
+        if not path.is_file():
+            raise StageBlocked(stage, "缺 %s" % path, [str(path)])
+        return path
+
+    def artifact(self, stage: str, name: str) -> Path:
         path = self.layout.run_dir / stage / name
         if not path.is_file():
             raise StageBlocked(stage, "缺 %s" % path, [str(path)])
@@ -190,3 +197,60 @@ def test_aitranss_te_rejects_empty_beta_wavefunction(workdir: Path):
 
     with pytest.raises(StageBlocked, match=r"beta\.aims"):
         AitranssTeStage()._spin_nsaos(scf_dir)
+
+
+# --------------------------------------------------------------------------- #
+# 2026-11-21 自由基支线 S1：Hirshfeld 自旋矩 -> 分子/电极分区
+# --------------------------------------------------------------------------- #
+_HIRSHFELD = """\
+  Performing Hirshfeld analysis of fragment charges and moments.
+  ----------------------------------------------------------------------
+  | Atom     1: S
+  |   Hirshfeld charge        :     -0.06377126
+  |   Hirshfeld spin moment   :      0.25000000
+  | Atom     2: S
+  |   Hirshfeld charge        :     -0.04902760
+  |   Hirshfeld spin moment   :      0.25000000
+  | Atom     3: Au
+  |   Hirshfeld charge        :      0.01000000
+  |   Hirshfeld spin moment   :      0.40000000
+  | Atom     4: Au
+  |   Hirshfeld charge        :      0.01000000
+  |   Hirshfeld spin moment   :      0.10000000
+  ----------------------------------------------------------------------
+"""
+
+
+def test_collect_records_hirshfeld_spin_partition(workdir: Path):
+    run_dir = workdir / "run"
+    stage_dir = run_dir / "aims_scf"
+    stage_dir.mkdir(parents=True)
+    (stage_dir / "geometry.in").write_text(
+        "atom  0.0 0.0 0.0 S\n"
+        "atom  3.0 0.0 0.0 S\n"
+        "atom  5.4 0.0 0.0 Au\n"
+        "atom -2.4 0.0 0.0 Au\n", encoding="utf-8")
+    (stage_dir / "aims.out").write_text(
+        "  FHI-aims version      : 221103\n" + SCF_CONVERGED + _HIRSHFELD,
+        encoding="utf-8")
+    write_scf_artifacts(stage_dir)
+    tip = run_dir / "aims_tip_relax"
+    tip.mkdir()
+    (tip / "input_summary.json").write_text(
+        json.dumps({"atom_count": 4, "au_tip_count": 2}), encoding="utf-8")
+
+    ctx = _Ctx(run_dir)
+    ctx.config = SimpleNamespace(
+        molecule=SimpleNamespace(multiplicity=1),
+        transport=SimpleNamespace(extra_outputs=("hirshfeld",)),
+    )
+    out = AimsScfStage().collect(ctx, stage_dir)
+    partition = out.results["aims_scf"]["spin_partition"]
+    assert partition["total"] == pytest.approx(1.0)
+    assert partition["groups"]["molecule"]["spin_moment"] == pytest.approx(0.5)
+    assert partition["groups"]["electrode"]["spin_moment"] == pytest.approx(0.5)
+    sidecar = stage_dir / "spin_partition.json"
+    assert sidecar.is_file()
+    stored = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert stored["atoms"] == 4
+    assert "spin_partition.json" in out.artifacts

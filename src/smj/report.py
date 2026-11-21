@@ -370,6 +370,23 @@ def _spin_block(spin: Any, molecule: Mapping[str, Any]) -> dict | None:
     )
 
 
+def _spin_partition_block(state: RunState) -> dict | None:
+    """``aims_scf`` 写下的 Hirshfeld 自旋分区（S1）；缺失时返回 None。
+
+    分区来自 FHI-aims 的 Hirshfeld 分析：总磁矩守恒不能说明自由基还在分子上，
+    必须把分子/接触区/电极的份额分开报。这里只搬运展示数据，不参与判定。
+    """
+    try:
+        recorded = state.stage("aims_scf").results or {}
+    except (KeyError, AttributeError):
+        return None
+    inner = recorded.get("aims_scf") if isinstance(recorded, Mapping) else None
+    if not isinstance(inner, Mapping):
+        return None
+    block = inner.get("spin_partition")
+    return dict(block) if isinstance(block, Mapping) else None
+
+
 def _transport_summary(run_dir: Path, state: RunState, temperature: float | None,
                        warnings: list[str], *,
                        molecule: Mapping[str, Any] | None = None) -> dict | None:
@@ -396,6 +413,9 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
         spin = _spin_block(payload.get("spin"), molecule)
         if spin is not None:
             transport["spin"] = spin
+        partition = _spin_partition_block(state)
+        if partition is not None:
+            transport["spin_partition"] = partition
         return transport
     te = run_dir / "aitranss_te" / "TE.dat"
     if not te.is_file():
@@ -422,6 +442,9 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
         else:
             if spin is not None:
                 payload["spin"] = spin
+    partition = _spin_partition_block(state)
+    if partition is not None:
+        payload["spin_partition"] = partition
     return payload
 
 
@@ -613,7 +636,8 @@ def _cell(value: Any) -> str:
     return text.replace("|", "/").replace("\n", " ").strip()
 
 
-def _render_spin_section(lines: list[str], spin: Mapping[str, Any]) -> None:
+def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
+                         partition: Mapping[str, Any] | None = None) -> None:
     """§4.1 自旋通道：只补 α/β 分量与极化度，不改总 G/S 口径。"""
     lines.append("")
     lines.append("### 4.1 自旋通道（开壳层）")
@@ -653,6 +677,25 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any]) -> None:
         lines.append("- %s" % spin["fixed_constraint_caveat"])
     if spin.get("note"):
         lines.append("- 数据提示：%s" % _cell(spin.get("note")))
+    if isinstance(partition, Mapping) and isinstance(partition.get("groups"), Mapping):
+        groups = partition["groups"]
+        lines.append("")
+        lines.append("**自旋分布（Hirshfeld，μB）**")
+        lines.append("")
+        lines.append("| 区域 | 原子数 | 自旋矩 (μB) | 占比 |")
+        lines.append("|---|---|---|---|")
+        for name, label in (("molecule", "分子"), ("contact", "接触区"),
+                            ("electrode", "电极")):
+            data = groups.get(name)
+            if not isinstance(data, Mapping):
+                continue
+            lines.append("| %s | %s | %s | %s |" % (
+                label, _cell(data.get("atoms")),
+                _fmt(data.get("spin_moment"), "%+.4f"),
+                spin_percent(data.get("fraction"))))
+        lines.append("")
+        lines.append("- 接触区 = 距锚原子 ≤3.0 Å 的电极原子；自旋分布只陈述 "
+                     "FHI-aims 的 Hirshfeld 分配，不参与判定。")
 
 
 def render_report(manifest: Mapping[str, Any]) -> str:
@@ -869,7 +912,7 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     else:
         lines.append("- 无 TE.dat / analysis.json，输运结果不可得。")
     if isinstance(transport, Mapping) and isinstance(transport.get("spin"), Mapping):
-        _render_spin_section(lines, transport["spin"])
+        _render_spin_section(lines, transport["spin"], transport.get("spin_partition"))
     lines.append("")
 
     lines.append("## 5. 失败原因")

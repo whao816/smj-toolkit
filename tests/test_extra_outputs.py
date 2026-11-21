@@ -254,11 +254,32 @@ def test_collect_accepts_hirshfeld_section(workdir: Path):
     stage_dir = run_dir / "aims_scf"
     _seed_stage(stage_dir, log_text=(
         "  FHI-aims version      : 221103\n"
-        "  Hirshfeld analysis\n"
-        "  Hirshfeld charge      0.1234\n" + SCF_CONVERGED))
+        "  Performing Hirshfeld analysis of fragment charges and moments.\n"
+        "  ----------------------------------------------------------------------\n"
+        "  | Atom     1: C\n"
+        "  |   Hirshfeld charge        :     -0.06377126\n"
+        "  |   Hirshfeld spin moment   :      0.00010109\n" + SCF_CONVERGED))
     ctx = _CollectCtx(run_dir, extra_outputs=("hirshfeld",))
     out = AimsScfStage().collect(ctx, stage_dir)
-    assert out.results["aims_scf"]["hirshfeld_mentions"] == 2
+    payload = out.results["aims_scf"]
+    assert payload["hirshfeld_mentions"] == 3
+    # 2026-11-21 自由基支线 S1：Hirshfeld 段被解析成自旋分区侧车。
+    assert payload["spin_partition"]["atoms"] == 1
+    assert payload["spin_partition"]["source"] == "aims.out"
+    assert "spin_partition.json" in out.artifacts
+
+
+def test_collect_rejects_hirshfeld_section_without_atoms(workdir: Path):
+    """段名在、但解析不出 ``| Atom N:`` 行 -> 没有证据，不标 collected。"""
+    run_dir = workdir / "run"
+    stage_dir = run_dir / "aims_scf"
+    _seed_stage(stage_dir, log_text=(
+        "  FHI-aims version      : 221103\n"
+        "  Performing Hirshfeld analysis of fragment charges and moments.\n"
+        "  Hirshfeld charge      0.1234\n" + SCF_CONVERGED))
+    ctx = _CollectCtx(run_dir, extra_outputs=("hirshfeld",))
+    with pytest.raises(StageError, match="Atom"):
+        AimsScfStage().collect(ctx, stage_dir)
 
 
 def test_collect_without_extra_outputs_is_unchanged(workdir: Path):

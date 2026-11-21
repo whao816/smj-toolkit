@@ -4,6 +4,29 @@
 
 ## 未发布
 
+### 新增：2026-11-21 自由基支线批次 A（Hirshfeld 自旋分区 + 单列 TE 闸门）
+
+计划见 `docs/plan-radical-2026-11-21.md`（批次 A = S1 + S3 + S7）。此前的开壳层链能保证
+"总磁矩保持、双通道透射还在"，但回答不了"这 1 μB 里有多少真的在分子上"；单列 TE 也会
+静默通过。本批次补上证据与闸门：
+
+- **S1 Hirshfeld 自旋分区**：新模块 `src/smj/spin_partition.py` 解析 `aims.out` 的
+  `Performing Hirshfeld analysis` 段（取最后一段；缺 `Hirshfeld spin moment` 的原子记
+  `None` 而不是 0），按分子 / 接触区（距锚原子 ≤3.0 Å）/ 电极分区。`aims_scf.collect` 在
+  `transport.extra_outputs` 含 `hirshfeld` 时写侧车 `aims_scf/spin_partition.json`，
+  `results["aims_scf"]["spin_partition"]` 放摘要；`smj report` §4.1 新增"自旋分布
+  （Hirshfeld，μB）"表；`smj review` 对分子份额 <1% 的开壳层 run 记
+  `spin_localized_off_molecule`（info）。实测 `runs/ttf-cation`：总 1.0000 μB，分子 1–14
+  0.0056、tip 15/16 0.0063、电极 17–88 0.9881，与既有 Mulliken 投影一致到 1e-3。请求了
+  `hirshfeld` 但段里解析不出 `| Atom N:` 行 → `StageError`（没有证据不标 collected）。
+- **S3 单列 TE 默认阻断**：`aitranss_te.collect` 在 `multiplicity>1`（或破缺对称）且
+  TE.dat 只有一列时直接 `StageError`——α/β 已被 aitranss 合并成均值，自旋极化无法恢复。
+  新增 `transport.allow_single_channel: false` 显式放行，结果记
+  `single_channel_allowed` 与 note。既有 7 个开壳层 run 的 TE.dat 全 4 列，不受影响。
+- 文档：`docs/自由基单分子结-实现对照与开发规划.md` 状态表与 §5.1、`README.md` §9、
+  `docs/plan-radical-2026-11-21.md` 同步更新。全量 549 passed；未动 `src/smj/junction/`，
+  provenance/demo 基线不变。
+
 ### 修复：2026-11-21 复审 8 项问题（批 1–4）
 
 复审报告（针对 `6384ce0d`）列出 8 个问题（3 条叙述 + 5 个收敛扫描反例），附 8 条断言；

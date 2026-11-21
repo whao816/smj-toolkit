@@ -609,10 +609,22 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   `output cube spin_density`，collect 核验 `spin_density.cube` 非空、
   `aims.out` 里确有 Hirshfeld 段——请求了却没产出会拒绝 `collected`。闭壳层
   要 `spin_density` 直接报错（没有共线自旋密度可写）。该关键字组合在 FHI-aims
-  221103 上尚未实测，首次使用请在小体系确认；Gaussian 分支可用
+  221103 上尚未实测，首次使用请在小系统确认；Gaussian 分支可用
   `molecule.stable_check: true` 加 `Stable=Opt`，`mol.log` 的
   `S**2 before annihilation … after …` 与 SCF 收敛状态会进
   `results.gaussian`（⟨S²⟩ 偏离 S(S+1) 超过 0.1 会在 notes 里点名自旋污染）。
+- **自旋到底分布在哪（2026-11-21，S1）**：请求 `hirshfeld` 时，`aims_scf` 会把
+  `aims.out` 的 `Hirshfeld spin moment` 逐原子解析到 `aims_scf/spin_partition.json`，
+  `smj report` 的 §4.1 加"自旋分布（Hirshfeld，μB）"表：分子 / 接触区（距锚原子
+  ≤3.0 Å 的电极原子）/ 电极的份额与占比。总磁矩守恒**不能**说明自由基还在分子上：
+  `runs/ttf-cation` 实测总矩 1.0000 μB 里分子只占 0.0056（0.56%），`smj review` 会记
+  `spin_localized_off_molecule`（info）。分区只陈述数字，不设阈值判定；Hirshfeld 段名
+  在但解析不出 `| Atom N:` 行会拒绝 `collected`。
+- **单列 TE 默认阻断（2026-11-21，S3）**：开壳层 TE.dat 只剩一列时，aitranss 已经把
+  α/β 合并成均值，自旋极化不可恢复——`aitranss_te.collect` 现在直接 `StageError`，
+  并提示检查 `$uhfmo_alpha/$uhfmo_beta`、SCF 是否真开壳层、nsaos 是否非零。外部/历史
+  数据确知只能单列时显式设 `transport.allow_single_channel: true` 放行，结果里记
+  `single_channel_allowed: true` 与 note。
 
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。

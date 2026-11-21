@@ -24,6 +24,8 @@ from ..spin import (DEFAULT_INITIAL_MOMENT, insert_control_lines, map_molecule_m
                     record_initial_charge, record_junction_spin, remove_control_lines,
                     spin_control_lines, spin_state, write_initial_charges,
                     write_initial_moments)
+from ..spin_partition import (contact_atoms, default_groups, parse_hirshfeld_text,
+                              read_geometry, summarize)
 from ._aims_artifacts import probe, problem
 from ._helpers import est_record, submit_command, vdw_mode
 from .base import Collected, Prepared, Stage, register
@@ -241,6 +243,7 @@ class AimsScfStage(Stage):
         # 额外输出（2026-11-20 复核 P1）：请求了就必须真的产出，不能"我开了开关"就算数。
         # spin_density 的产物文件名是 FHI-aims 文档化的 ``spin_density.cube``；
         # hirshfeld 打印在 aims.out（不是文件），这里只核验分析段确实出现。
+        notes: list[str] = []
         requested = tuple(getattr(getattr(ctx.config, "transport", None),
                                  "extra_outputs", ()) or ())
         extra = {"extra_outputs": list(requested)}
@@ -261,8 +264,57 @@ class AimsScfStage(Stage):
                     "请求了 hirshfeld（control.in 有 'output hirshfeld'），但 aims.out "
                     "里没有 Hirshfeld 分析段；可能是该二进制不接受这个关键字")
             extra["hirshfeld_mentions"] = mentions
+            # 2026-11-21 自由基支线 S1：把 Hirshfeld 自旋矩按分子/接触区/电极分区。
+            # 总磁矩守恒不能说明自由基还在分子上，必须留下每个原子的分配证据。
+            table = parse_hirshfeld_text(text)
+            if not table.atoms:
+                raise StageError(
+                    "aims.out 有 Hirshfeld 分析段名，但解析不出 '| Atom N:' 行；"
+                    "拒绝在没有自旋分布证据的 run 上标记 collected")
+            natoms = self.count_aims_atoms(stage_dir / "geometry.in")
+            n_molecule = self._molecule_atoms(self._tip_summary(ctx))
+            electrode = getattr(ctx.config, "electrode", None)
+            anchors = tuple(
+                index for index in (
+                    getattr(electrode, "left_anchor", None),
+                    getattr(electrode, "right_anchor", None),
+                ) if isinstance(index, int))
+            contact: list[int] = []
+            if n_molecule and anchors:
+                try:
+                    geometry = read_geometry(stage_dir / "geometry.in")
+                except OSError:
+                    geometry = []
+                contact = contact_atoms(
+                    geometry, molecule_atoms=n_molecule, anchors=anchors)
+            if n_molecule and natoms and natoms == len(table.atoms):
+                groups = default_groups(n_molecule, natoms, contact=contact)
+            else:
+                groups = {"all": list(range(1, len(table.atoms) + 1))}
+                notes.append(
+                    "aims_tip_relax/input_summary.json 缺失、几何不可读，或几何原子数(%s)"
+                    "与 Hirshfeld 表(%d)不一致：自旋矩只报总量，不区分分子/电极"
+                    % (natoms or "?", len(table.atoms)))
+            partition = summarize(table, groups)
+            if partition is not None:
+                sidecar = stage_dir / "spin_partition.json"
+                sidecar.write_text(
+                    json.dumps({
+                        "schema": "smj.spin-partition.v1",
+                        "source": "aims.out",
+                        **table.as_dict(),
+                        "groups": partition["groups"],
+                        "n_positive": partition["n_positive"],
+                        "n_negative": partition["n_negative"],
+                        "localized": partition["localized"],
+                    }, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8")
+                extra["spin_partition"] = {
+                    **partition,
+                    "source": "aims.out",
+                    "sidecar": "spin_partition.json",
+                }
 
-        notes: list[str] = []
         software = parse_aims_versions(text)
         if software:
             record_observed_software(ctx.layout.run_dir, self.name, software)
@@ -294,7 +346,7 @@ class AimsScfStage(Stage):
         artifacts = [name for name in ("aims.out", "control.in", "geometry.in",
                                        "basis-indices.out", "omat.aims",
                                        "mos.aims", "alpha.aims", "beta.aims",
-                                       "spin_density.cube")
+                                       "spin_density.cube", "spin_partition.json")
                      if (stage_dir / name).is_file()]
         return self.collected(
             ctx, stage_dir,

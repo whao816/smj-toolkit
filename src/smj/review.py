@@ -685,6 +685,18 @@ def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None
                         run_spec_protocol=stored, current_protocol=current)
 
 
+def _spin_partition(run_dir: Path) -> dict | None:
+    """``aims_scf/spin_partition.json``（Hirshfeld 自旋分区，S1）; 缺失返回 None。"""
+    path = Path(run_dir) / "aims_scf" / "spin_partition.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
 def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     """开壳层的可读性：多重度、是否钉住总自旋、α/β 通道是否还在。
 
@@ -752,6 +764,27 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
         extra = {k: v for k, v in item.items()
                  if k not in ("severity", "code", "message")}
         result.add(item["severity"], item["code"], item["message"], **extra)
+    # 2026-11-21 自由基支线 S1：总磁矩守恒不等于"自旋还在分子上"。Hirshfeld
+    # 分区（aims_scf 侧车）若显示分子份额 < 1%，必须提示——否则 fixed_spin_moment
+    # 的"磁矩保持"会被误读成自由基存活。只出 info，不改任何数值判定。
+    partition = _spin_partition(run_dir)
+    if partition is not None and ((multiplicity or 1) > 1 or broken):
+        groups = partition.get("groups")
+        molecule_group = groups.get("molecule") if isinstance(groups, Mapping) else None
+        if isinstance(molecule_group, Mapping):
+            fraction = molecule_group.get("fraction")
+            try:
+                fraction_value = float(fraction) if fraction is not None else None
+            except (TypeError, ValueError):
+                fraction_value = None
+            if fraction_value is not None and abs(fraction_value) < 0.01:
+                moment = molecule_group.get("spin_moment")
+                result.add(
+                    "info", "spin_localized_off_molecule",
+                    "分子自旋矩 %+.4f μB（占比 %.2f%%）；开壳层自旋主要在电极侧，"
+                    "不能把总磁矩保持解读为自由基在分子上存活"
+                    % (float(moment or 0.0), 100.0 * abs(fraction_value)),
+                    spin_partition=dict(partition))
 
 
 # --------------------------------------------------------------------------- #

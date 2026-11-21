@@ -205,12 +205,32 @@ class AitranssTeStage(Stage):
             notes.append(
                 "TE.dat 能量列非升序(%s)：分析时已按 E-E_F 升序排序，S 符号不受行序影响"
                 % order)
+        # 2026-11-21 自由基支线 S3：开壳层必须真的有两列 α/β。只剩一列时
+        # aitranss 已经把两个通道合并成均值，自旋极化不可能再恢复——默认阻断，
+        # 只有显式 allow_single_channel 才放行（外部/历史数据）。
+        state = spin_state(ctx.config)
+        allow_single = bool(getattr(getattr(ctx.config, "transport", None),
+                                    "allow_single_channel", False))
+        single_channel_allowed = False
+        if state.open_shell and channels < 2:
+            if not allow_single:
+                raise StageError(
+                    "开壳层 TE.dat 只有 1 个自旋通道：α/β 已被 aitranss 合并成均值，"
+                    "自旋极化无法恢复。请检查 tcontrol 是否把 $scfmo 换成 "
+                    "$uhfmo_alpha/$uhfmo_beta、SCF 是否以 spin collinear 收敛、"
+                    "nsaos 是否非零；若这份谱确实只能单列，显式设 "
+                    "transport.allow_single_channel: true")
+            single_channel_allowed = True
+            notes.append(
+                "开壳层 TE.dat 只有 1 个自旋通道：已按 transport.allow_single_channel=true "
+                "放行，先导自旋极化不可用")
         results = {
             "aitranss_te": {
                 "points": len(rows),
                 "te_bytes": te.stat().st_size,
                 "max_transmission": max(row[2] for row in rows),
                 "transmission_channels": channels,
+                "single_channel_allowed": single_channel_allowed,
                 "energy_order": order,
                 "has_te_out": te_out.is_file(),
                 "require_te_out": require_te_out,
