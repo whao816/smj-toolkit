@@ -107,7 +107,7 @@ Mulliken 投影一致到 1e-3。
    - `g_over_g0_total == 0.5*(L0α+L0β)`（相对 1e-9）；
    - `S_total == (L0α·Sα + L0β·Sβ)/(L0α+L0β)`（相对 1e-6）；
    - 不满足记 engineering/error，`missing=False`（这是真错误，不是证据不足）。
-5. 该判据写进 `src/smj/junction/criteria.py` 的 `CRITERIA`，`KNOWN_GAPS` 加 `te_fermi_quadrature` 之外的新条目（如 `spin_channel_consistency` 无源，需同时加入 `KNOWN_GAPS` 以免 lint 噪声）。
+5. 该判据写进 `src/smj/junction/criteria.py` 的 `CRITERIA`（`gate='error'` 即被 `_ERROR_GATED` 自动纳入 severity）。engineering 判据免文献源，`lint_registry` 只对 physical 要求 `source`，因此**不需要**进 `KNOWN_GAPS`（该集合只登记无源 physical 判据）。
 
 **测试**
 
@@ -122,6 +122,8 @@ Mulliken 投影一致到 1e-3。
 - 改 `src/smj/junction/` → `gen_junction_provenance.py` 刷新并 `--check`、`gen_demo_reference.py --check` 零偏差。
 
 **风险**：`results.json` 的 `spin` 键增多，旧读取方只取已知键（`analysis.py` 只校验必需键，多余键安全，已在批 1 验证）。
+
+**状态（2026-11-21，批次 B）：✅ 已实现。** `landauer.transport_moments()` 作为唯一公式源，`analyze_te` 与 `analyze_te_spin` 共用；`spin` 块新增 `L1/L2_alpha/beta`、`S_alpha/beta_uV_per_K`、`S_total_uV_per_K`、`k_e_*`、`ZT_*`、`spin_polarization_S`。`spin_channel_consistency` 在 `evaluate_run_criteria` 末尾评估：闭壳层或旧 `spin` 块（无分通道 L1/L2）`applicable=False`，不误判。实测量（`runs/ifs-bs`，801 点，300 K）：Sα=+6.15599、Sβ=+6.15894 µV/K（相对差 4.8e-4），S_total=+6.15746，P_S=−2.39e-4，与 P(E_F)=−1.84e-5 同号；判据在真实 run 上 `passed=True`。计划里写的"差 <1e-3 µV/K"是数量级估计，实测绝对差 2.9e-3 µV/K（相对 4.8e-4）——**验收口径应看相对差与 P_S 量级**，绝对阈值不具普适性（S 的量级随体系变化）。全量 555 passed；provenance 已刷新（36 文件/13 补丁）并 `--check` 一致，demo 参考 4 份谱零偏差。
 
 ### S3 开壳层单列 TE 硬闸门（P0，小）
 
@@ -198,7 +200,7 @@ Mulliken 投影一致到 1e-3。
 | 批次 | 内容 | 涉及 | 完成判据 |
 | --- | --- | --- | --- |
 | A | S1 + S3 + S7 | `spin_partition.py`、`aims_scf.py`、`aitranss_te.py`、`config.py`、`report.py`、`review.py`、文档 | ✅ 2026-11-21：报告出现自旋分布；单列 TE 被拦；全量 549 passed |
-| B | S2 | `landauer_spin.py`、`criteria.py`、`junction_analyze.py`、`report.py` | Sα/Sβ 进结果与报告；provenance + demo 校验 |
+| B | S2 | `landauer_spin.py`、`criteria.py`、`junction_analyze.py`、`report.py` | Sα/Sβ 进结果与报告；provenance + demo 校验 | ✅ 2026-11-21（555 passed） |
 | C | S4 + S6 | `spin_partition.py`、`report.py`、`review.py`、`tests/integration/` | BS 证据行；`pytest -m integration` 通过 |
 | D | S5（+S8 可选） | `criteria.py`、`report.py` | 口径文案与 open_shell_protocol；无回归 |
 

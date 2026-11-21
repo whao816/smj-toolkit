@@ -4,6 +4,28 @@
 
 ## 未发布
 
+### 新增：2026-11-21 自由基支线批次 B（自旋分辨热输运）
+
+计划见 `docs/plan-radical-2026-11-21.md`（批次 B = S2）。此前开壳层只有
+`P(E_F)`/`P(L0)`：知道两个通道电导不同，但说不出 Sα 与 Sβ 各是多少、总 S 是否等于按
+电导加权的平均。
+
+- `src/smj/junction/landauer.py` 抽出 `transport_moments(l0, l1, l2, T)` 作为
+  S/k_e/ZT 的唯一公式源；`analyze_te` 与 `landauer_spin.analyze_te_spin` 共用，杜绝
+  "两份公式各自漂移"。
+- `spin` 块新增 `L1_alpha/L1_beta/L2_alpha/L2_beta`、`S_alpha_uV_per_K` /
+  `S_beta_uV_per_K` / `S_total_uV_per_K`、`k_e_*`、`ZT_*` 与
+  `spin_polarization_S = (Sα−Sβ)/(Sα+Sβ)`（分母为 0 给 None）；`junction_analyze`
+  自动带出，`smj report` §4.1 加 Sα/Sβ 与 P_S 两行。
+- 新增 engineering 判据 `spin_channel_consistency`（error 级）：校验
+  `G_total = 0.5(L0α+L0β)`（相对 1e-9）与 `S_total = (L0αSα+L0βSβ)/(L0α+L0β)`
+  （相对 1e-6），不满足即工程失败（说明分通道数不可信，不写成否证 H0）。闭壳层与
+  旧 `spin` 块（只有 L0）标 `applicable=False`，不误判。
+- 实测 `runs/ifs-bs`：Sα=+6.15599、Sβ=+6.15894 μV/K（相对差 4.8e-4），
+  S_total=+6.15746，P_S=−2.39e-4（与 P(E_F)=−1.84e-5 同号）。判据在真实 run 上
+  `passed=True`。改 `src/smj/junction/` 后已刷新 provenance（36 文件/13 补丁）并
+  `--check` 一致，demo 参考 4 份谱零偏差；全量 555 passed。
+
 ### 新增：2026-11-21 自由基支线批次 A（Hirshfeld 自旋分区 + 单列 TE 闸门）
 
 计划见 `docs/plan-radical-2026-11-21.md`（批次 A = S1 + S3 + S7）。此前的开壳层链能保证

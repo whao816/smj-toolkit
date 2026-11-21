@@ -638,12 +638,13 @@ def _cell(value: Any) -> str:
 
 def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
                          partition: Mapping[str, Any] | None = None) -> None:
-    """§4.1 自旋通道：只补 α/β 分量与极化度，不改总 G/S 口径。"""
+    """§4.1 自旋通道：补 α/β 分量（G、S、P）与 Hirshfeld 分区，不改总口径。"""
     lines.append("")
     lines.append("### 4.1 自旋通道（开壳层）")
     lines.append("")
     lines.append("> 上表的 G、S、k_e、ZT 是**双通道均值**（landauer 口径 "
-                 "T(E) = (Tα+Tβ)/2）；本小节只补分量与自旋极化度，不重算 S。")
+                 "T(E) = (Tα+Tβ)/2）；本小节的分量按同一公式逐通道计算，"
+                 "总 S 与加权平均的自洽由 `spin_channel_consistency` 判据守。")
     lines.append("")
     lines.append("| 量 | 值 |")
     lines.append("|---|---|")
@@ -666,6 +667,14 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
                  % spin_percent(spin.get("spin_polarization_at_ef")))
     lines.append("| P(L0) 积分极化 | %s |"
                  % spin_percent(spin.get("spin_polarization_L0")))
+    if (spin.get("S_alpha_uV_per_K") is not None
+            or spin.get("S_beta_uV_per_K") is not None):
+        lines.append("| Sα / Sβ [μV/K] | %s / %s |" % (
+            _fmt(spin.get("S_alpha_uV_per_K"), "%+.4f"),
+            _fmt(spin.get("S_beta_uV_per_K"), "%+.4f")))
+    if spin.get("spin_polarization_S") is not None:
+        lines.append("| P_S = (Sα−Sβ)/(Sα+Sβ) | %s |"
+                     % spin_percent(spin.get("spin_polarization_S")))
     if spin.get("g_over_g0_total") is not None:
         lines.append("| Gα / Gβ / G_total [G0] | %s / %s / %s |" % (
             _fmt(spin.get("g_over_g0_alpha"), "%.6f"),

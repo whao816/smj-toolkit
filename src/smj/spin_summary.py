@@ -80,6 +80,10 @@ def normalize(
         "g_over_g0_alpha": _number(spin.get("g_over_g0_alpha")),
         "g_over_g0_beta": _number(spin.get("g_over_g0_beta")),
         "g_over_g0_total": _number(spin.get("g_over_g0_total")),
+        "S_alpha_uV_per_K": _number(spin.get("S_alpha_uV_per_K")),
+        "S_beta_uV_per_K": _number(spin.get("S_beta_uV_per_K")),
+        "S_total_uV_per_K": _number(spin.get("S_total_uV_per_K")),
+        "spin_polarization_S": _number(spin.get("spin_polarization_S")),
         "note": spin.get("note"),
         "caveat": SPIN_CAVEAT,
     }

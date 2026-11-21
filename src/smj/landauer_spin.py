@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .junction.landauer import energy_order, minus_fermi_derivative, sort_by_energy, trapz
+from .junction.landauer import (
+    energy_order, minus_fermi_derivative, sort_by_energy, transport_moments, trapz)
 
 
 def read_te_channels(path: str | Path) -> tuple[list[tuple[float, float, float, float]], int]:
@@ -71,6 +72,25 @@ def analyze_te_spin(path: str | Path, temperature: float = 300.0) -> dict:
     weights = [minus_fermi_derivative(energy, temperature) for energy in e_ev]
     l0_alpha = abs(trapz([t * w for t, w in zip(alpha, weights)], e_ev))
     l0_beta = abs(trapz([t * w for t, w in zip(beta, weights)], e_ev))
+    # 2026-11-21 批 B (S2): 每通道也积 L1/L2, 用与 analyze_te **同一** helper
+    # 导出 Sα/Sβ、k_e、ZT —— 不复制公式, 否则"加权平均 == 总 S"无从校验。
+    l1_alpha = trapz([e * t * w for e, t, w in zip(e_ev, alpha, weights)], e_ev)
+    l1_beta = trapz([e * t * w for e, t, w in zip(e_ev, beta, weights)], e_ev)
+    l2_alpha = abs(trapz([e * e * t * w for e, t, w in zip(e_ev, alpha, weights)], e_ev))
+    l2_beta = abs(trapz([e * e * t * w for e, t, w in zip(e_ev, beta, weights)], e_ev))
+    moments_alpha = transport_moments(l0_alpha, l1_alpha, l2_alpha, temperature)
+    moments_beta = transport_moments(l0_beta, l1_beta, l2_beta, temperature)
+    moments_total = transport_moments(
+        0.5 * (l0_alpha + l0_beta),
+        0.5 * (l1_alpha + l1_beta),
+        0.5 * (l2_alpha + l2_beta),
+        temperature)
+    s_alpha = moments_alpha["S_uV_per_K"]
+    s_beta = moments_beta["S_uV_per_K"]
+    if s_alpha is None or s_beta is None or (s_alpha + s_beta) == 0:
+        spin_polarization_s = None
+    else:
+        spin_polarization_s = (s_alpha - s_beta) / (s_alpha + s_beta)
     nearest = min(range(len(rows)), key=lambda i: abs(e_ev[i]))
     t_alpha_ef = alpha[nearest]
     t_beta_ef = beta[nearest]
@@ -84,9 +104,21 @@ def analyze_te_spin(path: str | Path, temperature: float = 300.0) -> dict:
         "input_energy_order": input_order,
         "L0_alpha": l0_alpha,
         "L0_beta": l0_beta,
+        "L1_alpha": l1_alpha,
+        "L1_beta": l1_beta,
+        "L2_alpha": l2_alpha,
+        "L2_beta": l2_beta,
         "g_over_g0_alpha": 0.5 * l0_alpha,
         "g_over_g0_beta": 0.5 * l0_beta,
         "g_over_g0_total": 0.5 * sum_l0,
+        "S_alpha_uV_per_K": s_alpha,
+        "S_beta_uV_per_K": s_beta,
+        "S_total_uV_per_K": moments_total["S_uV_per_K"],
+        "k_e_alpha_pW_per_K": moments_alpha["k_e_pW_per_K"],
+        "k_e_beta_pW_per_K": moments_beta["k_e_pW_per_K"],
+        "ZT_alpha_electronic": moments_alpha["ZT_electronic"],
+        "ZT_beta_electronic": moments_beta["ZT_electronic"],
+        "spin_polarization_S": spin_polarization_s,
         "T_alpha_at_ef": t_alpha_ef,
         "T_beta_at_ef": t_beta_ef,
         "spin_polarization_at_ef": (

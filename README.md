@@ -625,6 +625,16 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   并提示检查 `$uhfmo_alpha/$uhfmo_beta`、SCF 是否真开壳层、nsaos 是否非零。外部/历史
   数据确知只能单列时显式设 `transport.allow_single_channel: true` 放行，结果里记
   `single_channel_allowed: true` 与 note。
+- **自旋分辨热输运（2026-11-21，S2）**：`analyze_te_spin` 现在每通道也积 L1/L2，
+  `results.json` 的 `spin` 块多出 `S_alpha_uV_per_K` / `S_beta_uV_per_K` /
+  `S_total_uV_per_K` / `k_e_*` / `ZT_*` / `spin_polarization_S`；`smj report` §4.1
+  在 P 行下加 Sα/Sβ 与 P_S。分通道公式与 `analyze_te` 共用
+  `landauer.transport_moments()`（不复制公式），因此"总 S = 按 L0 加权的 Sα/Sβ"
+  可被机械核对：engineering 判据 `spin_channel_consistency` 校验
+  `G_total = 0.5(L0α+L0β)`（相对 1e-9）与 `S_total = (L0αSα+L0βSβ)/(L0α+L0β)`
+  （相对 1e-6）；旧 `spin` 块（只有 L0）只标"不适用"，不误判故障。
+  `runs/ifs-bs` 实测 Sα=+6.1560、Sβ=+6.1589 μV/K（相对差 4.8e-4），P_S=−2.4e-4，
+  与 P(E_F)=−1.8e-5 同号且可忽略。
 
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。

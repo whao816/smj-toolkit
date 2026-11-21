@@ -160,6 +160,21 @@ def fermi_quadrature(rows: Iterable[tuple], temperature: float) -> dict:
     }
 
 
+def transport_moments(l0: float, l1: float, l2: float, temperature: float) -> dict:
+    """由 ``L0/L1/L2`` 导出的输运系数（``analyze_te`` 与分通道共用同一套公式）。
+
+    2026-11-21 批 B (S2): 分通道 S/k_e/ZT 必须与总口径完全同形，否则"加权平均
+    等于总 S"的自洽检查就失去意义。这里只做公式搬运，不做任何近似。
+    """
+    return {
+        "log10_G_over_G0_like": math.log10(l0) if l0 > 0 else None,
+        "S_uV_per_K": 1e6 * (-(l1) / (l0 * temperature)) if l0 else None,
+        "k_e_pW_per_K": (1.60217733e-7 * (l2 - (l1 * l1) / l0) * 2.0
+                         / (H_EV_S * temperature)) if l0 else None,
+        "ZT_electronic": 1.0 / ((l0 * l2) / (l1 * l1) - 1.0) if l1 else None,
+    }
+
+
 def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path | None = None) -> dict:
     rows, order = read_te_ordered(path)
     warnings: list[str] = []
@@ -178,6 +193,7 @@ def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path 
     l0 = abs(trapz(l0_terms, e_ev))
     l1 = trapz(l1_terms, e_ev)
     l2 = abs(trapz(l2_terms, e_ev))
+    moments = transport_moments(l0, l1, l2, temperature)
     result = {
         "source": str(path),
         "temperature_K": temperature,
@@ -185,10 +201,7 @@ def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path 
         "L0": l0,
         "L1": l1,
         "L2": l2,
-        "log10_G_over_G0_like": math.log10(l0) if l0 > 0 else None,
-        "S_uV_per_K": 1e6 * (-(l1) / (l0 * temperature)) if l0 else None,
-        "k_e_pW_per_K": 1.60217733e-7 * (l2 - (l1 * l1) / l0) * 2.0 / (H_EV_S * temperature) if l0 else None,
-        "ZT_electronic": 1.0 / ((l0 * l2) / (l1 * l1) - 1.0) if l1 else None,
+        **moments,
         "fermi_nearest": nearest_energy(rows, 0.0),
         "thermal_window": thermal_window(rows, temperature),
         "fermi_quadrature": fermi_quadrature(rows, temperature),

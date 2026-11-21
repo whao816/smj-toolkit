@@ -25,6 +25,8 @@ P1-5 的强制由 lint_registry() + tests/test_smj_automation.py 的 ratchet 用
 """
 from __future__ import annotations
 
+import json
+import math
 from pathlib import Path
 
 THY = {'doi': '10.1016/j.chemphys.2005.05.032'}
@@ -132,6 +134,14 @@ CRITERIA = [
      'note': '2026-11-20 复核 R12: 评估器确实会 emit 该判据(κe≥0 与 ZT 量级常识), '
              '原元数据写 implemented=False 与行为不符, 已改正; 正式文献来源待补, '
              '仍列在 KNOWN_GAPS 里(ratchet 只许减不许增)'},
+
+    {'name': 'spin_channel_consistency', 'kind': 'engineering', 'gate': 'error',
+     'implemented': True, 'band': None, 'source': None,
+     'note': '2026-11-21 批 B (S2): results.json 的 spin 块必须与总输运口径自洽 —— '
+             'g_over_g0_total == 0.5*(L0α+L0β)（相对 1e-9），且 '
+             'S_total == (L0α·Sα+L0β·Sβ)/(L0α+L0β)（相对 1e-6）。不自洽说明'
+             '分通道积分与总口径脱节，或 results.json 被改坏；这是程序语义'
+             '(engineering)，说明"分通道数不可信"，不构成对 H0 的否证'},
 ]
 
 # 已登记缺口(ratchtet): 只允许这些无源/未实现的 physical 判据存在, 新增即 lint 失败
@@ -636,4 +646,55 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
     if ke is not None and zt is not None:
         checks.append(_check('k_e_zt_order', {'k_e': ke, 'ZT_e': zt}, ke >= 0 and zt >= 0,
                              'k_e=%.4f pW/K, ZT_e=%.6f 应非负(来源待补)' % (ke, zt)))
+
+    # ⑤ spin 通道与总输运自洽（2026-11-21 批 B, S2; engineering/error）。
+    # 开壳层的分通道量由 analyze_te_spin 写在同一 results.json 的 spin 块里。
+    # 闭壳层、旧产物（只有 L0、没有分通道 L1/L2）不做闸门，避免把"未升级产物"
+    # 判成工程故障；重跑 junction_analyze 后该判据自动生效。
+    spin = None
+    results_path = d / 'results.json'
+    if results_path.is_file():
+        try:
+            payload = json.loads(results_path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            payload = None
+        if isinstance(payload, dict) and isinstance(payload.get('spin'), dict):
+            spin = payload['spin']
+    numbers = ('g_over_g0_total', 'L0_alpha', 'L0_beta',
+               'S_alpha_uV_per_K', 'S_beta_uV_per_K', 'S_total_uV_per_K')
+    usable = (spin is not None and spin.get('channels') == 2
+              and all(isinstance(spin.get(k), (int, float)) for k in numbers))
+    if not open_shell:
+        checks.append(_check('spin_channel_consistency', None, True,
+                             '闭壳层无 α/β 通道，无需核对分通道自洽',
+                             applicable=False))
+    elif not usable:
+        checks.append(_check(
+            'spin_channel_consistency', None, True,
+            'results.json 缺分通道 L1/L2（旧产物或非双通道）：无法核对 '
+            'Sα/Sβ 与总 S 的自洽，重跑 junction_analyze 后可判',
+            applicable=False))
+    else:
+        g_total = float(spin['g_over_g0_total'])
+        l0_alpha = float(spin['L0_alpha'])
+        l0_beta = float(spin['L0_beta'])
+        s_alpha = float(spin['S_alpha_uV_per_K'])
+        s_beta = float(spin['S_beta_uV_per_K'])
+        s_total = float(spin['S_total_uV_per_K'])
+        g_expect = 0.5 * (l0_alpha + l0_beta)
+        g_ok = math.isclose(g_total, g_expect, rel_tol=1e-9, abs_tol=1e-15)
+        sum_l0 = l0_alpha + l0_beta
+        s_weighted = ((l0_alpha * s_alpha + l0_beta * s_beta) / sum_l0
+                      if sum_l0 else None)
+        s_ok = (s_weighted is not None
+                and math.isclose(s_total, s_weighted, rel_tol=1e-6, abs_tol=1e-9))
+        detail = ('G_total=%.6f G0，0.5*(L0α+L0β)=%.6f（相对门限 1e-9）%s；'
+                  'S_total=%+.4f μV/K，加权平均=%s（相对门限 1e-6）%s'
+                  % (g_total, g_expect, '' if g_ok else ' 不自洽',
+                     s_total,
+                     '—' if s_weighted is None else '%+.4f' % s_weighted,
+                     '' if s_ok else ' 不自洽'))
+        checks.append(_check('spin_channel_consistency',
+                             {'G_total': g_total, 'S_total': s_total},
+                             g_ok and s_ok, detail))
     return checks
