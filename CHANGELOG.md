@@ -4,6 +4,49 @@
 
 ## 未发布
 
+### 修复：2026-11-21 复审 8 项问题（批 1–4）
+
+复审报告（针对 `6384ce0d`）列出 8 个问题（3 条叙述 + 5 个收敛扫描反例），附 8 条断言；
+在本仓 HEAD `a7f2a45` 上逐条复现后 8 条全部失败，按 `docs/fix-plan-2026-11-21-r3.md` 的
+R1–R7 分四批修完。
+
+**批 1：费米窗求积充分性。** 12 点常数谱（步长 0.2 eV、300 K、T=0.25）的权重积分只有
+精确覆盖的 57.7%、权重一阶矩 −1.96 kBT，因此虚报 S=+169.25 µV/K、G/G0=0.1443（解析值
+0.25）；端点覆盖判据（f(E_min)−f(E_max)=1.0）照样判 passed。`landauer.py` 新增
+`fermi_quadrature(rows, temperature)`（±4 kBT 窗内的权重积分/精确覆盖比值、权重一阶矩、
+窗内点数与最小步长），`analyze_te` 输出 `fermi_quadrature`；`criteria.py` 新增
+`te_fermi_quadrature`（physical/error，`MIN_QUADRATURE_RATIO=0.95`、
+`MAX_FERMI_MOMENT_KBT=0.25`；窗口本身不完整时一阶矩只作诊断），不足时 `missing=True`
+把物理判定归约为 inconclusive。53 份真实 TE.dat 的比值偏差 ≤5.2e-8、一阶矩 ≤1.7e-4 kBT，
+历史 run 全部不受影响；报告输运表新增"费米窗求积"一行。
+
+**批 2：变体配置自洽 + 逐切片收敛。** `scan_convergence` 的变体 yaml 现在把
+`molecule.xyz`、`cluster.species_dir`、`paths.*` 绝对化，把 `paths.species_dir` 规范化到
+`paths.species_defaults`，写盘后回读自检（未知轴键、轴值解析不符、输入文件缺失都在 plan
+阶段报错），`scan.json` 记录每个变体的真实 `run_dir`；`variant_metrics` 改读
+`<run_dir>/junction_analyze/results.json`（旧数据回退 `analysis.json`，状态分
+ok/empty/unreadable/missing）；`compare_axis` 只配对"其余轴取值相同"的切片并逐片比较，
+缺结果、结果不可用或指标全空记 `incomplete`——不再把"没可比数据"的 worst=0.0 当收敛。
+`config.py` 把 `paths.species_dir` 做成兼容别名：单给时告警并入 `species_defaults`，
+两个键同时给报错。
+
+**批 3：结构指纹与占据表配对。** 复核此前只比较协议子集，快照 config 里是 `molecule.xyz`
+路径键、当前是 `xyz_sha256`，于是同一路径下改坐标也被降级成 `provenance_schema_evolved`
+warning；现在先比对 `run_spec.json` 的 `molecule.sha256` 与当前文件哈希，不同即记
+`provenance_drift` error（detail 带两个 sha 前缀），快照缺哈希或文件不可读时仍回落到
+原 family/schema 逻辑（旧的 schema 演进用例保持 warning）。PDOS 的占据表不再取"最后两张
+等长表"：闭壳层只取最后一张（旧行为把上一轮迭代当 beta，+0.2 eV 的权重 0 → 39.894），
+开壳层取末两张表逐通道配对（行数可不同），占据表行数与波函数态数不符抛 `PdosError`
+而不是按索引静默截断。
+
+**批 4：8 条断言入库 + 文档。** 评审附件 `test_smj_review_6384ce0.py` 的 8 条断言逐条
+移植为 `tests/test_review_20261121_regressions.py`（`workdir` 夹具，文件头注明
+"附件测试 → 修复项" 映射）；`tests/test_review_20261121.py` 保留轴键校验、别名冲突、
+开壳层配对/态数校验等补充断言。README 补上几何内容哈希闸门、PDOS 占位数配对规则，
+以及基组轴/别名/汇总读取口径。全量 **533 passed / 0 errors**，
+`gen_junction_provenance.py --check`（36 文件）与 `gen_demo_reference.py --check`（4 份谱）
+均无偏差；附件原版 8 条在 HEAD 上直接复跑 8 passed。
+
 ### 修复：2026-11-20 复审 7 项问题（批 1–4）
 
 复审报告（针对 0.2.2rc1 / `04739baa`）列了 5 个 P1 + 2 个 P2，附 8 条断言；在本仓 HEAD

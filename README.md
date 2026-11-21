@@ -444,7 +444,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（7 节：概览/判定/阶段状态/输入摘要/资源/输运/失败原因/产物清单）；缺 `TE.dat` 时物理判定为「无法判定」而不是通过 | 报告文件；默认跳过已存在文件，`--force` 重写，`--no-checks` 不算判定 |
 | `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；`--plot` 可顺手按统一版式出 `T_E_plot.png`（`[plot]` extra） | `analysis.json`（含 `independent_check` 结果） |
 | `smj plot` | 按**统一版式**画 T(E)（四边框/刻度朝内/E_F 虚线/log 纵轴/固定配色，见 `docs/plot_style.md`）；可给 TE.dat、run 目录或逗号标签叠加多条 | `T_E.png` + `T_E.pdf`（默认 PNG+PDF 同源导出，600 dpi） |
-| `smj pdos` | 分组 PDOS：读 `aims_scf` 的 `mos.aims`（开壳层 `alpha.aims`/`beta.aims`，按 `$uhfmo_*` 头行判通道）与 `basis-indices.out`，按 `--groups molecule=1-20,left=21-52` 把原子分组投影到 α/β，占据数取 `aims.out` 的 `State Occupation` 表，落在 `TE.dat` 的 E − E_F 网格上（与 T(E) 同一能量轴）；权重按每态 `Σc²` 归一（NAO 非正交，真正 Mulliken 需要 `omat.aims` 重叠矩阵，本地只有表头）；`--plot` 出上下两栏共享 x 轴的图。默认回取只抓 `mos.aims` 表头，本地没有完整本征向量时会**显式失败**并提示用 `--fetch` 按清单整取 | 终端摘要或 `--json`；`-o` 写 `smj.pdos.v1` JSON；缺完整本征向量时退出 1 |
+| `smj pdos` | 分组 PDOS：读 `aims_scf` 的 `mos.aims`（开壳层 `alpha.aims`/`beta.aims`，按 `$uhfmo_*` 头行判通道）与 `basis-indices.out`，按 `--groups molecule=1-20,left=21-52` 把原子分组投影到 α/β，占据数取 `aims.out` 的 `State Occupation` 表（闭壳层只取最后一张；开壳层取末两张分别给 α/β，行数允许不同，但与通道波函数态数不符时显式报错而不是按索引截断），落在 `TE.dat` 的 E − E_F 网格上（与 T(E) 同一能量轴）；权重按每态 `Σc²` 归一（NAO 非正交，真正 Mulliken 需要 `omat.aims` 重叠矩阵，本地只有表头）；`--plot` 出上下两栏共享 x 轴的图。默认回取只抓 `mos.aims` 表头，本地没有完整本征向量时会**显式失败**并提示用 `--fetch` 按清单整取 | 终端摘要或 `--json`；`-o` 写 `smj.pdos.v1` JSON；缺完整本征向量时退出 1 |
 | `smj review` | 结构复核门：建结几何 + 连接核对（原 A2：指纹/表面索引偏差）。默认由管线在 `electrode_build` 之后自动登记（`who=auto`，审计不过则拒绝登记并阻断）；也可人工签 `--approve --who <名字>`（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用，`--connection-check/--no-connection-check` 临时覆盖 `review.connection_check` | `review.json`、`electrode_build/connection_check.json`（旧 `a2_confirmation.json` / `surface_check.json` 仍可读）；`blocked` 时退出 1 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、junction 内核、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
@@ -499,6 +499,10 @@ print(transport.commands[-2:])                 # 看实际发出的命令
   `protocol_schema`；新增/改名的记录键使哈希变化，但两侧都有的键取值全同、
   `PROTOCOL_CRITICAL` 一个不缺）记 `provenance_schema_evolved` warning——代码升级不必
   把历史 run 集体打成"不可解读"。物理参数一变或关键键缺失仍是 error。
+  另一条独立的闸门：**分子几何内容**先按 `run_spec.json` 里的 `molecule.sha256`
+  与当前文件哈希比对，同一路径下坐标一旦改动就直接记 `provenance_drift`
+  （detail 带两个 sha 前缀），不会因为 `xyz`→`xyz_sha256` 两代键名不同而被误判成
+  schema 演进。
 
 ### 7.3 收敛扫描（`scripts/scan_convergence.py`）
 
