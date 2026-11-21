@@ -23,6 +23,9 @@ false；同时把 ``completeness`` 摘要挂到 verdict 上，报告渲染可以
 """
 from __future__ import annotations
 
+import hashlib
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from smj.junction.criteria import PHYSICAL_NAMES
@@ -34,6 +37,44 @@ ACCEPTED_STATUSES: tuple[str, ...] = ("collected", "skipped")
 
 #: 作业已结束但产物还没走 collect/验收——报告里显示为"待采集/待验收"。
 AWAITING_STATUSES: tuple[str, ...] = ("finished",)
+
+#: 判定口径的 schema 版本。语义变更时递增；源文件指纹负责捕获实现变更。
+JUDGMENT_SCHEMA = "smj.judgment.v1"
+
+
+@lru_cache(maxsize=1)
+def judgment_fingerprint() -> str:
+    """返回判定实现（criteria/validate/verdict 源码）的 sha256。
+
+    manifest 里保存这个指纹，报告重跑时据此判断"旧判定是否仍由当前代码
+    产生"。仅比较 ``generated_at`` 不够：同一份 manifest 可能由判据已变化的
+    新版本复用，从而把旧结论（例如 passed）原样发布出去。
+
+    指纹覆盖实际决定判定的三个模块；任一文件变化都会让旧 manifest 过期。
+    读不到某个源文件时退化为已读文件之和，不抛错（打包/冻结环境）。
+    """
+    digest = hashlib.sha256()
+    digest.update(JUDGMENT_SCHEMA.encode("ascii"))
+    sources: dict[str, Path] = {str(Path(__file__).resolve()): Path(__file__)}
+    for module_name in ("criteria", "validate"):
+        try:
+            module = __import__("smj.junction.%s" % module_name,
+                                fromlist=[module_name])
+            path = Path(getattr(module, "__file__", ""))
+        except Exception:  # noqa: BLE001 - 指纹不能成为导入失败的替罪羊
+            continue
+        if path.is_file():
+            sources[str(path.resolve())] = path
+    for key in sorted(sources):
+        source = sources[key]
+        digest.update(b"\0")
+        digest.update(source.name.encode("utf-8"))
+        digest.update(b"\0")
+        try:
+            digest.update(source.read_bytes())
+        except OSError:
+            digest.update(b"<unreadable>")
+    return digest.hexdigest()
 
 
 def _is_physical(check: Mapping[str, Any]) -> bool:

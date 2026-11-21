@@ -19,6 +19,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .geometry import read_aims_geometry
+
 FINGERPRINT_KEY = 'surface_fingerprint'
 CONFIRM_FILE = 'connection_check.json'
 #: 2026-11-15 更名前的确认文件（「表面核对」时代的 surface_check.json、更早的
@@ -44,6 +46,31 @@ def attach_fingerprint(step_dir, metadata_path=None) -> dict:
     return meta
 
 
+def _surface_coords(step_dir: Path, meta: dict) -> dict[str, list[list]]:
+    """按 1-based 表面索引摘出坐标：``{side: [[idx, element, x, y, z], ...]}``。
+
+    解析失败返回空 dict（记录仍可签，只是复核端无法量化位移，会 fail-closed）。
+    """
+    try:
+        atoms = read_aims_geometry(Path(step_dir) / 'geometry.in')
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, list[list]] = {}
+    for side in ('left', 'right'):
+        rows: list[list] = []
+        for raw in meta.get('%s_surface_indices' % side) or []:
+            try:
+                idx = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= idx <= len(atoms):
+                atom = atoms[idx - 1]
+                rows.append([idx, atom.element, atom.x, atom.y, atom.z])
+        if rows:
+            out[side] = rows
+    return out
+
+
 def record_confirmation(step_dir, who: str, when: str | None = None,
                         metadata_path=None) -> dict:
     """登记连接核对记录(绑定当前几何指纹)。"""
@@ -56,6 +83,9 @@ def record_confirmation(step_dir, who: str, when: str | None = None,
     mp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
     rec = {'fingerprint': fresh,
            'indices': {k: meta.get(k) for k in SURFACE_KEYS},
+           # 表面原子坐标随记录一起落盘。只有 sha256 时，"几何被改过"无法区分
+           # "注释/格式变化"与"表面原子真的挪了"；复核端需要坐标才能量化偏差。
+           'surface_coords': _surface_coords(step_dir, meta),
            'who': who,
            'when': when or datetime.now(timezone.utc).isoformat(timespec='seconds')}
     (step_dir / CONFIRM_FILE).write_text(json.dumps(rec, ensure_ascii=False, indent=2),
@@ -92,18 +122,23 @@ def check_confirmation(step_dir) -> dict:
     if gp.exists():
         cur = surface_fingerprint(gp)
     else:
-        cur = meta.get(FINGERPRINT_KEY)
-        if not cur:
-            return {'present': False, 'valid': False, 'current': None,
-                    'reason': 'geometry.in 缺失, 无法计算几何指纹'}
+        # 不能说"metadata 里的快照等于记录"就算有效：那正是几何被删/被换后
+        # 旧记录继续被引用的路径。没有当前几何就没有复核对象。
+        cur = None
     if not cp.exists():
         return {'present': False, 'valid': False, 'current': cur,
-                'reason': '尚无连接核对记录(几何指纹 %s); 需核对表面原子' % cur[:12]}
+                'reason': '尚无连接核对记录(几何指纹 %s); 需核对表面原子'
+                          % (cur[:12] if cur else "不可用")}
     try:
         rec = json.loads(cp.read_text(encoding='utf-8'))
     except (OSError, ValueError) as exc:
         return {'present': True, 'valid': False, 'current': cur,
                 'reason': '连接核对记录不可解析: %s' % exc}
+    if cur is None:
+        return {'present': True, 'valid': False, 'current': None,
+                'recorded': rec.get('fingerprint'),
+                'reason': ('geometry.in 缺失，无法按当前几何复核连接核对记录；'
+                           '旧记录不得沿用，须先恢复/重建几何再核对')}
     if rec.get('fingerprint') != cur:
         return {'present': True, 'valid': False, 'current': cur,
                 'recorded': rec.get('fingerprint'),

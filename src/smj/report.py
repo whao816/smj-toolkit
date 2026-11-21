@@ -37,6 +37,7 @@ from .provenance import (
 from .resources import check_smj_budget, estimate_smj_resources
 from .spin_summary import SPIN_CAVEAT, normalize as normalize_spin, percent as spin_percent
 from .state import STAGE_ORDER, RunLayout, RunState, now_iso
+from .verdict import JUDGMENT_SCHEMA, judgment_fingerprint
 
 REPORT_SCHEMA = "smj.report.v1"
 
@@ -535,6 +536,12 @@ def build_manifest(target: Any, *, run_id: str | None = None,
     run_complete = not awaiting_now and not missing_now
     manifest: dict[str, Any] = {
         "schema": REPORT_SCHEMA,
+        # 判定章的指纹：generate_report 据此拒绝复用"判据已变化"的旧 manifest
+        # （2026-11-22 复审 P0-1）。旧 manifest 没有该键，一律视为过期。
+        "judgment": {
+            "schema": JUDGMENT_SCHEMA,
+            "sha256": judgment_fingerprint(),
+        },
         "run_id": rid,
         "root": str(run_dir),
         "generated_at": now_iso(),
@@ -612,14 +619,52 @@ def build_manifest(target: Any, *, run_id: str | None = None,
                  "engineering_errors", "physics_failures",
                  "physics_verdict", "wording", "allowed_action",
                  "failed_criteria", "inconclusive_criteria",
-                 "missing_evidence_criteria",
-                 "not_applicable_criteria", "completeness")
+                 "missing_evidence_criteria", "not_applicable_criteria",
+                 "unregistered_checks", "completeness")
             }
             manifest["checks"] = verdict.get("checks", [])
         except Exception as exc:  # noqa: BLE001
             manifest["verdict"] = {"error": "validate_junction_run 失败: %s" % exc}
     manifest["totals"] = totals
+    manifest["review"] = _review_summary(run_dir)
     return manifest
+
+
+def _review_summary(run_dir: Path) -> dict[str, Any] | None:
+    """把 ``review.json`` 的关键状态收进 manifest（报告必须显式标注复核结论）。
+
+    2026-11-22 复审 P1：报告此前完全不渲染 review/connection_check，接触几何
+    被改写或复核 blocked 时 report.md 仍显示"工程通过"。
+    """
+    path = Path(run_dir) / "review.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"path": str(path), "error": "review.json 不可解析: %s" % exc}
+    if not isinstance(payload, dict):
+        return {"path": str(path), "error": "review.json 顶层不是对象"}
+    issues = payload.get("issues") or []
+    connection = payload.get("connection_check") or {}
+    return {
+        "path": str(path),
+        "status": payload.get("status"),
+        "ok": payload.get("ok"),
+        "accepted": payload.get("accepted"),
+        "errors": sum(1 for i in issues if isinstance(i, Mapping)
+                      and i.get("severity") == "error"),
+        "warnings": sum(1 for i in issues if isinstance(i, Mapping)
+                        and i.get("severity") == "warning"),
+        "connection_check": {
+            "present": connection.get("present"),
+            "valid": connection.get("valid"),
+            "reason": connection.get("reason"),
+            "deviation_geom_A": connection.get("deviation_geom_A"),
+        } if isinstance(connection, Mapping) else None,
+        "flags": [i.get("code") for i in issues
+                  if isinstance(i, Mapping) and i.get("severity") in ("error", "warning")],
+    }
 
 
 def _fmt(value: Any, spec: str = "%s") -> str:
@@ -818,20 +863,75 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         failed = list(verdict.get("failed_criteria") or [])
         inconclusive = list(verdict.get("inconclusive_criteria") or [])
         missing = list(verdict.get("missing_evidence_criteria") or [])
+        unregistered = [str(x) for x in (verdict.get("unregistered_checks") or [])]
+        # no_applicable_gate 不是"未过的判据"：没有判据参与归约，报告要直说。
+        gates = [x for x in inconclusive if x == "no_applicable_gate"]
+        warn_only = [x for x in inconclusive if x != "no_applicable_gate"]
         if failed:
             lines.append("- 否证 H0 的 error 级判据: %s" % ", ".join("`%s`" % x for x in failed))
         if missing:
             lines.append("- 证据缺失（无法判定, 非否证）: %s"
                          % ", ".join("`%s`" % x for x in missing))
-        if inconclusive:
-            lines.append("- 未过的 warn 级判据: %s" % ", ".join("`%s`" % x for x in inconclusive))
-        if not failed and not inconclusive and not missing:
+        if gates:
+            lines.append("- 无适用族闸门（`no_applicable_gate`）：本次没有判据参与 H0 "
+                         "归约（体系族未知/未校准），不能据此判定通过。")
+        if warn_only:
+            lines.append("- 未过的 warn 级判据: %s"
+                         % ", ".join("`%s`" % x for x in warn_only))
+        if unregistered:
+            # 2026-11-22 复审 P0-2：validate 会返回未登记判据，归约时只降为
+            # inconclusive；报告若把它丢掉，就会出现"无法判定"与"全部通过"并存。
+            lines.append("- 未登记判据（未参与 H0 归约）: %s"
+                         % ", ".join("`%s`" % x for x in unregistered))
+        if not failed and not inconclusive and not missing and not unregistered:
             lines.append("- 全部判据通过（仅代表判据层面未被否证）。")
     elif isinstance(verdict, dict) and verdict.get("error"):
         lines.append("> 判定不可用: %s" % _cell(verdict.get("error")))
     else:
         lines.append("> 未计算判定（`--no-checks`，或 manifest 由旧版本生成）。")
     lines.append("")
+
+    review = man.get("review")
+    if isinstance(review, dict):
+        lines.append("## 0.2 结构复核 / 连接核对")
+        lines.append("")
+        if review.get("error"):
+            lines.append("> 复核记录不可用: %s" % _cell(review.get("error")))
+            lines.append("")
+        else:
+            status = review.get("status")
+            lines.append("| 项 | 值 |")
+            lines.append("|---|---|")
+            lines.append("| 复核结论 | %s（ok=%s；error=%s / warning=%s） |"
+                         % (_cell(status), _cell(review.get("ok")),
+                            _cell(review.get("errors")), _cell(review.get("warnings"))))
+            connection = review.get("connection_check") or {}
+            if connection:
+                if connection.get("valid"):
+                    cc = "有效"
+                elif connection.get("present"):
+                    cc = "记录已失效"
+                else:
+                    cc = "无记录"
+                lines.append("| 连接核对 | %s%s |" % (
+                    cc,
+                    ("；原因: %s" % _cell(connection.get("reason")))
+                    if connection.get("reason") else ""))
+                if connection.get("deviation_geom_A") is not None:
+                    lines.append("| 表面原子最大位移 | %.3f Å |"
+                                 % float(connection["deviation_geom_A"]))
+            if review.get("accepted"):
+                lines.append("| 人工豁免 | 是（accept_deviation 显式放行，"
+                             "不得当作连接核对有效） |")
+            flags = [x for x in (review.get("flags") or []) if x]
+            if flags:
+                lines.append("| 告警/错误 | %s |"
+                             % _cell(", ".join("`%s`" % x for x in flags)))
+            if not review.get("ok"):
+                lines.append("")
+                lines.append("> **复核未通过（blocked）**：报告后续的工程/物理判定"
+                             "不构成对接触几何的确认。")
+            lines.append("")
 
     lines.append("## 1. 阶段状态")
     lines.append("")
@@ -1096,24 +1196,55 @@ def generate_report(target: Any, *, run_id: str | None = None,
                               system=system)
     skipped: list[dict] = []
     written: list[str] = []
+    warnings: list[str] = []
+    existing = read_manifest(run_dir)
+    stale_reason: str | None = None
+    if existing is not None and not force:
+        previous = existing.get("judgment")
+        previous_sha = previous.get("sha256") if isinstance(previous, dict) else None
+        current_sha = (manifest.get("judgment") or {}).get("sha256")
+        if not previous_sha:
+            stale_reason = "旧 manifest 未记录判据指纹"
+        elif previous_sha != current_sha:
+            stale_reason = "判据实现已变化（judgment.sha256 不匹配）"
+        elif include_checks and not (
+                isinstance(existing.get("verdict"), dict)
+                and existing["verdict"].get("physics_verdict")):
+            # 旧版 --no-checks 产物或 validate 失败留下的 {"error": ...}：
+            # 本次明确要求判定，就补算一次，而不是继续复用空判定。
+            stale_reason = "既有 manifest 没有可用的物理判定，本次要求补算"
 
-    if layout.manifest_path.exists() and not force:
-        skipped.append({"path": str(layout.manifest_path),
-                        "reason": "manifest.json 已存在（force=True 才覆盖）"})
-        effective = read_manifest(run_dir) or manifest
-    else:
+    if stale_reason is not None:
+        # 2026-11-22 复审 P0-1：判定逻辑变了，旧 manifest 不能原样复用。
+        # 重建 manifest 的同时必须重写 report.md——否则人读报告仍是旧结论。
+        warnings.append("manifest 已过期（%s），已按当前判据重建" % stale_reason)
+        manifest.setdefault("warnings", []).append(
+            "manifest 曾过期（%s）：本次按当前判据重建，旧判定不再复用"
+            % stale_reason)
         write_manifest(manifest, layout.manifest_path)
         written.append(str(layout.manifest_path))
         effective = manifest
-
-    if layout.report_path.exists() and not force:
-        skipped.append({"path": str(layout.report_path),
-                        "reason": "report.md 已存在（force=True 才覆盖）"})
-        report_text = layout.report_path.read_text(encoding="utf-8", errors="ignore")
-    else:
         report_text = render_report(effective)
         _write_text(layout.report_path, report_text)
         written.append(str(layout.report_path))
+    else:
+        if layout.manifest_path.exists() and not force:
+            skipped.append({"path": str(layout.manifest_path),
+                            "reason": "manifest.json 已存在（force=True 才覆盖）"})
+            effective = existing or manifest
+        else:
+            write_manifest(manifest, layout.manifest_path)
+            written.append(str(layout.manifest_path))
+            effective = manifest
+
+        if layout.report_path.exists() and not force:
+            skipped.append({"path": str(layout.report_path),
+                            "reason": "report.md 已存在（force=True 才覆盖）"})
+            report_text = layout.report_path.read_text(encoding="utf-8", errors="ignore")
+        else:
+            report_text = render_report(effective)
+            _write_text(layout.report_path, report_text)
+            written.append(str(layout.report_path))
 
     return {
         "ok": True,
@@ -1124,6 +1255,8 @@ def generate_report(target: Any, *, run_id: str | None = None,
         "report": report_text,
         "written": written,
         "skipped": skipped,
+        "stale_manifest": stale_reason,
+        "warnings": warnings,
     }
 
 

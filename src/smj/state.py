@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -57,7 +58,8 @@ REMOTE_STAGES: tuple[str, ...] = (
 LOCAL_STAGES: tuple[str, ...] = ("electrode_build", "junction_analyze")
 
 STATUSES: tuple[str, ...] = (
-    "pending", "prepared", "submitted", "waiting", "finished", "failed", "collected", "skipped",
+    "pending", "prepared", "submitted", "submit_unknown", "waiting",
+    "finished", "failed", "collected", "skipped",
 )
 
 #: "该阶段无需再做" 的状态集合。2026-11-11 本地补丁 F3：状态机里 is_done()、
@@ -375,9 +377,20 @@ class RunState:
             raise SmjError("RunState 未绑定路径，无法保存")
         target.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(self.to_dict(), indent=2, ensure_ascii=False) + "\n"
-        tmp = target.with_name(target.name + ".tmp")
-        tmp.write_text(payload, encoding="utf-8", newline="\n")
-        os.replace(tmp, target)
+        # 2026-11-22 复审 P2：固定 "<name>.tmp" 在两个进程同时 save 时会互相
+        # 截断（后写者把自己的半成品替换进去）。用同目录唯一临时文件 + os.replace，
+        # 至少保证每次落盘是完整 JSON；并发仍是"最后写者赢"，但不丢文件结构。
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=target.name + ".", suffix=".tmp", dir=str(target.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_name, target)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
         self.path = target
         return target
 

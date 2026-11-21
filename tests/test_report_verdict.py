@@ -43,6 +43,42 @@ def _manifest(**verdict_overrides):
 def test_report_engineering_row_uses_engineering_passed():
     text = render_report(_manifest())
     assert "| 工程判定 | 通过 |" in text
+
+
+def test_report_renders_review_blocked_and_connection_state():
+    """2026-11-22 复审 P1：报告必须标注复核结论，不能只写工程判定。"""
+    man = _manifest()
+    man["review"] = {
+        "path": "C:/run/t/review.json",
+        "status": "blocked",
+        "ok": False,
+        "accepted": True,
+        "errors": 2,
+        "warnings": 1,
+        "connection_check": {
+            "present": True,
+            "valid": False,
+            "reason": "geometry.in 缺失，无法按当前几何复核",
+            "deviation_geom_A": 0.05,
+        },
+        "flags": ["connection_check_geometry_changed"],
+    }
+    text = render_report(man)
+    assert "## 0.2 结构复核 / 连接核对" in text
+    assert "记录已失效" in text
+    assert "0.050 Å" in text
+    assert "复核未通过（blocked）" in text
+    assert "connection_check_geometry_changed" in text
+    assert "人工豁免 | 是" in text
+
+
+def test_report_review_record_unavailable_is_not_silent():
+    man = _manifest()
+    man["review"] = {"path": "C:/run/t/review.json",
+                     "error": "review.json 不可解析: bad"}
+    text = render_report(man)
+    assert "复核记录不可用" in text
+    assert "review.json 不可解析" in text
     assert "工程判定 | 未通过" not in text
 
 

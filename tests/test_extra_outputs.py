@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,9 +21,9 @@ import pytest
 from _aims_fixtures import SCF_CONVERGED, write_scf_artifacts
 from smj.config import (ConfigError, EXTRA_OUTPUTS, MoleculeConfig, TransportConfig,
                         _parse_extra_outputs)
-from smj.errors import StageError
+from smj.errors import StageBlocked, StageError
 from smj.junction.inputs import make_aims_scf_input
-from smj.provenance import protocol_sha256
+from smj.provenance import protocol_sha256, sha256_file
 from smj.stages.aims_scf import AimsScfStage
 
 _GEOMETRY = "atom 0.0 0.0 0.0 S\natom 3.0 0.0 0.0 S\n"
@@ -153,7 +154,60 @@ class _PrepareCtx:
 def _seed_electrode_geometry(run_dir: Path) -> None:
     stage = run_dir / "electrode_build"
     stage.mkdir(parents=True, exist_ok=True)
+    geometry = stage / "geometry.in"
+    geometry.write_text(_GEOMETRY, encoding="utf-8")
+    # 2026-11-22 起 aims_scf.prepare 要求父几何与电极 metadata 的指纹一致
+    # （缺 metadata 直接 StageBlocked）；测试也要按真实链路给出确认过的指纹。
+    (stage / "electrode_metadata.json").write_text(
+        json.dumps({"surface_fingerprint": sha256_file(geometry)}), encoding="utf-8")
+
+
+def test_prepare_blocks_when_parent_metadata_missing(workdir: Path):
+    """没有 electrode_metadata 就不知道 SCF 几何是否还是 A2 确认的那份。"""
+    run_dir = workdir / "run"
+    stage = run_dir / "electrode_build"
+    stage.mkdir(parents=True)
     (stage / "geometry.in").write_text(_GEOMETRY, encoding="utf-8")
+    stage_dir = run_dir / "aims_scf"
+    stage_dir.mkdir()
+
+    with pytest.raises(StageBlocked, match="electrode_metadata"):
+        AimsScfStage().prepare(_PrepareCtx(run_dir), stage_dir)
+
+
+def test_prepare_explicit_geometry_keeps_standalone_mode_visible(
+        workdir: Path, monkeypatch):
+    """--geometry 是唯一允许跳过父指纹的模式，但必须在 notes 里写清楚。"""
+    run_dir = workdir / "run"
+    stage = run_dir / "electrode_build"
+    stage.mkdir(parents=True)
+    geometry = stage / "geometry.in"
+    geometry.write_text(_GEOMETRY, encoding="utf-8")
+    stage_dir = run_dir / "aims_scf"
+    stage_dir.mkdir()
+
+    class _OverrideCtx(_PrepareCtx):
+        def override_path(self, key: str):
+            return geometry if key == "geometry" else None
+
+    def _fake_scf_input(geometry_in, outdir, **kwargs):
+        outdir = Path(outdir)
+        control = outdir / "control.in"
+        control.write_text("xc pbe\n", encoding="utf-8")
+        script = outdir / "sub_aims.sh"
+        script.write_text("#!/bin/bash\n", encoding="utf-8")
+        summary = outdir / "input_summary.json"
+        summary.write_text(json.dumps({"spin": kwargs.get("spin")}),
+                           encoding="utf-8")
+        return {"geometry": str(geometry_in), "control": str(control),
+                "submit_script": str(script), "summary": json.loads(
+                    summary.read_text(encoding="utf-8"))}
+
+    monkeypatch.setattr("smj.stages.aims_scf.make_aims_scf_input",
+                        _fake_scf_input)
+    prepared = AimsScfStage().prepare(_OverrideCtx(run_dir), stage_dir)
+
+    assert any("独立运行模式" in note for note in prepared.notes)
 
 
 def test_prepare_rejects_spin_density_for_closed_shell(workdir: Path):

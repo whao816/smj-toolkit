@@ -360,3 +360,94 @@ def test_run_spec_records_resolved_window_unit(workdir):
     # eV 口径需要 efermi 才能解析；resolve 不了时该键可以缺席，出现就必须带单位。
     if "resolved_window" in transport:
         assert transport["resolved_window_unit"] == "Hartree"
+
+
+# --- 2026-11-22 P0-5：执行面（species/templates/二进制）必须进 run_spec ------ #
+
+def _execution_config(workdir: Path):
+    templates = workdir / "templates"
+    templates.mkdir(exist_ok=True)
+    script = templates / "sub.sh"
+    script.write_text("v1\n", encoding="utf-8")
+    aims = workdir / "aims.bin"
+    aims.write_text("aims-v1", encoding="utf-8")
+    config = _config(workdir)
+    config.paths.templates = str(templates)
+    config.cluster.env["aims_bin"] = str(aims)
+    return config, templates, aims
+
+
+def test_run_spec_records_execution_face(workdir):
+    """species defaults/模板/二进制的内容哈希必须随 run_spec 落盘。"""
+    from smj.provenance import execution_sha256
+
+    config, templates, aims = _execution_config(workdir)
+    runner = _runner(config)
+    runner.prepare("gaussian_opt")
+
+    spec = _spec(runner.run_dir)
+    assert spec["execution_sha256"] == execution_sha256(config)
+    face = spec["execution"]
+    assert face["templates"]["exists"] is True
+    assert face["templates"]["files"] == 1
+    assert face["executables"]["aims_bin"]["sha256"] == _sha256_file(aims)
+
+    before = spec["execution_sha256"]
+    (templates / "sub.sh").write_text("v2\n", encoding="utf-8")
+    assert execution_sha256(config) != before
+
+
+def test_prepare_blocks_execution_drift_and_force_rebinds(workdir):
+    """改模板/二进制不改变 protocol，但必须触发执行面漂移门。"""
+    config, templates, _ = _execution_config(workdir)
+    _runner(config).prepare("gaussian_opt")
+    first = _spec(_runner(config).run_dir)["execution_sha256"]
+
+    (templates / "sub.sh").write_text("v2\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="执行面"):
+        _runner(config).prepare("gaussian_opt")
+
+    _runner(config).prepare("gaussian_opt", force=True)
+    rebound = _spec(_runner(config).run_dir)
+    assert rebound["rebound"] is True
+    assert rebound["execution_sha256"] != first
+    assert rebind_path_exists(_runner(config).run_dir)
+
+
+def rebind_path_exists(run_dir: Path) -> bool:
+    return (run_dir / "run_spec.previous.json").is_file()
+
+
+def test_legacy_run_spec_backfills_execution_face(workdir):
+    """旧 run_spec 只有 protocol：补齐执行面字段，但不改写已知的物理协议。"""
+    from smj.provenance import ensure_run_spec, execution_sha256
+
+    config, _, _ = _execution_config(workdir)
+    runner = _runner(config)
+    runner.prepare("gaussian_opt")
+    path = runner.run_dir / "run_spec.json"
+    legacy = json.loads(path.read_text(encoding="utf-8"))
+    protocol = legacy["protocol_sha256"]
+    legacy.pop("execution_sha256")
+    legacy.pop("execution")
+    path.write_text(json.dumps(legacy, indent=2) + "\n", encoding="utf-8")
+
+    restored = ensure_run_spec(config, runner.run_dir)
+    assert restored["protocol_sha256"] == protocol
+    assert restored["execution_sha256"] == execution_sha256(config)
+    assert restored["execution_backfilled_at"]
+    assert "无法追溯" in restored["execution_backfill_note"]
+
+
+def test_execution_face_ignores_scheduler_env(workdir):
+    """account/partition 等调度键不改变执行面，不该阻塞续跑。"""
+    from smj.provenance import ensure_run_spec
+
+    config, _, _ = _execution_config(workdir)
+    config.cluster.env["account"] = "acct-a"
+    _runner(config).prepare("gaussian_opt")
+
+    config.cluster.env["account"] = "acct-b"
+    again = ensure_run_spec(config, _runner(config).run_dir)
+    assert again.get("rebound") is not True
+

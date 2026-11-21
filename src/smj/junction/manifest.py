@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 
 # 已知 smj 阶段(与 STEPS 一致; 用于识别 run 目录下的阶段子目录)
@@ -122,7 +124,20 @@ def write_manifest(run_root, out_path=None, **kw) -> dict:
     man = build_manifest(run_root, **kw)
     out = Path(out_path) if out_path else (Path(run_root) / 'manifest.json')
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(man, ensure_ascii=False, indent=2), encoding='utf-8')
+    payload = json.dumps(man, ensure_ascii=False, indent=2)
+    # 2026-11-22 复审 P2：与 state.save 同样的原子写；旧实现直接 write_text，
+    # report/外部工具可能读到半截 JSON。
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=out.name + '.', suffix='.tmp', dir=str(out.parent))
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, out)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
     man['manifest_path'] = str(out)
     return man
 

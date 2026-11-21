@@ -663,9 +663,18 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
     # 开壳层的分通道量由 analyze_te_spin 写在同一 results.json 的 spin 块里。
     # 闭壳层、旧产物（只有 L0、没有分通道 L1/L2）不做闸门，避免把"未升级产物"
     # 判成工程故障；重跑 junction_analyze 后该判据自动生效。
+    #
+    # 2026-11-22 复审 P0-3：validate 传入的是 te.parent（即 <run>/aitranss_te），
+    # 而 junction_analyze 把 results.json 写在 <run>/junction_analyze/ 下。
+    # 旧实现只看 d/results.json，导致该判据在标准分目录布局里恒 applicable=False。
     spin = None
-    results_path = d / 'results.json'
-    if results_path.is_file():
+    candidates = (
+        d / 'results.json',
+        d.parent / 'junction_analyze' / 'results.json',
+        d.parent / 'results.json',
+    )
+    results_path = next((path for path in candidates if path.is_file()), None)
+    if results_path is not None:
         try:
             payload = json.loads(results_path.read_text(encoding='utf-8'))
         except (OSError, ValueError):

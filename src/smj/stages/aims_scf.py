@@ -57,8 +57,19 @@ class AimsScfStage(Stage):
         parent_stage = "electrode_build"
         if metadata_path.is_file():
             verify_parent_geometry(self.name, upstream, metadata_path)
+        elif ctx.override_path("geometry") is not None:
+            # 独立运行：用户显式给了 geometry，没有 electrode_build 可对账；
+            # 这是唯一允许跳过父几何指纹的模式，且要在 notes 里说清楚。
+            notes.append(
+                "使用 --geometry 显式指定几何：跳过父几何指纹校验（独立运行模式；"
+                "geometry.in 不会被 verify_parent_geometry 对照 metadata）")
         else:
-            notes.append("未找到 electrode_metadata.json：跳过父几何指纹校验（独立运行模式）")
+            raise StageBlocked(
+                self.name,
+                "缺 electrode_build/electrode_metadata.json：无法确认 SCF 几何仍是"
+                "连接核对/锚定过的那份几何。请先跑 electrode_build，或独立运行时用 "
+                "--geometry 显式指定几何。",
+                [str(metadata_path)])
         natoms = self.count_aims_atoms(geometry)
         estimate = ctx.estimate(self.name, natoms)
         env = ctx.stage_env(self.name, estimate)

@@ -36,16 +36,27 @@ def read_te(path: str | Path) -> list[tuple[float, float, float]]:
     退化情形(T_alpha = T_beta = T)自动回到单列结果, 与改动前**逐位一致**。
     """
     rows = []
-    for line in Path(path).read_text(encoding="utf-8", errors="ignore").splitlines():
+    for lineno, line in enumerate(
+            Path(path).read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         fields = line.split()
         if len(fields) >= 3:
             try:
+                e_ha = float(fields[0].replace("D", "E"))
+                e_ev = float(fields[1].replace("D", "E"))
                 chans = [float(x.replace("D", "E")) for x in fields[2:4]]
-                rows.append((float(fields[0]), float(fields[1]), sum(chans) / len(chans)))
             except ValueError:
-                pass
+                continue
+            # 2026-11-22 复审 P0-4：NaN/inf 会一路穿过 max()、trapz 和
+            # transport_moments 的 `if l0` 守卫，把 G/S/k_e/ZT 变成 NaN，
+            # 最后让机械判据输出"否证 H0"。损坏的证据必须在这里拒绝，
+            # 由调用方归到 te_present(missing=True) -> inconclusive。
+            if not all(math.isfinite(v) for v in (e_ha, e_ev, *chans)):
+                raise ValueError(
+                    "TE.dat 含非有限数值(第 %d 行: %s)；损坏的谱不能当物理结果"
+                    % (lineno, " ".join(fields[:4])))
+            rows.append((e_ha, e_ev, sum(chans) / len(chans)))
     if len(rows) < 2:
         raise ValueError(f"Not enough TE data in {path}")
     return rows
@@ -166,6 +177,15 @@ def transport_moments(l0: float, l1: float, l2: float, temperature: float) -> di
     2026-11-21 批 B (S2): 分通道 S/k_e/ZT 必须与总口径完全同形，否则"加权平均
     等于总 S"的自洽检查就失去意义。这里只做公式搬运，不做任何近似。
     """
+    if not all(math.isfinite(v) for v in (l0, l1, l2)):
+        # 理论上 read_te 已拒绝非有限输入；这里的守卫是给直接调用者/未来
+        # 数据源（spin 分通道）兜底，避免 NaN 被 `if l0` 当成真值继续传播。
+        return {
+            "log10_G_over_G0_like": None,
+            "S_uV_per_K": None,
+            "k_e_pW_per_K": None,
+            "ZT_electronic": None,
+        }
     return {
         "log10_G_over_G0_like": math.log10(l0) if l0 > 0 else None,
         "S_uV_per_K": 1e6 * (-(l1) / (l0 * temperature)) if l0 else None,
@@ -185,7 +205,13 @@ def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path 
         warnings.append(
             "TE.dat 的能量列不是升序(%s); 已按 E-E_F 升序排序后积分" % order)
     e_ev = [r[1] for r in rows]
-    trans = [max(r[2], 0.0) for r in rows]
+    raw_trans = [r[2] for r in rows]
+    negative = [t for t in raw_trans if t < 0.0]
+    if negative:
+        warnings.append(
+            "TE.dat 有 %d 个负透射值(最小 %.6g)：按物理口径 clamp 为 0 后积分，"
+            "max_transmission 仍记录原始峰值" % (len(negative), min(negative)))
+    trans = [max(t, 0.0) for t in raw_trans]
     weights = [minus_fermi_derivative(e, temperature) for e in e_ev]
     l0_terms = [t * w for t, w in zip(trans, weights)]
     l1_terms = [e * t * w for e, t, w in zip(e_ev, trans, weights)]
@@ -209,11 +235,13 @@ def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path 
         # 行序观测: 让下游能区分"本来就是升序"与"被脚本纠正过"。
         "input_energy_order": order,
         "reordered": order != "ascending",
+        "negative_transmission_points": len(negative),
         "warnings": warnings,
     }
     if output:
         Path(output).parent.mkdir(parents=True, exist_ok=True)
-        Path(output).write_text(json.dumps(result, indent=2), encoding="utf-8")
+        Path(output).write_text(json.dumps(result, indent=2, allow_nan=False),
+                                encoding="utf-8")
     return result
 
 

@@ -78,10 +78,15 @@ REFERENCE_ALIASES: dict[str, str] = {
 # 小工具
 # --------------------------------------------------------------------------- #
 def _write_json(payload: Mapping[str, Any], path: str | Path) -> Path:
-    """原子写 JSON（``.tmp`` -> ``os.replace``），父目录自动创建。"""
+    """原子写 JSON（``.tmp`` -> ``os.replace``），父目录自动创建。
+
+    ``allow_nan=False``：NaN/Infinity 不是 JSON 数字，写出去会让严格解析器
+    （以及下游判据）把损坏证据读成正常值。非有限量应在构造 payload 时转 None。
+    """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(dict(payload), indent=2, ensure_ascii=False) + "\n"
+    text = json.dumps(dict(payload), indent=2, ensure_ascii=False,
+                      allow_nan=False) + "\n"
     tmp = target.with_name(target.name + ".tmp")
     tmp.write_text(text, encoding="utf-8", newline="\n")
     os.replace(tmp, target)

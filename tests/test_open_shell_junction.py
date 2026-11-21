@@ -15,6 +15,7 @@ import pytest
 from _aims_fixtures import ALPHA, BETA, SCF_CONVERGED, write_scf_sidecars
 from smj.config import ElectrodeConfig, MoleculeConfig, load_config
 from smj.errors import ConfigError
+from smj.provenance import sha256_file
 from smj.stages.aims_scf import AimsScfStage
 from smj.stages.aims_tip_relax import AimsTipRelaxStage
 
@@ -58,6 +59,12 @@ def _ctx(workdir: Path, molecule: MoleculeConfig, electrode=None):
     species.mkdir(exist_ok=True)
     xyz = workdir / "opt.xyz"
     xyz.write_text("2\nTTF\nS 0.0 0.0 0.0\nS 0.0 0.0 3.0\n", encoding="utf-8")
+    # aims_scf.prepare 要求父几何与 electrode_metadata 指纹一致；这里补一份
+    # 与上游几何匹配的 metadata（真实链路由 electrode_build 产出）。
+    build = workdir / "run" / "electrode_build"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "electrode_metadata.json").write_text(
+        json.dumps({"surface_fingerprint": sha256_file(xyz)}), encoding="utf-8")
     return SimpleNamespace(
         config=SimpleNamespace(
             molecule=molecule,

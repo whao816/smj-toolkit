@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Callable, Mapping
 from .config import RunConfig
 from .context import StageContext
 from .engines import engine_for_config
-from .errors import ActiveJobError, SmjError, StageError
+from .errors import ActiveJobError, SmjError, StageError, SubmitUncertain
 from .provenance import ensure_run_spec, hash_stage_inputs, hash_stage_outputs
 from .remote import (
     SMJ_SCRIPT_ARGS,
@@ -281,6 +281,11 @@ class StageRunner:
                 raise ActiveJobError(
                     "阶段 %s 正在远端运行（status=%s）；确认要重来请加 --force"
                     % (key, status))
+            if status == "submit_unknown":
+                raise StageError(
+                    "阶段 %s 上一次 sbatch 结果未知（可能已有作业在跑）：先按远端目录 "
+                    "`squeue`/`sacct` 核对，确认没有作业后再加 --force 重新 prepare"
+                    % key)
             if status in ("finished", "collected"):
                 raise StageError(
                     "阶段 %s 已完成（status=%s）；重跑请加 --force" % (key, status))
@@ -351,6 +356,10 @@ class StageRunner:
         # 而意外可提交，语义靠默认分支兜底；现在 prepared / failed 明确可提交
         # （failed 允许直接重提，方便临时错误后重试），其余状态一律要 --force。
         if not force and status not in ("prepared", "failed"):
+            if status == "submit_unknown":
+                raise StageError(
+                    "阶段 %s 上一次 sbatch 结果未知（可能已有作业在跑）：先按远端目录 "
+                    "`squeue`/`sacct` 核对，确认没有作业后再加 --force 重提" % key)
             if status in ("submitted", "waiting"):
                 raise StageError(
                     "阶段 %s 已提交（status=%s, job_id=%s）；重提交请加 --force"
@@ -372,7 +381,21 @@ class StageRunner:
         self._reject_unconfigured(key, script, stage_dir)
 
         if self.config.mode == "slurm-ssh":
-            submission = self._session().submit(key, stage_dir, script=script)
+            session = self._session()
+            try:
+                submission = session.submit(key, stage_dir, script=script)
+            except SubmitUncertain as exc:
+                # 2026-11-22 复审 P0：sbatch 超时/无 job id 不能当"提交失败"。
+                # 作业可能已经在排队，状态必须是显式的“未知”，让下一次 run 停下来
+                # 要求人工 squeue 核对；否则 --run 会自动重提，同一目录两个作业。
+                self.state.set(
+                    key, status="submit_unknown",
+                    remote_dir=str(getattr(exc, "remote_dir", session.stage_dir(key))),
+                    script=script, job_id=None,
+                    note=str(exc), error=str(exc))
+                self._save()
+                self._log("[%s] sbatch 结果未知：%s" % (key, str(exc).splitlines()[0]))
+                raise
             self.state.set(
                 key, status="submitted", submitted_at=now_iso(),
                 job_id=submission.job_id, remote_dir=submission.remote_dir,
@@ -428,6 +451,11 @@ class StageRunner:
             raise StageError(
                 "阶段 %s 已结束（status=%s）；--wait 只用于 submitted/waiting 的作业"
                 "（已结束未采集请用 --collect，重跑请用 --force）" % (key, status))
+
+        if status == "submit_unknown":
+            raise StageError(
+                "阶段 %s 上一次 sbatch 结果未知、没有可轮询的 job_id：先按远端目录 "
+                "`squeue`/`sacct` 核对；确认没有作业后再 --submit --force" % key)
 
         if self.config.mode == "slurm-ssh":
             if not state.job_id:
@@ -529,14 +557,18 @@ class StageRunner:
         collected = stage.collect(self.context, stage_dir)
         payload = _collected_payload(collected)
         artifacts = payload.get("artifacts") or list(getattr(stage, "outputs", ()) or ())
-        outputs_sha256 = hash_stage_outputs(stage_dir, artifacts)
+        unhashed: list[str] = []
+        outputs_sha256 = hash_stage_outputs(stage_dir, artifacts, missing=unhashed)
+        note = None if not download or not download["missing"] else (
+            "未取到: " + ", ".join(download["missing"]))
+        if unhashed:
+            extra_note = "未记录哈希（缺件或超过大小上限）: " + ", ".join(unhashed)
+            note = "%s；%s" % (note, extra_note) if note else extra_note
         self.state.set(
             key, status="collected", collected_at=now_iso(),
             artifacts=list(artifacts), results=dict(payload.get("results") or {}),
-            outputs_sha256=outputs_sha256,
-            note=None if not download or not download["missing"] else (
-                "未取到: " + ", ".join(download["missing"])),
-            error=None)
+            outputs_sha256=outputs_sha256, output_hash_missing=unhashed,
+            note=note, error=None)
         self._save()
         for note in payload.get("notes") or ():
             self._log("[%s] %s" % (key, note))
@@ -581,6 +613,16 @@ class StageRunner:
         outcome = StageOutcome(stage=key, action="run")
         try:
             stage = self.get_stage(key)
+            force_now = self.force if force is None else bool(force)
+            if self.state.status(key) == "submit_unknown" and not force_now:
+                # 不能先 prepare：旧状态会被覆盖成 prepared，人工核对的前提就没了。
+                outcome.ok = False
+                outcome.status = "submit_unknown"
+                outcome.message = (
+                    "上一次 sbatch 结果未知：作业可能已经在集群排队。先按远端目录 "
+                    "`squeue`/`sacct` 核对；确认没有作业后 `smj stage %s --submit "
+                    "--force`。" % key)
+                return outcome
             outcome.prepared = self.prepare(key, force=force)
             outcome.status = "prepared"
             outcome.ok = True
@@ -607,10 +649,7 @@ class StageRunner:
                 outcome.message = outcome.wait.get("note") or "等待超时，作业可能仍在运行"
                 return outcome
 
-            outcome.collected = self.collect(key)
-            outcome.status = "collected"
-            outcome.ok = True
-            return outcome
+            return self._collect_after_job(key, outcome)
         except ActiveJobError as exc:
             # 2026-11-20 复核 P1-5：作业还在远端跑不是失败。保留
             # submitted/waiting 与 job_id，否则下一次 run 的保护失效、会重复提交。
@@ -619,6 +658,14 @@ class StageRunner:
             outcome.message = str(exc)
             self._log("[%s] 作业仍在远端运行（status=%s），未重来"
                       % (key, outcome.status))
+            return outcome
+        except SubmitUncertain as exc:
+            # 状态已由 submit() 写成 submit_unknown；不要覆盖、也不要再写 failed。
+            outcome.ok = False
+            outcome.status = "submit_unknown"
+            outcome.message = str(exc)
+            self._log("[%s] 提交结果未知，等待人工核对: %s"
+                      % (key, outcome.message.splitlines()[0]))
             return outcome
         except SmjError as exc:
             self.state.set(key, status="failed", error=str(exc),
@@ -629,6 +676,47 @@ class StageRunner:
             outcome.message = str(exc)
             self._log("[%s] 失败: %s" % (key, outcome.message.splitlines()[0]))
             return outcome
+        except (ValueError, OSError) as exc:
+            # 2026-11-22 复审 P1：junction/inputs 的配置错误抛 ValueError（如缺
+            # species_dir），CLI 顶层兜底只保证退出码，state.json 里看不到原因。
+            # 这里统一记 failed + note，保持 "dry-run 失败会标 failed" 的承诺。
+            message = "阶段输入/环境错误: %s" % exc
+            self.state.set(key, status="failed", error=message,
+                           note=message.splitlines()[0][:300])
+            self._save()
+            outcome.ok = False
+            outcome.status = "failed"
+            outcome.message = message
+            self._log("[%s] 失败: %s" % (key, message.splitlines()[0]))
+            return outcome
+
+    def _collect_after_job(self, key: str, outcome: StageOutcome) -> StageOutcome:
+        """远端作业已结束：只补 collect，失败时保留 ``finished``。
+
+        2026-11-22 复审 P0：旧实现把 collect 的任意 ``SmjError`` 统一写成
+        ``failed``，下一次 ``run`` 于是重新 ``prepare`` + 提交，而远端结果还在、
+        作业已跑完——既浪费机时又可能覆盖/删除已完成产物。collect 失败不是作业
+        失败：状态留在 ``finished``，``error`` 记原因，下次 run 走 ``_resume_active``
+        只重试 collect。
+        """
+        try:
+            outcome.collected = self.collect(key)
+        except SmjError as exc:
+            message = str(exc)
+            self.state.set(
+                key, status="finished", error=message, collect_failed=True,
+                note="远端作业已结束，但 collect 失败（不重提作业；修复后再次 run "
+                     "只重试 collect）: %s" % message.splitlines()[0][:300])
+            self._save()
+            outcome.ok = False
+            outcome.status = "finished"
+            outcome.message = message
+            self._log("[%s] collect 失败（作业结果保留）: %s"
+                      % (key, message.splitlines()[0]))
+            return outcome
+        outcome.status = "collected"
+        outcome.ok = True
+        return outcome
 
     def _resume_active(self, key: str, *, waited: bool) -> StageOutcome:
         """阶段的作业已在远端：只等待/补 collect，不重新提交。
@@ -648,11 +736,7 @@ class StageRunner:
                     outcome.message = (outcome.wait.get("note")
                                        or "等待超时，作业可能仍在运行")
                     return outcome
-            outcome.collected = self.collect(key)
-            outcome.status = "collected"
-            outcome.ok = True
-            outcome.message = "作业已结束，补 collect 完成"
-            return outcome
+            return self._collect_after_job(key, outcome)
         except SmjError as exc:
             self.state.set(key, status="failed", error=str(exc),
                            note=str(exc).splitlines()[0][:300])
@@ -687,6 +771,15 @@ class StageRunner:
                     message="已标记 skipped，跳过（--force 可重跑）"))
                 self._log("[%s] 已跳过，跳过" % key)
                 continue
+            if not force and status == "submit_unknown":
+                message = (
+                    "上一次 sbatch 结果未知：作业可能已经在集群排队。先按远端目录 "
+                    "`squeue`/`sacct` 核对；确认没有作业后 `smj stage %s --submit "
+                    "--force`，不要直接重跑 --run。" % key)
+                outcomes.append(StageOutcome(
+                    stage=key, status="submit_unknown", ok=False, message=message))
+                self._log("[%s] %s" % (key, message))
+                break
             if not force and status in ("submitted", "waiting", "finished"):
                 # 2026-11-20 复核 P1-5：远端已有作业（或已结束待收尾）时只
                 # 等待/补 collect，绝不重新 prepare+submit。旧实现只处理

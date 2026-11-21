@@ -139,8 +139,14 @@ def hash_stage_inputs(paths: Iterable[str | Path]) -> dict[str, str]:
     return out
 
 
-def hash_stage_outputs(stage_dir: str | Path, artifacts: Iterable[str]) -> dict[str, str]:
-    """把 collect 声明的产物哈希成 ``{相对名: sha256}``。"""
+def hash_stage_outputs(stage_dir: str | Path, artifacts: Iterable[str], *,
+                       missing: list[str] | None = None) -> dict[str, str]:
+    """把 collect 声明的产物哈希成 ``{相对名: sha256}``。
+
+    缺件或超过 ``MAX_HASH_BYTES`` 的文件无法哈希：旧实现静默省略，``outputs_sha256``
+    看起来"全都核过"，实际有洞。现在把名字追加到 ``missing``（由调用方写进
+    state 的 ``output_hash_missing`` 与 note），让缺失可见。
+    """
     root = Path(stage_dir)
     out: dict[str, str] = {}
     for raw in artifacts or ():
@@ -151,6 +157,8 @@ def hash_stage_outputs(stage_dir: str | Path, artifacts: Iterable[str]) -> dict[
         digest = sha256_file(path)
         if digest is not None:
             out[name] = digest
+        elif missing is not None:
+            missing.append(name)
     return out
 
 
@@ -225,6 +233,121 @@ def _electrode_library_info(config: Any) -> dict[str, Any]:
     }
 
 
+#: 这些 ``cluster.env`` 键决定"实际用哪套基组/哪个可执行文件"，会改变算出来的数；
+#: 其余环境键（account/qos/partition 等）只影响调度，不进执行面指纹。
+_EXECUTION_ENV_KEYS = (
+    "aims_bin", "aitranss_bin", "aitransss_bin",
+    "g16root", "G16ROOT", "MKL_LIB", "AIMS_SPECIES_DEFAULTS",
+)
+
+#: 目录内容哈希的读取上限：避免把整个 ``species_defaults`` 树读进内存/拖慢 prepare。
+_EXECUTION_TREE_LIMIT = 128
+_EXECUTION_LIST_LIMIT = 5000
+
+
+def _resolve_user_path(raw: Any) -> Path | None:
+    if raw is None or not str(raw).strip():
+        return None
+    return Path(os.path.expandvars(os.path.expanduser(str(raw))))
+
+
+def _executable_probe(raw: Any) -> dict[str, Any]:
+    """可执行文件：路径 + 存在性 + 本地可读时的 sha256（远端路径只记路径）。"""
+    path = _resolve_user_path(raw)
+    if path is None:
+        return {"path": None, "exists": False, "sha256": None}
+    exists = path.is_file()
+    return {
+        "path": str(path),
+        "exists": exists,
+        "sha256": sha256_file(path) if exists else None,
+    }
+
+
+def _tree_probe(raw: Any) -> dict[str, Any]:
+    """目录（species defaults / templates）的路径、文件清单与内容指纹。
+
+    清单哈希覆盖所有文件的相对路径与大小（最多 ``_EXECUTION_LIST_LIMIT`` 个），
+    内容哈希只读前 ``_EXECUTION_TREE_LIMIT`` 个文件；``truncated`` 明确标注未
+    覆盖的范围——不把"只哈希了一部分"包装成"整个目录已绑定"。
+    """
+    path = _resolve_user_path(raw)
+    empty = {"path": None, "exists": False, "files": 0,
+             "listing_sha256": None, "content_sha256": None, "truncated": False}
+    if path is None:
+        return empty
+    if path.is_file():
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = None
+        return {"path": str(path), "exists": True, "files": 1,
+                "listing_sha256": sha256_text(canonical_json([[path.name, size]])),
+                "content_sha256": sha256_file(path), "truncated": False}
+    if not path.is_dir():
+        return {**empty, "path": str(path)}
+    listing: list[list[Any]] = []
+    content: list[list[Any]] = []
+    truncated = False
+    for child in sorted(path.rglob("*")):
+        if not child.is_file():
+            continue
+        if len(listing) >= _EXECUTION_LIST_LIMIT:
+            truncated = True
+            break
+        try:
+            size = child.stat().st_size
+        except OSError:
+            size = None
+        rel = child.relative_to(path).as_posix()
+        listing.append([rel, size])
+        if len(content) < _EXECUTION_TREE_LIMIT:
+            content.append([rel, size, sha256_file(child)])
+        else:
+            truncated = True
+    return {
+        "path": str(path),
+        "exists": True,
+        "files": len(listing),
+        "listing_sha256": sha256_text(canonical_json(listing)),
+        "content_sha256": sha256_text(canonical_json(content)),
+        "truncated": truncated,
+    }
+
+
+def _execution_config(config: Any) -> dict[str, Any]:
+    """会改变"算出来的数"、却不在物理协议里的执行面：基组、模板、二进制。
+
+    物理协议（:func:`_protocol_config`）管分子/电极/输运；species defaults、
+    提交模板和 aims/aitranss 可执行文件同样决定结果。2026-11 复审的 P0-5 是：
+    改这些配置不会触发 run_spec 重绑，快照与实际计算脱节。这里单独成一份
+    指纹，而不是塞进 protocol——否则换集群路径/排队参数也会让历史 run 漂移。
+    """
+    cluster = getattr(config, "cluster", None)
+    paths = getattr(config, "paths", None)
+    env = getattr(cluster, "env", None)
+    env = env if isinstance(env, Mapping) else {}
+    species_raw = (getattr(cluster, "species_dir", None)
+                   or getattr(paths, "species_defaults", None))
+    templates_raw = getattr(paths, "templates", None)
+    executables: dict[str, Any] = {}
+    for key in ("aims_bin", "aitranss_bin", "aitransss_bin", "g16root"):
+        value = env.get(key)
+        if value:
+            executables[key] = _executable_probe(value)
+    selected_env = {
+        str(key): str(env[key])
+        for key in _EXECUTION_ENV_KEYS
+        if env.get(key) is not None
+    }
+    return {
+        "species_defaults": _tree_probe(species_raw),
+        "templates": _tree_probe(templates_raw),
+        "executables": executables,
+        "cluster_env": selected_env,
+    }
+
+
 def _protocol_config(config: Any) -> dict[str, Any]:
     """只取会改变物理结果的配置子集（路径/资源/报告设置不算）。"""
     molecule = _jsonable(config.molecule)
@@ -296,6 +419,16 @@ def protocol_sha256(config: Any) -> str:
 def protocol_components(config: Any) -> dict[str, Any]:
     """``protocol_sha256`` 的输入字典（供 drift 明细/比对使用）。"""
     return _protocol_config(config)
+
+
+def execution_components(config: Any) -> dict[str, Any]:
+    """执行面指纹的输入字典（species/templates/二进制；见 P0-5）。"""
+    return _execution_config(config)
+
+
+def execution_sha256(config: Any) -> str:
+    """执行面指纹：species defaults、提交模板与可执行文件的内容哈希。"""
+    return sha256_text(canonical_json(_execution_config(config)))
 
 
 #: 会直接改变物理结果的键：schema 演进时也必须两边都在且相等，否则仍判漂移。
@@ -549,6 +682,8 @@ def run_spec_payload(config: Any, run_dir: str | Path, *,
         "config_sha256": sha256_text(canonical_json(config_data)),
         "protocol_sha256": protocol_sha256(config),
         "protocol_schema": PROTOCOL_SCHEMA,
+        "execution_sha256": execution_sha256(config),
+        "execution": execution_components(config),
         "config": config_data,
         "electrode_library": _electrode_library_info(config),
         "software": _software_info(config),
@@ -613,6 +748,18 @@ def ensure_run_spec(config: Any, run_dir: str | Path, *,
     root = Path(run_dir)
     path = root / RUN_SPEC_FILE
     current = protocol_sha256(config)
+    current_exec = execution_sha256(config)
+
+    def _rebind(reason: str) -> dict[str, Any]:
+        previous = root / RUN_SPEC_PREVIOUS
+        try:
+            shutil.copy2(path, previous)
+        except OSError as exc:
+            raise ConfigError("无法保留旧 run_spec（%s）: %s" % (previous, exc)) from exc
+        spec = run_spec_payload(config, root, rebound=True, reason=reason)
+        _write_json(spec, path)
+        return spec
+
     if not path.is_file():
         spec = run_spec_payload(config, root)
         _write_json(spec, path)
@@ -628,23 +775,38 @@ def ensure_run_spec(config: Any, run_dir: str | Path, *,
         raise ConfigError("run_spec.json 顶层必须是对象: %s" % path)
 
     stored = existing.get("protocol_sha256")
-    if stored == current:
+    stored_exec = existing.get("execution_sha256")
+    if stored != current:
+        if not force:
+            raise ConfigError(
+                "run_spec 与当前配置不一致（protocol_sha256: run=%s, 当前=%s）。"
+                "run_spec 是 run 级不可变快照：请恢复原配置，或确认要重绑后加 --force"
+                % (str(stored)[:12] or "缺失", current[:12]))
+        return _rebind("物理协议漂移后 --force 重绑；旧快照见 %s" % RUN_SPEC_PREVIOUS)
+
+    if stored_exec is None:
+        # 旧 run_spec 只有物理协议、没有执行面。这里只补齐字段，不改写
+        # config/protocol——不伪装成重绑；同时明确标注"基线是本次才建立的"。
+        patched = dict(existing)
+        patched["execution"] = execution_components(config)
+        patched["execution_sha256"] = current_exec
+        patched["execution_backfilled_at"] = now_iso()
+        patched["execution_backfill_note"] = (
+            "旧 run_spec 未记录执行面（species defaults/模板/二进制）；"
+            "本次 prepare 补齐基线，无法追溯此前是否已改过这些输入")
+        _write_json(patched, path)
+        return patched
+
+    if stored_exec == current_exec:
         return existing
     if not force:
         raise ConfigError(
-            "run_spec 与当前配置不一致（protocol_sha256: run=%s, 当前=%s）。"
-            "run_spec 是 run 级不可变快照：请恢复原配置，或确认要重绑后加 --force"
-            % (str(stored)[:12] or "缺失", current[:12]))
-    previous = root / RUN_SPEC_PREVIOUS
-    try:
-        shutil.copy2(path, previous)
-    except OSError as exc:
-        raise ConfigError("无法保留旧 run_spec（%s）: %s" % (previous, exc)) from exc
-    spec = run_spec_payload(
-        config, root, rebound=True,
-        reason="配置漂移后 --force 重绑；旧快照见 %s" % RUN_SPEC_PREVIOUS)
-    _write_json(spec, path)
-    return spec
+            "run_spec 与当前执行面不一致（execution_sha256: run=%s, 当前=%s）："
+            "species defaults/templates/可执行文件会改变算出来的数，"
+            "但不会改变 protocol_sha256。请恢复原环境，或确认要重绑后加 --force"
+            % (str(stored_exec)[:12], current_exec[:12]))
+    return _rebind("执行面（species defaults/模板/二进制）漂移后 --force 重绑；"
+                   "旧快照见 %s" % RUN_SPEC_PREVIOUS)
 
 
 # --------------------------------------------------------------------------- #

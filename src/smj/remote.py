@@ -35,7 +35,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .junction import artifacts as _artifacts
 from .junction import jobwait as _jobwait
-from .errors import SmjError, StageError, TransportError
+from .errors import SmjError, StageError, SubmitUncertain, TransportError
 from .state import normalize_stage
 from .transport import CommandResult, Transport, remote_join
 
@@ -301,16 +301,25 @@ class RemoteSession:
         if args:
             command += " " + " ".join(shlex.quote(str(a)) for a in args)
         result = self._run(command, timeout=120)
+        if result.code == 124:
+            # 超时 ≠ 提交失败：作业可能已经创建。必须让调用方保留“未知”状态，
+            # 人工 squeue 核对后再决定重提，否则同一 remote_dir 会出现两个作业。
+            raise SubmitUncertain(
+                "sbatch 超时（120 s），无法确认作业是否已创建（远端目录 %s）。\n"
+                "请先在集群上按该目录/提交时间 `squeue`/`sacct` 核对；确认没有作业后"
+                "再 `smj stage <name> --submit --force`。" % remote_dir,
+                remote_dir=remote_dir)
         if not result.ok:
             raise TransportError(
                 "sbatch 提交失败 (rc=%d): %s"
                 % (result.code, (result.err or result.out).strip()[:1000]))
         job_id = parse_job_id(result.out) or parse_job_id(result.err)
         if not job_id:
-            raise TransportError(
+            raise SubmitUncertain(
                 "sbatch 已执行但未解析到 job id（输出: %r）。\n"
-                "请先手工 `squeue` 确认；确认没有作业后再重提交。"
-                % ((result.out or result.err or "").strip()[:500],))
+                "作业可能已经排上：请先 `squeue` 确认；确认没有作业后再重提交。"
+                % ((result.out or result.err or "").strip()[:500],),
+                remote_dir=remote_dir)
         return Submission(
             stage=stage, mode="slurm-ssh", script=script, remote_dir=remote_dir,
             job_id=job_id, sbatch=command, uploaded=uploaded,

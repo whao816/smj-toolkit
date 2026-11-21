@@ -48,7 +48,8 @@ class JunctionAnalyzeStage(Stage):
             # vendored analyze_te 对 α/β 取均值，只保总 G/S；这里保留分通道量。
             result["spin"] = analyze_te_spin(te, temperature=temperature)
             results_path.write_text(
-                json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+                json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False),
+                encoding="utf-8")
         points = int(result.get("points") or 0)
         ctx.log("junction_analyze: %d 个能量点 → %s" % (points, results_path.name))
         notes = [

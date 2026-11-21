@@ -218,7 +218,11 @@ def _overrides_from_args(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _make_runner(args: argparse.Namespace, config: RunConfig) -> StageRunner:
-    logger = None if getattr(args, "quiet", False) else (lambda message: print(message))
+    # 2026-11-22 复审 P1：进度日志必须走 stderr。旧实现把 logger 接成 stdout 的
+    # print，`smj run --json` 的首行变成 "[molecule_opt] prepare ..."，
+    # json.loads 直接失败——机器可读输出只能有一份 JSON。
+    logger = (None if getattr(args, "quiet", False)
+              else (lambda message: print(message, file=sys.stderr)))
     return StageRunner(
         config,
         run_dir=getattr(args, "run_dir", None),
@@ -788,6 +792,23 @@ def _status_rows(state: RunState) -> list[dict[str, Any]]:
     return rows
 
 
+def _report_blocked(data: Mapping[str, Any]) -> bool:
+    """``smj report --strict``：判定失败/被阻断时不要让 shell 看到 0。"""
+    manifest = data.get("manifest")
+    verdict = manifest.get("verdict") if isinstance(manifest, Mapping) else None
+    if not isinstance(verdict, Mapping):
+        return bool(data.get("error"))
+    if verdict.get("error"):
+        return True
+    if verdict.get("physics_verdict") == "failed":
+        return True
+    if verdict.get("engineering_passed") is False:
+        return True
+    if int(verdict.get("errors") or 0) > 0:
+        return True
+    return verdict.get("status") in ("blocked", "failed")
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     config = _load_config(args)
     module = _optional_module(_AUX_MODULES["report"][0], "report（报告生成）")
@@ -800,6 +821,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         _emit_json(data)
     else:
         _print_mapping(data, title="report: %s" % config.name)
+    if getattr(args, "strict", False) and _report_blocked(data):
+        if not args.json:
+            _error("判定未通过：报告已写出，但 --strict 要求退出码非 0")
+        return EXIT_FAILED
     return EXIT_OK if ok else EXIT_FAILED
 
 
@@ -820,7 +845,7 @@ def _fetch_pdos_vectors(args: argparse.Namespace) -> None:
     run_dir = Path(args.run)
     runner = StageRunner(
         config, run_dir=run_dir,
-        logger=None if args.quiet else (lambda message: print(message)))
+        logger=None if args.quiet else (lambda message: print(message, file=sys.stderr)))
     session = runner.session()
     download = session.download("aims_scf", run_dir / "aims_scf",
                                 names=_PDOS_VECTOR_FILES)
@@ -935,7 +960,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     # --approve 是手工补签/重签路径（fail-closed），签完在同一条命令里看门过没过。
     if getattr(args, "approve", False):
         if not (args.who or "").strip():
-            print("错误: --approve 需要 --who <签署人>（连接核对必须记录是谁看的）")
+            _error("--approve 需要 --who <签署人>（连接核对必须记录是谁看的）")
             return 2
         from .a2 import approve_connection_check  # 本地模块，非可选依赖
 
@@ -960,6 +985,10 @@ def cmd_review(args: argparse.Namespace) -> int:
     module = _optional_module(_AUX_MODULES["review"][0], "review（结构复核）")
     func = _find_callable(module, _AUX_MODULES["review"][1])
     kwargs: dict[str, Any] = {"force": args.force}
+    if args.stage:
+        # 2026-11-22 复审 P1：--stage 曾只用于 --approve，普通复核路径完全忽略，
+        # 复核错了目录也会写 review.json。这里把显式的 electrode_build 目录透传。
+        kwargs["stage"] = args.stage
     if args.accept_deviation is not None:
         kwargs["accept_deviation"] = args.accept_deviation
     connection_check = getattr(args, "connection_check", None)
@@ -1437,6 +1466,8 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--force", action="store_true", help="覆盖已存在的报告")
     report.add_argument("--no-checks", action="store_true",
                         help="不计算物理判据（默认会算并写入 manifest.verdict）")
+    report.add_argument("--strict", action="store_true",
+                        help="判定失败/被阻断时退出码为 1（默认只要报告写成功就是 0）")
     report.set_defaults(handler=cmd_report)
 
     analyze = subparsers.add_parser(
@@ -1587,6 +1618,13 @@ def main(argv: list[str] | None = None, *, stage_getter: Callable[[str], Any] | 
         return EXIT_FAILED
     except SmjError as exc:
         _error(str(exc), debug=bool(getattr(args, "debug", False)))
+        return EXIT_FAILED
+    except Exception as exc:  # noqa: BLE001 - CLI 顶层兜底：给一行可读错误，不喷 traceback
+        if getattr(args, "json", False):
+            _emit_json({"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)})
+        _error("%s: %s（加 --debug 看完整 traceback）"
+               % (type(exc).__name__, exc),
+               debug=bool(getattr(args, "debug", False)))
         return EXIT_FAILED
 
 

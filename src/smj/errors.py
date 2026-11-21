@@ -26,6 +26,23 @@ class TransportError(SmjError):
     """SSH/SCP/Slurm 命令执行失败或远端路径不可用。"""
 
 
+class SubmitUncertain(TransportError):
+    """``sbatch`` 已经发出，但无法确认作业是否真的被创建。
+
+    2026-11-22 复审 P0：``sbatch`` 超时（rc=124）或输出里解析不到 job id 时，
+    旧实现统一抛 :class:`TransportError`，``runner`` 随即把阶段标成 ``failed``；
+    下一次 ``run`` 走 ``prepare`` 直接重提，和可能已经在跑的作业撞在一起。
+
+    这类失败**不是**普通的提交失败：调用方必须保留一个显式的“结果未知”状态
+    （``submit_unknown``），要求用户先 ``squeue``/``sacct`` 按远端目录核对，
+    确认没有作业后才能 ``--force`` 重提。
+    """
+
+    def __init__(self, message: str, *, remote_dir: str | None = None):
+        self.remote_dir = remote_dir
+        super().__init__(message)
+
+
 class StageError(SmjError):
     """阶段内部错误（输入生成失败、产物解析失败、作业失败等）。"""
 

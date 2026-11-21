@@ -11,11 +11,10 @@
 
    - ``ReviewConfig.connection_check=True`` 且**无核对记录** -> ``blocked``；
    - 确认有效（指纹一致）-> 通过；
-   - 指纹失效（几何已变）时比较**表面索引偏差**
-     ``1 - 交集 / 较大集合``（0..1，未匹配表面原子占比）：
-     ``<= connection_check_deviation`` 视为可接受偏差；
-     否则若显式给 ``accept_deviation`` 且 ``<= accept_deviation``，记为
-     ``warning`` 并 ``accepted=True``（报告须标注）；再超 -> ``blocked``。
+   - 指纹失效（几何已变）-> 用记录里的表面原子坐标与当前 ``geometry.in``
+     比较**最大位移**（Å）：没有可比坐标（旧记录/几何缺失）一律 ``blocked``，
+     不拿"没量化"当通过；只有显式给 ``accept_deviation`` 且位移在阈值内，
+     才记 ``warning`` + ``accepted=True``（报告须标注人工豁免）。
    - ``connection_check=False`` 时连接核对只是加分证据：缺失/失效记 info/warning，
      不阻断（但结构几何 error 仍然阻断）。
 
@@ -32,6 +31,7 @@ vendored 模块全部 lazy import。
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -265,6 +265,50 @@ def surface_index_deviation(recorded: Mapping[str, Any] | None,
     return (1.0 - float(overlap) / denom) if denom else None
 
 
+def surface_coord_deviation(recorded: Mapping[str, Any] | None,
+                            build_dir: Path | None) -> float | None:
+    """记录时表面原子与当前 ``geometry.in`` 的最大欧氏位移（Å）。
+
+    指纹只能回答"字节是否相同"，回答不了"坐标挪了多少"。这里用记录随存的
+    ``surface_coords``（1-based 索引）量化位移；缺坐标、几何不可读、索引越界
+    或元素对不上都返回 ``None``——调用方必须按"无法确认"处理，而不是猜 0。
+    """
+    if not isinstance(recorded, Mapping) or build_dir is None:
+        return None
+    coords = recorded.get("surface_coords")
+    if not isinstance(coords, Mapping) or not coords:
+        return None
+    geometry = Path(build_dir) / GEOMETRY_FILE
+    if not geometry.is_file():
+        return None
+    try:
+        from .junction.geometry import read_aims_geometry
+        atoms = read_aims_geometry(geometry)
+    except (OSError, ValueError):
+        return None
+    worst = 0.0
+    seen = 0
+    for side in SIDES:
+        rows = coords.get(side)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            try:
+                idx, element, x, y, z = row
+                idx = int(idx)
+                x, y, z = float(x), float(y), float(z)
+            except (TypeError, ValueError):
+                return None
+            if not (1 <= idx <= len(atoms)):
+                return None
+            atom = atoms[idx - 1]
+            if atom.element != element:
+                return None
+            worst = max(worst, math.dist(atom.coord(), (x, y, z)))
+            seen += 1
+    return worst if seen else None
+
+
 def _load_json(path: Path) -> tuple[dict | None, str | None]:
     if not path.is_file():
         return None, None
@@ -416,6 +460,7 @@ def _connection_check_state(build_dir: Path | None) -> dict:
                          ("fingerprint", "who", "when", "indices")}
     state["recorded_indices"] = _indices(confirmation)
     state["deviation"] = surface_index_deviation(confirmation, metadata)
+    state["deviation_geom_A"] = surface_coord_deviation(confirmation, build_dir)
     try:
         from smj.junction.fingerprint import check_confirmation  # lazy: vendored
         checked = check_confirmation(build_dir)
@@ -495,36 +540,37 @@ def _connection_check_review(result: ReviewResult, build_dir: Path | None,
                    "连接核对有效（指纹 %s）"
                    % str(check.get("fingerprint_current") or "")[:12])
         return
+    if check.get("audit") and check["audit"].get("ok") and check.get("present"):
+        result.add("warning", "connection_check_audit_stale",
+                   "表面审计（%s）是针对记录时的几何做的；当前 geometry.in 已与记录"
+                   "不符，审计结论不能覆盖新几何" % check["audit"]["path"])
 
-    deviation = check.get("deviation")
+    severity = "error" if config.connection_check else "warning"
+    deviation_geom = check.get("deviation_geom_A")
+    deviation_idx = check.get("deviation")
     tolerance = float(config.connection_check_deviation)
     accept = (float(config.accept_deviation)
               if config.accept_deviation is not None else None)
-    if deviation is None:
-        severity = "error" if config.connection_check else "warning"
+    if deviation_geom is None:
         result.add(severity, "connection_check_stale_unquantified",
-                   "连接核对记录已失效，且表面索引缺失、无法量化偏差：%s"
+                   "连接核对记录已失效（%s），且记录里没有可比的表面原子坐标或当前"
+                   "几何不可读，无法确认几何只做了无关改动：须按当前几何重新核对"
                    % (check.get("reason") or "指纹不符"))
         return
-    if deviation <= tolerance:
-        result.add("info", "connection_check_deviation_within",
-                   "连接核对指纹不符，但表面索引偏差 %.3f ≤ connection_check_deviation %.3f，"
-                   "按可接受偏差继续" % (deviation, tolerance), deviation=deviation)
-        return
-    if accept is not None and deviation <= accept:
+    if (accept is not None and deviation_geom <= accept
+            and (deviation_idx is None or deviation_idx <= tolerance)):
         result.accepted = True
         result.add("warning", "connection_check_deviation_accepted",
-                   "表面索引偏差 %.3f 超过 connection_check_deviation %.3f，但 ≤ "
-                   "accept_deviation %.3f：已显式接受（报告必须标注这是人工豁免，"
-                   "不是连接核对有效）" % (deviation, tolerance, accept),
-                   deviation=deviation)
+                   "连接核对记录绑定的几何已被改写；表面原子最大位移 %.3f Å ≤ "
+                   "accept_deviation %.3f Å：显式人工豁免（报告必须标注这是人工豁免，"
+                   "不是连接核对有效）" % (deviation_geom, accept), deviation=deviation_geom)
         return
-    severity = "error" if config.connection_check else "warning"
-    result.add(severity, "connection_check_deviation_exceeded",
-               "表面索引偏差 %.3f > connection_check_deviation %.3f（accept_deviation=%s）——"
-               " 几何/表面索引已变，须按新几何重新核对"
-               % (deviation, tolerance, "未设" if accept is None else "%.3f" % accept),
-               deviation=deviation)
+    result.add(severity, "connection_check_geometry_changed",
+               "连接核对记录绑定的几何已被改写（当前 geometry.in 指纹与记录不符）："
+               "表面原子最大位移 %.3f Å，索引偏差 %s；须按当前几何重新核对"
+               % (deviation_geom,
+                  "不可量化" if deviation_idx is None else "%.3f" % deviation_idx),
+               deviation=deviation_geom)
 
 
 # --------------------------------------------------------------------------- #

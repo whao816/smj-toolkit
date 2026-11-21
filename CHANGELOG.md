@@ -4,6 +4,32 @@
 
 ## 未发布
 
+### 修复：2026-11-22 全仓代码复审（批 1–4）
+
+用户要求按复审建议顺序修复。四批都补了回归测试；默认全量 607 passed / 2 deselected。
+
+1. **判定链**：`manifest` 记录判据指纹（`verdict.py` + `junction/criteria.py` +
+   `junction/validate.py` 的源码 sha256），判据实现变化或旧 manifest 缺指纹时
+   `smj report` 重建判定而不是复用旧 `passed`；`unregistered_checks` 不再在渲染时丢失，
+   `no_applicable_gate` 不再写成“未过的 warn 级判据”；`spin_channel_consistency` 在
+   `junction_analyze/results.json` 布局下真正可读；TE.dat 含 NaN/inf 视为证据损坏
+   （`te_present` missing → inconclusive），不再穿透成 `value=nan` 被判 failed；
+   负透射保留告警与原始峰值记录。
+2. **协议/编排**：`run_spec` 新增执行面指纹（species defaults / templates / 可执行文件
+   哈希），改这些输入默认阻断并提示 `--force` 重绑；旧 spec 原地补齐基线且明说无法追溯。
+   `sbatch` 超时/无 job id 抛 `SubmitUncertain` 并保留 `submit_unknown`，不再自动重提交
+   两个作业；collect 失败保留 `finished` + `collect_failed`；缺件哈希写进 state 而不是
+   静默省略；`aims_scf` 缺 `electrode_metadata.json` 且无 `--geometry` 时 fail-closed；
+   `state.json` / `manifest.json` 改 mkstemp+replace 原子写。
+3. **连接核对/报告/CLI**：指纹失效默认 `blocked`，只有显式 `accept_deviation` 才降为
+   warning；`geometry.in` 缺失不再用 metadata 自存指纹自比；`report.md` 新增
+   §0.2 结构复核/连接核对；`--json` 的进度日志改走 stderr；顶层异常给一行错误而非
+   traceback；`smj report --strict` 在判定失败时退出 1；`smj review --stage` 真正透传。
+4. **打包/文档**：`build_wheel.py` 在 Python 3.10（无 tomllib）上可读版本号；补
+   `Provides-Extra: all` 与 pyproject 的 `all` extra；sdist 带 `docs/` 与
+   `demo/demo-reference.json`；README/RELEASING 的 CI 矩阵、报告节数、`independent`
+   键名、verify 的 legacy 说明与测试基线同步更新。
+
 ### 新增：2026-11-21 自由基支线 S8（`smj spin` 汇总子命令）
 
 计划见 `docs/plan-radical-2026-11-21.md`（S8，用户点名后实现）。此前开壳层的通道数、

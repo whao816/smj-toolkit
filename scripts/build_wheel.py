@@ -73,9 +73,18 @@ def _classifiers() -> tuple[str, ...]:
 
 
 def _version() -> str:
-    import tomllib
-
-    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+        # 2026-11-22 复审：3.10 没有 tomllib；旧实现在这里直接 ImportError，
+        # 与 README“构建脚本只用标准库”以及 requires-python>=3.10 矛盾。
+        import re
+        match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        if match is None:
+            raise SystemExit("pyproject.toml 里找不到 [project] version")
+        return match.group(1)
+    data = tomllib.loads(text)
     return str(data["project"]["version"])
 
 
@@ -199,6 +208,14 @@ def _sdist_files(version: str) -> list[tuple[str, bytes]]:
         files.append(("tests/" + path.name, path.read_bytes()))
     for path in sorted((ROOT / "scripts").glob("*.py")):
         files.append(("scripts/" + path.name, path.read_bytes()))
+    # 2026-11-22 复审：README 直接链接 docs/ 与 demo/demo-reference.json，
+    # sdist 也必须带上，否则从 sdist 安装的包文档链接全部 404、demo 基线缺失。
+    for path in sorted((ROOT / "docs").glob("*")):
+        if path.is_file():
+            files.append(("docs/" + path.name, path.read_bytes()))
+    demo_ref = ROOT / "demo" / "demo-reference.json"
+    if demo_ref.is_file():
+        files.append(("demo/demo-reference.json", demo_ref.read_bytes()))
     files.append(("PKG-INFO", _metadata(version).encode("utf-8")))
     return files
 
