@@ -34,11 +34,12 @@ def _base_config(workdir: Path) -> Path:
 
 
 def _analysis(workdir: Path, variant: dict, s: float, g: float = -1.0) -> None:
-    target = Path(variant["dir"]) / "run" / "junction_analyze"
+    """写标准阶段产物：``<run_dir>/junction_analyze/results.json``。"""
+    target = Path(variant["run_dir"]) / "junction_analyze"
     target.mkdir(parents=True, exist_ok=True)
     payload = {"S_uV_per_K": s, "log10_G_over_G0_like": g,
                "ZT_electronic": 0.03, "k_e_pW_per_K": 388.0}
-    (target / "analysis.json").write_text(json.dumps(payload), encoding="utf-8")
+    (target / "results.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_typed_and_axis_parsing():

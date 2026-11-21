@@ -485,13 +485,23 @@ _CLUSTER_KEYS = {
     "account", "qos", "species_dir", "poll_seconds", "timeout_hours", "env",
     "time_limit", "mem",
 }
-_PATHS_KEYS = {"templates", "species_defaults"}
+_PATHS_KEYS = {"templates", "species_defaults", "species_dir"}
 _REVIEW_KEYS = {"connection_check", "connection_check_deviation", "auto_connection_check",
                 "accept_deviation",
                 # 2026-11-15 更名前的旧键（仍接受，等价于 connection_check*）
                 "surface_check", "surface_check_deviation", "auto_surface_check",
                 # 更早的 A2 时代旧键
                 "require_a2", "a2_deviation"}
+
+
+def known_keys() -> dict[str, set[str]]:
+    """各 section 允许的字段名（供 `scan_convergence` 之类工具校验轴键）。"""
+    return {
+        "run": set(_RUN_KEYS), "molecule": set(_MOLECULE_KEYS),
+        "electrode": set(_ELECTRODE_KEYS), "transport": set(_TRANSPORT_KEYS),
+        "cluster": set(_CLUSTER_KEYS), "paths": set(_PATHS_KEYS),
+        "review": set(_REVIEW_KEYS),
+    }
 
 
 def _parse_run(data: Mapping[str, Any], warnings: list[str]) -> RunInfo:
@@ -828,9 +838,16 @@ def _parse_cluster(data: Mapping[str, Any], warnings: list[str]) -> ClusterConfi
 
 def _parse_paths(data: Mapping[str, Any], warnings: list[str]) -> PathsConfig:
     _warn_unknown("paths", data, _PATHS_KEYS, warnings)
+    species_dir = data.get("species_dir")
+    species_defaults = data.get("species_defaults")
+    if species_dir is not None and species_defaults is not None:
+        raise ConfigError("paths.species_dir 与 paths.species_defaults 不能同时给（前者是兼容别名）")
+    if species_dir is not None:
+        warnings.append("paths.species_dir 已并入 paths.species_defaults（旧键仍生效）")
+        species_defaults = species_dir
     return PathsConfig(
         templates=(_as_str(data["templates"], "paths.templates") if data.get("templates") else None),
-        species_defaults=(_as_str(data["species_defaults"], "paths.species_defaults") if data.get("species_defaults") else None),
+        species_defaults=(_as_str(species_defaults, "paths.species_defaults") if species_defaults else None),
     )
 
 

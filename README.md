@@ -508,19 +508,24 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 # 1) 展开变体：每个组合一个目录、一份独立 smj.yaml（run.dir 固定为 run）
 python scripts/scan_convergence.py plan smj.yaml \
     --axis electrode.nlayers=3,4,5 \
-    --axis electrode.au_per_electrode=20,30 \
+    --axis cluster.species_dir=/data/species/light,/data/species/tight \
     --out scan/
 # 2) 真跑（必须 --yes；遵守 AGENTS.md「只跑用户点名的计算」）
 python scripts/scan_convergence.py run scan/scan.json --yes
-# 3) 汇总：读各变体 junction_analyze/analysis.json，逐轴判相邻档是否收敛
+# 3) 汇总：读各变体 junction_analyze/results.json，逐轴、逐切片判是否收敛
 python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
 ```
 
-- 轴写成 `section.key=v1,v2`，值会按 bool/int/float/None 还原；基组"档位"不是配置键，
-  用 `paths.species_dir=/path/light,/path/tight` 这类目录轴表达。
-- `compare` 沿**轴的取值顺序**比较相邻两档的 `S_uV_per_K` / `log10_G_over_G0_like` /
-  `ZT_electronic` / `k_e_pW_per_K`，最大相对变化小于阈值才算 `converged`；缺
-  `analysis.json` 记 `missing`，整轴判 `incomplete`，**不把缺结果当 0**。
+- 轴写成 `section.key=v1,v2`，值会按 bool/int/float/None 还原；轴键先按 `smj.config`
+  的字段表校验，不认识就直接报错（不会静默写进配置）；路径值在计划里绝对化，
+  `scan.json` 记每个变体的真实 `run_dir`，写盘后还会回读自检。
+- 基组"档位"不是配置键，用 `cluster.species_dir`（或 `paths.species_defaults`）这类
+  目录轴表达；`paths.species_dir` 只是兼容别名，两个键同时给会报错。
+- `compare` 读 `<run_dir>/junction_analyze/results.json`（旧数据回退 `analysis.json`），
+  沿轴的取值顺序比较相邻两档的 `S_uV_per_K` / `log10_G_over_G0_like` /
+  `ZT_electronic` / `k_e_pW_per_K`；多轴时只配对"其余轴取值相同"的行，逐切片比较，
+  最大相对变化小于阈值才算 `converged`；缺结果、结果不可用或指标全空都记
+  `incomplete`，**不把缺结果当 0**。
 - 展宽 σ 属分析侧参数（`smj pdos --sigma`），不需要重跑 SCF/TE，所以不在扫描矩阵里。
 
 ## 8. 与上游 AgenticDFT 的关系
