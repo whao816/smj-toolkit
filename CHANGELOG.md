@@ -4,6 +4,29 @@
 
 ## 未发布
 
+### 新增：2026-11-21 自由基支线批次 D（开壳层协议自检 + 判据口径）
+
+计划见 `docs/plan-radical-2026-11-21.md`（批次 D = S5；S8 可选、未做）。此前开壳层 run
+被判 `inconclusive` 时只写"无法判定"，读者容易当成数据不足；同时"该采的自旋证据有没有
+采"没有任何工程检查。
+
+- `physics_verdict(checks, *, open_shell=False)`：当归约结果为 `no_applicable_gate` 且
+  `open_shell=True` 时，`wording` 追加"（开壳层判据未校准；如需物理解读，需先用开壳层
+  参考体系标定 `g_in_theory_band` / `seebeck_sign`）"。默认调用（闭壳层/未传）文案不变。
+- `validate_junction_run` 新增 `extra_outputs` 参数与 engineering 检查
+  `open_shell_protocol`（warn）：开壳层（`multiplicity>1` 或 `broken_symmetry`）时核对
+  `results.json` 的 `spin` 块存在、`channels==2`、`transport.extra_outputs` 含
+  `hirshfeld` 或 `spin_density`；缺项逐条写进 detail，齐全记 info，闭壳层记"不适用"。
+  该检查带 `physics: False`，只进工程判定/报告，不进 `physics_verdict` 归约——否则一条
+  工程 warn 会把 `no_applicable_gate` 挤掉，把"未校准"伪装成"数据不足"。
+- `report.build_manifest` 从 `run_spec.config.transport.extra_outputs` 取快照传给
+  validate；不新增任何数值阈值，也不把未校准判据升级为 error。
+- 测试：新增 `tests/test_open_shell_protocol.py` 6 条（齐全/缺 spin 块/缺 extra_outputs/
+  闭壳层不适用/默认文案不含标定句/开壳层文案含标定句）；`test_verdict_gates.py`、
+  `test_open_shell_gates.py`、`test_criteria_failopen.py` 保持绿。默认全量 566 passed /
+  2 deselected；`-m integration` 2 passed；改过 `src/smj/junction/criteria.py`，
+  `gen_junction_provenance.py` 已刷新（36 文件），`gen_demo_reference.py --check` 零偏差。
+
 ### 新增：2026-11-21 自由基支线批次 C（BS 局部证据 + 端到端集成回归）
 
 计划见 `docs/plan-radical-2026-11-21.md`（批次 C = S4 + S6）。此前破缺对称（BS）单重态

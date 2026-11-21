@@ -648,6 +648,13 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   |P(E_F)|<0.05、分子自旋占比 <1%，并在 run 副本上渲染报告、重跑 `review`（应出现
   `open_shell_uncalibrated`）。默认测试集用 `addopts = -m "not integration"` 排除它；
   要跑：`python -m pytest -m integration tests/integration -q`（本机 2 passed）。
+- **开壳层协议自检与判据口径（2026-11-21，S5）**：`validate` 新增 engineering 检查
+  `open_shell_protocol`（warn）：`multiplicity>1` 或 BS 单重态时核对 `spin` 块存在、
+  `channels==2`、`transport.extra_outputs` 含 `hirshfeld`/`spin_density`，缺项逐条写进
+  detail；闭壳层记"不适用"。该检查只进工程判定，不参与 `physics_verdict`。开壳层
+  被判 `inconclusive` 且原因是 `no_applicable_gate` 时，`wording` 会明说"开壳层判据
+  未校准；如需物理解读，需先用开壳层参考体系标定 `g_in_theory_band` / `seebeck_sign`"，
+  避免把"没有闸门"读成"数据不足"。
 
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。

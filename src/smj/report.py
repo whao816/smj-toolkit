@@ -592,7 +592,10 @@ def build_manifest(target: Any, *, run_id: str | None = None,
             verdict = validate_junction_run(
                 run_dir, results={"junction": transport or {}}, system=run_family,
                 temperature=input_summary.get("temperature_K"),
-                multiplicity=multiplicity, broken_symmetry=broken_sym)
+                multiplicity=multiplicity, broken_symmetry=broken_sym,
+                extra_outputs=tuple(
+                    (((run_spec or {}).get("config") or {}).get("transport") or {})
+                    .get("extra_outputs") or ()))
             # 2026-11-20 复核 P1-6 / R6：产物驱动的判定看不到"该跑的阶段没跑"。
             # finished（作业结束、产物已取回但未 collect/验收）单独进 awaiting，
             # 不算完成；run_incomplete 合成判据随之不过。

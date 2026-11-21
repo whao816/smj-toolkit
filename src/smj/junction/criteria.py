@@ -343,13 +343,17 @@ ALLOWED_ACTION = {'passed': '可进入发布(A5)/预测卡(A4)',
                   'inconclusive': '停; 须补数据或降级声明'}
 
 
-def physics_verdict(checks) -> dict:
+def physics_verdict(checks, *, open_shell: bool = False) -> dict:
     """由 checks 归约出 physics_verdict —— 工程失败与物理不通过严格分离。
 
     checks 为 [{'name','severity','passed',...}](validate_* 的约定)。
     任一 error 级判据未过 -> 'failed'; 否则若有 warn 级未过 -> 'inconclusive'; 否则 'passed'。
     applicable=False 的 check(判据不适用于该体系族, 见 SYSTEM_FAMILIES)只进
     not_applicable_criteria, **不参与** failed/inconclusive 归约。
+
+    open_shell: 该 run 是否开壳层(M>1 或 BS 单重态)。为 True 且归约结果是
+    ``no_applicable_gate`` 时, 措辞补一句"开壳层判据未校准, 需先标定"——否则
+    "无法判定"会被读成"数据不足", 而真实原因是判据族根本没在自旋分裂数据上标定过。
     """
     if not checks:
         # 2026-11-11 本地补丁 (smj F2): 空判据列表不是"通过", 而是"无法评估"。
@@ -368,6 +372,9 @@ def physics_verdict(checks) -> dict:
     for c in checks or []:
         if c.get('applicable') is False:    # 判据对此体系不作闸门(A, 2026-10-24)
             not_app.append(c.get('name'))
+            continue
+        if c.get('physics') is False:
+            # 纯工程检查(如 open_shell_protocol): 只进工程判定/报告, 不进科学归约。
             continue
         if c.get('passed'):
             continue
@@ -397,7 +404,12 @@ def physics_verdict(checks) -> dict:
         warns = ['no_applicable_gate']
     else:
         v = 'passed'
-    return {'physics_verdict': v, 'wording': VERDICT_WORDING[v],
+    wording = VERDICT_WORDING[v]
+    if open_shell and v == 'inconclusive' and warns == ['no_applicable_gate']:
+        # 2026-11-21 批 D / S5: 开壳层的"无法判定"不是数据不足, 是判据族未校准。
+        wording += ('（开壳层判据未校准；如需物理解读，需先用开壳层参考体系标定 '
+                    'g_in_theory_band / seebeck_sign）')
+    return {'physics_verdict': v, 'wording': wording,
             'allowed_action': ALLOWED_ACTION[v],
             'failed_criteria': errs, 'inconclusive_criteria': warns,
             'missing_evidence_criteria': missing,

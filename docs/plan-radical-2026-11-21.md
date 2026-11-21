@@ -176,6 +176,8 @@ Mulliken 投影一致到 1e-3。
 
 **测试**：三例（齐全 pass、缺 spin 块 warn、缺 extra_outputs warn）；既有 `test_verdict_gates.py` 保持绿。
 
+**状态（2026-11-21，批次 D）：✅ 已实现。** `physics_verdict(checks, *, open_shell=False)`：归约结果为 `no_applicable_gate` 且 `open_shell=True` 时，`wording` 追加"（开壳层判据未校准；如需物理解读，需先用开壳层参考体系标定 `g_in_theory_band` / `seebeck_sign`）"，默认（闭壳层/未传）文案不变。`validate_junction_run` 新增 `extra_outputs` 参数与 `_open_shell_protocol_check`：开壳层时核对 `spin` 块、`channels==2`、`extra_outputs` 含 `hirshfeld`/`spin_density`，缺项记 warn（detail 逐项列出），齐全记 info；闭壳层记 `applicable=False`（"不适用"）。该检查带 `physics: False`，只进工程判定与报告，不参与 `physics_verdict` 归约——否则一条工程 warn 会把 `no_applicable_gate` 挤掉、让"开壳层未校准"读起来像"数据不足"。`report.build_manifest` 从 `run_spec.config.transport.extra_outputs` 取值传入。测试 6 条（`tests/test_open_shell_protocol.py`）；`test_verdict_gates.py`、`test_open_shell_gates.py`、`test_criteria_failopen.py` 全绿；默认全量 566 passed。未新增数值阈值，也未把任何判据升级为 error。
+
 ### S6 端到端集成回归（P1）
 
 **改法**：新增 `tests/integration/test_radical_runs.py`，`pytestmark = pytest.mark.integration`（默认 skip，`pytest -m integration` 才跑）：
@@ -186,7 +188,7 @@ Mulliken 投影一致到 1e-3。
 
 **验收**：`pytest -m integration` 本机通过；默认全量 pytest 仍 533+ 且不跑集成。
 
-**状态（2026-11-21，批次 C）：✅ 已实现。** `tests/integration/test_radical_runs.py`（`pytestmark = pytest.mark.integration`）；`pyproject.toml` 注册 `integration` marker 并用 `addopts = ... -m "not integration"` 默认排除。两条用例：① 真实资产盘点（六阶段全 collected、`channels==2`、|P(E_F)|<0.05、`total=0.99997791`、分子占比 0.0056、`localized_antiparallel=False`）；② 在 `workdir` 复制整个 run（10.75 MB，测试内 1.7 s），离线重算 `spin` 与 Hirshfeld 分区注入副本，渲染报告断言 §4.1 / Sα/Sβ / 自旋分布 / 0.0056，再 `review_run(force=True)` 断言 `open_shell_uncalibrated` 与 `spin_localized_off_molecule`。默认全量 559 passed + 2 deselected；`-m integration` 2 passed。
+**状态（2026-11-21，批次 C）：✅ 已实现。** `tests/integration/test_radical_runs.py`（`pytestmark = pytest.mark.integration`）；`pyproject.toml` 注册 `integration` marker 并用 `addopts = ... -m "not integration"` 默认排除。两条用例：① 真实资产盘点（六阶段全 collected、`channels==2`、|P(E_F)|<0.05、`total=0.99997791`、分子占比 0.0056、`localized_antiparallel=False`）；② 在 `workdir` 复制整个 run（10.75 MB，测试内 1.7 s），离线重算 `spin` 与 Hirshfeld 分区注入副本，渲染报告断言 §4.1 / Sα/Sβ / 自旋分布 / 0.0056，再 `review_run(force=True)` 断言 `open_shell_uncalibrated` 与 `spin_localized_off_molecule`。默认全量 560 passed + 2 deselected；`-m integration` 2 passed。
 
 ### S7 文档（P0，小）
 
@@ -206,7 +208,7 @@ Mulliken 投影一致到 1e-3。
 | A | S1 + S3 + S7 | `spin_partition.py`、`aims_scf.py`、`aitranss_te.py`、`config.py`、`report.py`、`review.py`、文档 | ✅ 2026-11-21：报告出现自旋分布；单列 TE 被拦；全量 549 passed |
 | B | S2 | `landauer_spin.py`、`criteria.py`、`junction_analyze.py`、`report.py` | Sα/Sβ 进结果与报告；provenance + demo 校验 | ✅ 2026-11-21（555 passed） |
 | C | S4 + S6 | `spin_partition.py`、`report.py`、`review.py`、`tests/integration/` | BS 证据行；`pytest -m integration` 通过 | ✅ 2026-11-21（默认 560 passed；`-m integration` 2 passed） |
-| D | S5（+S8 可选） | `criteria.py`、`report.py` | 口径文案与 open_shell_protocol；无回归 |
+| D | S5（+S8 可选） | `criteria.py`、`report.py`、`validate.py` | 口径文案与 open_shell_protocol；无回归 | ✅ 2026-11-21（S5；默认 566 passed；S8 未做，需点名） |
 
 顺序理由：S1/S3 是证据与闸门，先落地才能给 S2/S4 提供真实数字；S2 动 junction 内核，单独一批方便 provenance/demo 对账；S4/S6 依赖 S1；S5 只改文案与工程检查，放最后避免反复改文案。
 

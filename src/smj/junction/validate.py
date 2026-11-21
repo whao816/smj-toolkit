@@ -26,6 +26,12 @@ def _warn(name: str, value, detail: str) -> dict:
     return {'name': name, 'value': value, 'passed': False, 'severity': 'warn', 'detail': detail}
 
 
+def _na(name: str, detail: str) -> dict:
+    """判据对当前协议不适用: 只记录, 不计入 errs/warns(见 _appl)。"""
+    return {'name': name, 'value': None, 'passed': True, 'severity': 'info',
+            'detail': detail, 'applicable': False}
+
+
 # 产物归属: 引擎 run 根下产物按阶段分子目录存放(gaussian_opt/aims_scf/...),
 # 而 driver / 手工 run 可能把同一批产物平铺在一个目录。以下映射给出每个产物
 # 首选的阶段子目录顺序; 定位时先看 run_dir 本身, 再按序找子目录 —— 两种布局
@@ -55,9 +61,45 @@ def _find_artifact(run_dir: Path, name: str):
     return None
 
 
+def _open_shell_protocol_check(results, open_shell: bool,
+                               extra_outputs: tuple) -> dict:
+    """开壳层协议自检(engineering/warn): 自旋块 + 双通道 + 自旋分布证据。
+
+    2026-11-21 批 D / S5: 开壳层的科学判定本就 inconclusive(判据族未校准), 但
+    "该采的证据有没有采"是工程问题, 必须能看出来 —— 缺 spin 块或没要求 Hirshfeld
+    时不能静默通过。只记 warn, 不升级为 error(未校准不等于协议违法)。
+    """
+    if not open_shell:
+        return _na('open_shell_protocol',
+                   '闭壳层: 不适用(仅 M>1 或 broken_symmetry 单重态需要自旋协议)')
+    junction = (results or {}).get('junction') or {}
+    spin = junction.get('spin') if isinstance(junction, dict) else None
+    problems = []
+    if not isinstance(spin, dict):
+        problems.append('results.json 缺 spin 块(先跑 junction_analyze)')
+    elif int(spin.get('channels') or 0) != 2:
+        problems.append('自旋通道数为 %s(开壳层应为 2)'
+                        % (spin.get('channels'),))
+    extra = {str(x) for x in (extra_outputs or ())}
+    if not extra & {'hirshfeld', 'spin_density'}:
+        problems.append('transport.extra_outputs 未含 hirshfeld 或 spin_density'
+                        '(缺自旋分布证据)')
+    if problems:
+        out = _warn('open_shell_protocol', problems,
+                    '开壳层协议不完整: ' + '; '.join(problems))
+        out['physics'] = False  # 纯工程检查: 不进 physics_verdict 归约
+        return out
+    out = _ok('open_shell_protocol', True,
+              '开壳层协议齐全: spin 块 channels=2, extra_outputs 含 '
+              + ', '.join(sorted(extra & {'hirshfeld', 'spin_density'})))
+    out['physics'] = False
+    return out
+
+
 def validate_junction_run(run_dir, task_card=None, results=None, system=None,
                           temperature: float | None = None,
-                          multiplicity=None, broken_symmetry: bool = False) -> dict:
+                          multiplicity=None, broken_symmetry: bool = False,
+                          extra_outputs: tuple = ()) -> dict:
     """smj run 校验: 按 run_dir(扁平阶段目录或含阶段子目录的 run 根)内实际产物判定。
 
     system: 体系标识(缺省取 task_card.material), 供 criteria 的判据适用域使用;
@@ -70,6 +112,8 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
     的判据一律降为记录 —— 由判据层(``criteria.applies``)统一处理。
     broken_symmetry: ``molecule.broken_symmetry``(M=1 的 BS 单重态, 同样按开壳层
     处理: 两套自旋通道、判据族不作闸门)。
+    extra_outputs: ``transport.extra_outputs``(run 时快照)。开壳层时用于核对
+    "自旋分布证据"是否被要求(``hirshfeld``/``spin_density``); 缺省空 = 未声明。
     """
     run_dir = Path(run_dir)
     if system is None and task_card is not None:
@@ -149,7 +193,11 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
                                 '示例 7 点样本: 仅验证解析→积分→命名管线, 非生产级科学结论(_like 值不得当真实量报告)'))
     from .landauer import analyze_te  # noqa: F401  (仅导入检查依赖)
     # P1-2: 已注册判据从产物实算并并入(此前只有注册表, 无评估)
-    from .criteria import PHYSICAL_NAMES, evaluate_run_criteria, physics_verdict
+    from .criteria import PHYSICAL_NAMES, evaluate_run_criteria, is_open_shell
+    from .criteria import physics_verdict
+    open_shell = is_open_shell(multiplicity, broken_symmetry)
+    # 2026-11-21 批 D / S5: 开壳层协议自检(engineering/warn), 与物理解耦。
+    checks.append(_open_shell_protocol_check(results, open_shell, extra_outputs))
     # 判据读取 TE.dat; 用实际定位到的目录(阶段子目录布局)而不是 run_dir 本身
     checks.extend(evaluate_run_criteria(te.parent if te is not None else run_dir,
                                         system=system,
@@ -169,7 +217,7 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
     # P1-1: 另出 physics_verdict(科学判定), 与 passed(工程判定) 严格分离
     return {'passed': errs == 0, 'engineering_passed': engineering_passed,
             'errors': errs, 'warnings': warns, 'checks': checks,
-            **physics_verdict(checks)}
+            **physics_verdict(checks, open_shell=open_shell)}
 
 
 # ---------------------------------------------------------------------------
