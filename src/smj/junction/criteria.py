@@ -38,6 +38,13 @@ WID = {'doi': '10.1021/nl203634m'}
 # 费米窗 99% 以上的权重。
 MIN_THERMAL_COVERAGE = 0.95
 
+# 求积充分性门限（2026-11-21 复审 R1）。依据是 53 份真实网格的实测分布：
+# 权重积分/精确覆盖的偏差 <=5.2e-8、|权重一阶矩| <=1.7e-4 kBT；而 12 点 / 0.2 eV
+# 的反例是 0.577 与 1.96 kBT。取 ±5% 与 0.25 kBT，两侧都留了一个数量级以上余量，
+# 历史 run 一个都不会翻转。点数/窗内最小步长只写进 detail 供诊断，不参与判定。
+MIN_QUADRATURE_RATIO = 0.95
+MAX_FERMI_MOMENT_KBT = 0.25
+
 # kind: physical(物理判据, 须有源) | engineering(程序/接口语义, 免源但须标注)
 # gate: error(阻断) | warn(告警) | info(仅报告)
 CRITERIA = [
@@ -112,6 +119,14 @@ CRITERIA = [
              '但 G 被低估(~4x)、S 的符号可被端点带偏; 这是数值约定而非物理常数, 故登记在 '
              'KNOWN_GAPS; 未过按"证据不足"(missing)归约 inconclusive, 不写成否证 H0'},
 
+    {'name': 'te_fermi_quadrature', 'kind': 'physical', 'gate': 'error', 'implemented': True,
+     'band': [MIN_QUADRATURE_RATIO, 1.05], 'source': None,
+     'note': '2026-11-21 复审 R1: 覆盖判据只看端点, 与网格密度无关。E_F 附近网格不足以'
+             '分辨费米窗时, 梯形求积把权重积分低估(实测 12 点/0.2 eV 步长: 比值 0.577、'
+             '一阶矩 -1.96 kBT), 常数谱也报出 S=+169 uV/K。要求 权重积分/精确覆盖 >=0.95 '
+             '且 |一阶矩| <=0.25 kBT; 这是数值约定而非物理常数, 故登记在 KNOWN_GAPS; '
+             '未过按"证据不足"(missing)归约 inconclusive, 不写成否证 H0'},
+
     {'name': 'k_e_zt_order', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
      'band': None, 'source': None,
      'note': '2026-11-20 复核 R12: 评估器确实会 emit 该判据(κe≥0 与 ZT 量级常识), '
@@ -120,7 +135,7 @@ CRITERIA = [
 ]
 
 # 已登记缺口(ratchtet): 只允许这些无源/未实现的 physical 判据存在, 新增即 lint 失败
-KNOWN_GAPS = frozenset({'k_e_zt_order', 'te_thermal_window_coverage'})
+KNOWN_GAPS = frozenset({'k_e_zt_order', 'te_thermal_window_coverage', 'te_fermi_quadrature'})
 
 # ---------------------------------------------------------------------------
 # A (2026-10-24, 用户拍板"窄口径"): 判据**适用域**。
@@ -475,7 +490,7 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
     只针对闭壳层标定过）。
     broken_symmetry: ``molecule.broken_symmetry``（M=1 的 BS 单重态，同样开壳层）。
     """
-    from .landauer import analyze_te, read_te_ordered
+    from .landauer import FERMI_WINDOW_KBT, analyze_te, read_te_ordered
     family = system_family(system)
     open_shell = is_open_shell(multiplicity, broken_symmetry=broken_symmetry)
     d = Path(run_dir)
@@ -529,6 +544,31 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
            '' if covered else '; 覆盖不足: 截窗积分低估 G, S 符号可被端点带偏'
                               ' -> 证据不足, 不判 passed'),
         missing=not covered))
+
+    # ⓪c 费米窗求积充分性(2026-11-21 复审 R1, 本地补丁 F-RECHECK-quadrature):
+    # 端点覆盖判据与网格密度无关。E_F 附近只有 1-2 个采样点时, 梯形求积低估权重
+    # 积分、把一阶矩推向一侧 —— 常数谱也能报出 +169 uV/K。同属"证据不足"而非否证。
+    # 一阶矩只在窗口完整(覆盖已达标)时才有意义: 截断窗的重心本来就偏, 由覆盖判据负责。
+    quad = res.get('fermi_quadrature') or {}
+    ratio = quad.get('ratio')
+    moment = quad.get('first_moment_kbt')
+    step = quad.get('min_step_in_window_ev')
+    moment_relevant = covered and moment is not None
+    dense = (ratio is not None and ratio >= MIN_QUADRATURE_RATIO
+             and (not moment_relevant or abs(moment) <= MAX_FERMI_MOMENT_KBT))
+    checks.append(_check(
+        'te_fermi_quadrature', None if ratio is None else round(ratio, 4), dense,
+        '温度 %.0f K, kBT=%.2f meV: E_F±%.1f kBT 内 %d 个采样点(最小步长 %s); '
+        '权重积分/精确覆盖=%s (门限 %.2f), 权重一阶矩=%s kBT (门限 ±%.2f)%s%s'
+        % (temperature, 1000.0 * quad.get('kbt_ev', 0.0), FERMI_WINDOW_KBT,
+           quad.get('points_in_window', 0),
+           '—' if step is None else '%.2f meV' % (1000.0 * step),
+           '—' if ratio is None else '%.4f' % ratio, MIN_QUADRATURE_RATIO,
+           '—' if moment is None else '%+.4f' % moment, MAX_FERMI_MOMENT_KBT,
+           '' if moment_relevant else ' (窗口不完整, 一阶矩仅作诊断)',
+           '' if dense else '; 网格不足以分辨费米窗, 求积误差已污染 G/S'
+                             ' -> 证据不足, 不判 passed'),
+        missing=not dense))
     # ① E_F 近旁的显著透射峰: 按族归因(2026-11-15: "有峰"从错误信号改为需解释的物理信号)
     pk = [p for p in significant_peaks(rows) if abs(p[0]) <= PEAK_SEARCH_WINDOW_EV]
     band_lo, band_hi = _bf('t_ef_resonance_attribution') or (0.15, 1.0)

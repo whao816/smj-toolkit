@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 PROVENANCE.json）",
-  "repo_commit": "6384ce0de6e7b0979cb6d6f2ac0e090ea5519b2f",
+  "repo_commit": "a7f2a45b25d432e405a783567e470afc85754134",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -30,8 +30,8 @@
       "bytes": 2262
     },
     "criteria.py": {
-      "sha256": "e6dd962237741f2ff3cd3bb11928633f3081e044e4c10d8666792cfc4ad557d8",
-      "bytes": 35555
+      "sha256": "ac62b40fac6854ab0c38cd2a55806b2d37f5cc470ee8e1f9bd6c428d3006b4f4",
+      "bytes": 38471
     },
     "demo.py": {
       "sha256": "501fb09f251c197206664e996a10f018f9cc8a61edeb597ce2e464169043e97e",
@@ -66,8 +66,8 @@
       "bytes": 9557
     },
     "landauer.py": {
-      "sha256": "7575168e4d0d7be4b3ddb6f199623bf2b219426d51441654f5b31f05061f422b",
-      "bytes": 7805
+      "sha256": "2189acb363238ff7358c99144ce20009958d7a35d47352007aacd8da540273f0",
+      "bytes": 9565
     },
     "manifest.py": {
       "sha256": "ab9071810cbbf550a3b0d82cfa6bad5bfb770f9bcf228efe3f4b1603f0645446",

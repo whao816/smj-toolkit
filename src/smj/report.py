@@ -353,7 +353,7 @@ def _resource_summary(run_dir: Path, state: RunState,
 _TRANSPORT_KEYS = (
     "points", "temperature_K", "L0", "L1", "L2", "log10_G_over_G0_like",
     "S_uV_per_K", "k_e_pW_per_K", "ZT_electronic", "fermi_nearest",
-    "max_transmission", "thermal_window",
+    "max_transmission", "thermal_window", "fermi_quadrature",
 )
 
 
@@ -854,6 +854,17 @@ def render_report(manifest: Mapping[str, Any]) -> str:
             if all(k in window for k in ("e_min_ev", "e_max_ev")):
                 lines.append("| 能量窗 (eV) | [%+.4f, %+.4f] |"
                              % (float(window["e_min_ev"]), float(window["e_max_ev"])))
+        quad = transport.get("fermi_quadrature")
+        if isinstance(quad, Mapping):
+            ratio = quad.get("ratio")
+            moment = quad.get("first_moment_kbt")
+            step = quad.get("min_step_in_window_ev")
+            lines.append(
+                "| 费米窗求积 | %s / 矩 %s kBT / 窗内 %s 点 / 最小步长 %s |"
+                % (_fmt(ratio, "%.4f"),
+                   "—" if moment is None else "%+.4f" % float(moment),
+                   _cell(quad.get("points_in_window")),
+                   "—" if step is None else "%.2f meV" % (1000.0 * float(step))))
         lines.append("| 来源 | `%s` |" % _cell(transport.get("source")))
     else:
         lines.append("- 无 TE.dat / analysis.json，输运结果不可得。")

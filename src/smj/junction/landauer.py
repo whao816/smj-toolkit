@@ -19,6 +19,10 @@ from typing import Iterable
 KB_EV_PER_K = 8.6173324e-5
 H_EV_S = 4.135667662e-15
 
+# 求积充分性只在 E_F ± FERMI_WINDOW_KBT·kBT 内检查（2026-11-21 复审 R1）：
+# 费米窗权重的 99.9% 落在 ±4 kBT 内，检查范围再放大会被远离 E_F 的粗网格稀释。
+FERMI_WINDOW_KBT = 4.0
+
 
 def read_te(path: str | Path) -> list[tuple[float, float, float]]:
     """TE.dat -> [(E_Ha, E-EF_eV, T)]。
@@ -127,6 +131,35 @@ def thermal_window(rows: Iterable[tuple], temperature: float) -> dict:
     }
 
 
+def fermi_quadrature(rows: Iterable[tuple], temperature: float) -> dict:
+    """费米窗求积充分性：权重积分/精确覆盖 与 权重一阶矩（2026-11-21 复审 R1）。
+
+    :func:`thermal_window` 只看"窗口端点是否把权重算全"，与网格密度无关；真正的
+    积分误差取决于网格在 E_F 附近的分辨率。12 点 / 0.2 eV 步长、300 K 时 ±kBT
+    内只有 1 个采样点：梯形求积把 ``∫w dE`` 低估 42%、一阶矩偏到 −1.96 kBT，于是
+    常数谱也报出 S=+169 uV/K。两个比值都是无量纲量，与体系无关。
+    """
+    ordered = sort_by_energy(rows)
+    e_ev = [r[1] for r in ordered]
+    kbt = KB_EV_PER_K * temperature
+    weights = [minus_fermi_derivative(e, temperature) for e in e_ev]
+    integral = trapz(weights, e_ev)
+    exact = fermi(e_ev[0], temperature) - fermi(e_ev[-1], temperature)
+    moment = trapz([e * w for e, w in zip(e_ev, weights)], e_ev)
+    in_window = [e for e in e_ev if abs(e) <= FERMI_WINDOW_KBT * kbt]
+    steps = [b - a for a, b in zip(in_window, in_window[1:])]
+    return {
+        "kbt_ev": kbt,
+        "window_kbt": FERMI_WINDOW_KBT,
+        "weight_integral": integral,
+        "exact_coverage": exact,
+        "ratio": integral / exact if exact > 0 else None,
+        "first_moment_kbt": moment / (kbt * integral) if integral else None,
+        "points_in_window": len(in_window),
+        "min_step_in_window_ev": min(steps) if steps else None,
+    }
+
+
 def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path | None = None) -> dict:
     rows, order = read_te_ordered(path)
     warnings: list[str] = []
@@ -158,6 +191,7 @@ def analyze_te(path: str | Path, temperature: float = 300.0, output: str | Path 
         "ZT_electronic": 1.0 / ((l0 * l2) / (l1 * l1) - 1.0) if l1 else None,
         "fermi_nearest": nearest_energy(rows, 0.0),
         "thermal_window": thermal_window(rows, temperature),
+        "fermi_quadrature": fermi_quadrature(rows, temperature),
         "max_transmission": max(({"E_Hartree": r[0], "E_minus_Ef_eV": r[1], "T": r[2]} for r in rows), key=lambda x: x["T"]),
         # 行序观测: 让下游能区分"本来就是升序"与"被脚本纠正过"。
         "input_energy_order": order,
