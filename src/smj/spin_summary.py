@@ -59,6 +59,7 @@ def normalize(
     multiplicity: int | None = None,
     charge: int | None = None,
     fixed_spin_moment: bool | None = None,
+    broken_symmetry: bool = False,
 ) -> dict | None:
     """把 ``results.json`` 的 ``spin`` 块压成展示层字段；不是映射则返回 None。"""
     if not isinstance(spin, Mapping):
@@ -68,6 +69,7 @@ def normalize(
         "multiplicity": multiplicity,
         "charge": charge,
         "fixed_spin_moment": fixed_spin_moment,
+        "broken_symmetry": bool(broken_symmetry),
         "channels": channels,
         "points": spin.get("points"),
         "temperature_K": spin.get("temperature_K"),
@@ -92,22 +94,36 @@ def findings(
     multiplicity: int | None = None,
     open_shell: bool | None = None,
     te_present: bool = False,
+    broken_symmetry: bool = False,
 ) -> list[dict[str, Any]]:
     """按展示层字段给出复核提示（不改变任何数值判定）。
 
-    ``open_shell`` 缺省时由 ``multiplicity`` 推断；返回的每项含
-    ``severity``/``code``/``message``，与 :meth:`ReviewResult.add` 同形。
+    ``open_shell`` 缺省时由 ``multiplicity`` 与 ``broken_symmetry`` 推断；返回的
+    每项含 ``severity``/``code``/``message``，与 :meth:`ReviewResult.add` 同形。
     """
     if open_shell is None:
-        open_shell = bool(multiplicity and int(multiplicity) > 1)
+        open_shell = bool(broken_symmetry) or bool(
+            multiplicity and int(multiplicity) > 1)
     issues: list[dict[str, Any]] = []
     if open_shell:
         issues.append({
             "severity": "warning",
             "code": "open_shell_uncalibrated",
-            "message": "开壳层结（multiplicity=%s）：%s" % (multiplicity, SPIN_CAVEAT),
+            "message": "开壳层结（%s）：%s" % (
+                "M=1 破缺对称单重态（broken_symmetry）" if broken_symmetry
+                else "multiplicity=%s" % multiplicity, SPIN_CAVEAT),
             "multiplicity": multiplicity,
         })
+        if broken_symmetry:
+            issues.append({
+                "severity": "warning",
+                "code": "broken_symmetry_uncalibrated",
+                "message": "M=1 的破缺对称单重态：FHI-aims 单行列式不打印 ⟨S²⟩，"
+                           "自旋污染与真实双自由基特征无法从 SCF 输出直接确认；"
+                           "需由自然轨道占据数（或自旋密度）另行验证，不能只凭"
+                           "两列透射判断这是开壳层解",
+                "broken_symmetry": True,
+            })
         fixed = (summary or {}).get("fixed_spin_moment")
         if fixed:
             issues.append({

@@ -654,6 +654,7 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     multiplicity = getattr(molecule, "multiplicity", None)
     charge = getattr(molecule, "charge", None)
     fixed = getattr(molecule, "fixed_spin_moment", None)
+    broken = getattr(molecule, "broken_symmetry", None)
     if multiplicity is None or charge is None:
         spec_mol = ((load_run_spec(run_dir) or {}).get("config") or {}).get("molecule") or {}
         if multiplicity is None:
@@ -662,11 +663,18 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
             charge = spec_mol.get("charge")
         if fixed is None:
             fixed = spec_mol.get("fixed_spin_moment")
+        if broken is None:
+            broken = spec_mol.get("broken_symmetry")
     try:
         multiplicity = int(multiplicity) if multiplicity is not None else None
     except (TypeError, ValueError):
         multiplicity = None
-    if fixed is None:
+    broken = bool(broken)
+    if broken:
+        # 破缺对称单重态不写 fixed_spin_moment（M−1=0 会把态压成闭壳层），
+        # 因此不能沿用 MoleculeConfig 的默认 True，否则报告会谎称"已固定总自旋"。
+        fixed = None
+    elif fixed is None:
         # provenance 把默认值 True 省掉了，缺省即按 True 解释。
         fixed = True
     te = run_dir / "aitranss_te" / "TE.dat"
@@ -693,10 +701,13 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     if raw is None and channels is not None:
         raw = {"channels": channels, "source": str(te)} if te_present else None
     summary = normalize_spin(raw, multiplicity=multiplicity, charge=charge,
-                             fixed_spin_moment=fixed if (multiplicity or 1) > 1 else None)
+                             fixed_spin_moment=fixed if ((multiplicity or 1) > 1 or broken)
+                             else None,
+                             broken_symmetry=broken)
     if summary is not None:
         result.spin = summary
-    for item in spin_findings(summary, multiplicity=multiplicity, te_present=te_present):
+    for item in spin_findings(summary, multiplicity=multiplicity, te_present=te_present,
+                              broken_symmetry=broken):
         extra = {k: v for k, v in item.items()
                  if k not in ("severity", "code", "message")}
         result.add(item["severity"], item["code"], item["message"], **extra)

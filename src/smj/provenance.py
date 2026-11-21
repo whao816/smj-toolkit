@@ -243,6 +243,10 @@ def _protocol_config(config: Any) -> dict[str, Any]:
     # 只有显式解除约束（false）才需要触发漂移检查。
     if molecule.get("fixed_spin_moment") is True:
         molecule.pop("fixed_spin_moment", None)
+    # broken_symmetry=False 是旧行为（没有 BS 途径）；同 fixed_spin_moment，只在
+    # 显式开启时入协议，避免历史 run_spec 集体判为漂移。
+    if molecule.get("broken_symmetry") is False:
+        molecule.pop("broken_symmetry", None)
 
     electrode = _jsonable(config.electrode)
     # 库文件位置不是物理参数；库文件内容哈希才是。
@@ -299,6 +303,7 @@ PROTOCOL_CRITICAL = (
     "molecule.charge",
     "molecule.multiplicity",
     "molecule.fixed_spin_moment",
+    "molecule.broken_symmetry",
     "transport.temperature",
     "transport.energy_window",
     "transport.energy_window_unit",
@@ -307,9 +312,10 @@ PROTOCOL_CRITICAL = (
     "electrode.au_tip_distance",
 )
 
-#: 这些键"缺失"等价于某个默认值（``True`` 是旧行为，协议里不落键）。
+#: 这些键"缺失"等价于某个默认值（``True``/``False`` 是旧行为，协议里不落键）。
 PROTOCOL_CRITICAL_DEFAULTS: dict[str, Any] = {
     "molecule.fixed_spin_moment": True,
+    "molecule.broken_symmetry": False,
 }
 
 

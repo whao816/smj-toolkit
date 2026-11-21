@@ -92,7 +92,8 @@ class AimsScfStage(Stage):
         if moments:
             if not state.open_shell:
                 raise StageError(
-                    "molecule.initial_moments 只在开壳层（multiplicity>1）下有效")
+                    "molecule.initial_moments 只在开壳层下有效：请设 multiplicity>1，"
+                    "或 molecule.broken_symmetry=true（M=1 的 BS 单重态）")
             tip_summary = self._tip_summary(ctx)
             removed = (tip_summary.get("strip_thiol_h") or {}).get(
                 "removed_h_indices") or []
@@ -120,7 +121,10 @@ class AimsScfStage(Stage):
                 record_initial_charge(
                     stage_dir / "input_summary.json", float(state.charge), per_atom)
         if state.open_shell:
-            if state.fix_spin_moment:
+            if state.broken_symmetry:
+                constraint = ("破缺对称单重态（M=1，不写 fixed_spin_moment；"
+                              "N↑=N↓ 由反号初猜与 SCF 自洽决定）")
+            elif state.fix_spin_moment:
                 constraint = "fixed_spin_moment %g" % state.fixed_spin_moment
             else:
                 constraint = "无 fixed_spin_moment（解除总自旋约束，对照解）"

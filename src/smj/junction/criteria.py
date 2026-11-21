@@ -242,8 +242,16 @@ def system_family(system) -> str | None:
     return SYSTEM_FAMILIES.get(str(system).strip().upper())
 
 
-def is_open_shell(multiplicity) -> bool:
-    """多重度 > 1 即开壳层（缺失/非法按闭壳层处理，与旧行为一致）。"""
+def is_open_shell(multiplicity, broken_symmetry: bool = False) -> bool:
+    """多重度 > 1 或 BS 单重态（M=1）即开壳层（缺失/非法按闭壳层处理，与旧行为一致）。
+
+    ``broken_symmetry`` 是 ``molecule.broken_symmetry``：FHI-aims 里 M=1 但写
+    ``spin collinear``、有两套自旋通道的破缺对称单重态。判据族只对闭壳层标定过，
+    它必须与 M>1 一样被降为"只记录、不作闸门"，否则单重态标签会让按族标定的
+    G 包络重新变成闸门。
+    """
+    if broken_symmetry:
+        return True
     try:
         return int(multiplicity) > 1
     except (TypeError, ValueError):
@@ -453,7 +461,7 @@ def significant_peaks(rows, prominence=PEAK_PROMINENCE, half_window=200):
 
 
 def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
-                          multiplicity=None) -> list:
+                          multiplicity=None, broken_symmetry: bool = False) -> list:
     """从 run 产物实算物理判据; 无产物则返回一条 error 级 ``te_present``。
 
     2026-11-11 本地补丁 (smj F2): 旧实现返回 ``[]``, 而 ``physics_verdict([])``
@@ -465,10 +473,11 @@ def evaluate_run_criteria(run_dir, temperature: float = 300.0, system=None,
     fail-open，把 BDT 的包络套到别的体系上）。
     multiplicity: 分子多重度; >1 即开壳层, 按族标定的判据一律不作闸门（判据族
     只针对闭壳层标定过）。
+    broken_symmetry: ``molecule.broken_symmetry``（M=1 的 BS 单重态，同样开壳层）。
     """
     from .landauer import analyze_te, read_te_ordered
     family = system_family(system)
-    open_shell = is_open_shell(multiplicity)
+    open_shell = is_open_shell(multiplicity, broken_symmetry=broken_symmetry)
     d = Path(run_dir)
     te = d / 'TE.dat'
     if not te.exists():

@@ -251,11 +251,16 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
         multiplicity = None
     fixed_spin = molecule_cfg.get("fixed_spin_moment")
     fixed_spin = True if fixed_spin is None else bool(fixed_spin)
+    broken_sym = bool(molecule_cfg.get("broken_symmetry", False))
     spin_meta: dict[str, Any] = {
         "charge": molecule_cfg.get("charge"),
         "multiplicity": multiplicity,
-        "fixed_spin_moment": fixed_spin if (multiplicity or 1) > 1 else None,
+        "fixed_spin_moment": fixed_spin if ((multiplicity or 1) > 1 or broken_sym) else None,
     }
+    if broken_sym:
+        # M=1 的 BS 单重态：单看 multiplicity 会被读成闭壳层，必须显式标注。
+        spin_meta["broken_symmetry"] = True
+        spin_meta["fixed_spin_moment"] = None
     if molecule_cfg.get("initial_moments"):
         spin_meta["initial_moments"] = molecule_cfg.get("initial_moments")
     # 分子结构：优先 molecule_opt/opt.xyz（旧 run 回退 gaussian_opt），否则 run 根的 xyz。
@@ -361,6 +366,7 @@ def _spin_block(spin: Any, molecule: Mapping[str, Any]) -> dict | None:
         multiplicity=molecule.get("multiplicity"),
         charge=molecule.get("charge"),
         fixed_spin_moment=molecule.get("fixed_spin_moment"),
+        broken_symmetry=bool(molecule.get("broken_symmetry", False)),
     )
 
 
@@ -405,7 +411,7 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
     recorded = dict(state.stage("aitranss_te").results or {})
     if recorded:
         payload["state_results"] = recorded
-    if (molecule.get("multiplicity") or 1) > 1:
+    if (molecule.get("multiplicity") or 1) > 1 or molecule.get("broken_symmetry"):
         try:
             from .landauer_spin import analyze_te_spin
             spin = _spin_block(
@@ -555,10 +561,15 @@ def build_manifest(target: Any, *, run_id: str | None = None,
                 run_family = (((run_spec.get("config") or {}).get("molecule")
                                or {}).get("family"))
             multiplicity = (input_summary.get("molecule") or {}).get("multiplicity")
+            # M=1 的 BS 单重态在 input_summary 里带 broken_symmetry；run_spec 的配置
+            # 快照同样可读。判据层据此把按族标定的闸门降为记录（开壳层）。
+            broken_sym = bool((input_summary.get("molecule") or {}).get("broken_symmetry")
+                              or ((run_spec or {}).get("config", {}).get("molecule")
+                                  or {}).get("broken_symmetry", False))
             verdict = validate_junction_run(
                 run_dir, results={"junction": transport or {}}, system=run_family,
                 temperature=input_summary.get("temperature_K"),
-                multiplicity=multiplicity)
+                multiplicity=multiplicity, broken_symmetry=broken_sym)
             # 2026-11-20 复核 P1-6 / R6：产物驱动的判定看不到"该跑的阶段没跑"。
             # finished（作业结束、产物已取回但未 collect/验收）单独进 awaiting，
             # 不算完成；run_incomplete 合成判据随之不过。
@@ -615,6 +626,9 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any]) -> None:
     if spin.get("multiplicity") is not None:
         lines.append("| 多重度 / 电荷 | %s / %s |" % (
             _cell(spin.get("multiplicity")), _cell(spin.get("charge"))))
+    if spin.get("broken_symmetry"):
+        lines.append("| 自旋态 | 破缺对称单重态（M=1，broken_symmetry；"
+                     "单行列式 BS 近似，未验证 ⟨S²⟩） |")
     fixed = spin.get("fixed_spin_moment")
     if fixed is not None:
         lines.append("| 总自旋约束 | %s |" % (
@@ -777,7 +791,10 @@ def render_report(manifest: Mapping[str, Any]) -> str:
     if molecule.get("multiplicity") is not None:
         lines.append("| 电荷 / 多重度 | %s / %s |" % (
             _cell(molecule.get("charge")), _cell(molecule.get("multiplicity"))))
-        if (molecule.get("multiplicity") or 1) > 1:
+        if molecule.get("broken_symmetry"):
+            lines.append("| 自旋态 | 破缺对称单重态（M=1，broken_symmetry；"
+                         "反号 initial_moments，不写 fixed_spin_moment） |")
+        elif (molecule.get("multiplicity") or 1) > 1:
             fixed = molecule.get("fixed_spin_moment")
             lines.append("| 总自旋约束 | %s |" % (
                 "fixed_spin_moment（钉住 2S = M−1）" if fixed

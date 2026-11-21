@@ -40,10 +40,24 @@ class SpinState:
     #: 是否写 ``fixed_spin_moment``（=M−1）。False = 解除总自旋约束的对照解：
     #: 只保留 ``spin collinear`` + 初始磁矩，让 SCF 自己找自旋态。
     fix_spin_moment: bool = True
+    #: M=1 的破缺对称单重态（``molecule.broken_symmetry``）：物理上开壳层，但总
+    #: 自旋为 0。它同样需要 ``spin collinear`` 与两套自旋通道；``fixed_spin_moment``
+    #: 必须不写（M−1=0 等于把体系钉回闭壳层）。
+    broken_symmetry: bool = False
+
+    def __post_init__(self) -> None:
+        if self.broken_symmetry and self.multiplicity > 1:
+            raise ValueError(
+                "broken_symmetry 只适用于 multiplicity=1 的开壳层单重态，"
+                "当前 multiplicity=%d" % self.multiplicity)
+        if self.broken_symmetry and self.fix_spin_moment:
+            # 配置可以照旧写 fixed_spin_moment: true，但 BS 解在 FHI-aims 里不能钉
+            # 总自旋（2S=0），这里统一强制成"不写"，避免模板把体系压回闭壳层。
+            object.__setattr__(self, "fix_spin_moment", False)
 
     @property
     def open_shell(self) -> bool:
-        return self.multiplicity > 1
+        return self.multiplicity > 1 or self.broken_symmetry
 
     @property
     def spin(self) -> str:
@@ -62,7 +76,9 @@ def spin_state(config: Any) -> SpinState:
     multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
     charge = int(getattr(molecule, "charge", 0) or 0)
     fix = bool(getattr(molecule, "fixed_spin_moment", True))
-    return SpinState(multiplicity=multiplicity, charge=charge, fix_spin_moment=fix)
+    broken = bool(getattr(molecule, "broken_symmetry", False))
+    return SpinState(multiplicity=multiplicity, charge=charge,
+                     fix_spin_moment=fix, broken_symmetry=broken)
 
 
 def spin_control_lines(state: SpinState, *, with_fixed_spin_moment: bool,
@@ -228,6 +244,10 @@ def record_junction_spin(summary_path: Path, state: SpinState, *,
                          initial_moments: dict[int, float] | None = None) -> None:
     """把结级自旋设置补进 ``input_summary.json``（truth chain 可核对）。"""
     values: dict[str, Any] = {"spin": state.spin, "charge": float(state.charge)}
+    if state.broken_symmetry:
+        # BS 单重态在输入摘要里必须显式标出来：multiplicity=1 看起来像闭壳层，
+        # 只看 multiplicity 的读者会把两套自旋通道误当成误配。
+        values["broken_symmetry"] = True
     if state.open_shell:
         if state.fix_spin_moment:
             values["fixed_spin_moment"] = state.fixed_spin_moment

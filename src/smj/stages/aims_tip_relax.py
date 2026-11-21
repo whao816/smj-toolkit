@@ -74,7 +74,8 @@ class AimsTipRelaxStage(Stage):
         if moments:
             if not state.open_shell:
                 raise StageError(
-                    "molecule.initial_moments 只在开壳层（multiplicity>1）下有效")
+                    "molecule.initial_moments 只在开壳层下有效：请设 multiplicity>1，"
+                    "或 molecule.broken_symmetry=true（M=1 的 BS 单重态）")
             strip_info = summary.get("strip_thiol_h") or {}
             removed = (strip_info.get("removed_h_indices") or []
                        if isinstance(strip_info, dict) else [])
@@ -122,7 +123,9 @@ class AimsTipRelaxStage(Stage):
             notes.append("锚定原子 %s 非 S：strip_thiol_h=null 默认保留 H"
                          "（确需去质子请设 strip_thiol_h: true）" % anchor_element)
         if state.open_shell:
-            if state.fix_spin_moment:
+            if state.broken_symmetry:
+                constraint = ("破缺对称单重态（M=1，不写 fixed_spin_moment，总自旋不钉）")
+            elif state.fix_spin_moment:
                 constraint = ("fixed_spin_moment %g（=2S=M−1）；弛豫全程固定总自旋"
                               % state.fixed_spin_moment)
             else:

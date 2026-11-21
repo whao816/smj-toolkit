@@ -146,6 +146,12 @@ class MoleculeConfig:
     #: 是否写 ``fixed_spin_moment``（=M−1）把总自旋钉住。False = 解除约束的对照解：
     #: 只写 ``spin collinear`` + 初始磁矩，让 SCF 自己决定自旋态（与固定解比较）。
     fixed_spin_moment: bool = True
+    #: 破缺对称（broken-symmetry, BS）开壳层单重态：M=1，但写 ``spin collinear`` +
+    #: 两个自由基中心**反号**的 ``initial_moments``，且**不写** ``fixed_spin_moment``
+    #: （2S=M−1=0 会把它直接压回闭壳层）。要求 ``multiplicity: 1``、初矩合计 0、
+    #: 至少一正一负。FHI-aims 的单行列式只能给出 BS 近似解，且不打印 ⟨S²⟩：
+    #: 是否真的落到开壳层单重态，必须由自旋密度/自然轨道占据数另行确认。
+    broken_symmetry: bool = False
     method: str = "b3lyp"          # 仅 opt_engine=gaussian
     basis: str = "6-31g(d)"        # 仅 opt_engine=gaussian
     family: str | None = None  # 判据标定族（如 AZ/BDT），见 criteria.SYSTEM_FAMILIES
@@ -460,6 +466,7 @@ _KNOWN_SECTIONS = {"run", "molecule", "electrode", "transport", "cluster", "path
 _RUN_KEYS = {"name", "dir", "mode", "clean", "keep_going"}
 _MOLECULE_KEYS = {
     "xyz", "charge", "multiplicity", "initial_moments", "fixed_spin_moment",
+    "broken_symmetry",
     "method", "basis", "family",
     "opt_engine", "opt_functional", "opt_basis", "opt_force_threshold",
     "stable_check",
@@ -551,6 +558,8 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         initial_moments=_parse_initial_moments(data.get("initial_moments")),
         fixed_spin_moment=_as_bool(
             data.get("fixed_spin_moment", True), "molecule.fixed_spin_moment"),
+        broken_symmetry=_as_bool(
+            data.get("broken_symmetry", False), "molecule.broken_symmetry"),
         method=_as_str(data.get("method") or "b3lyp", "molecule.method"),
         basis=_as_str(data.get("basis") or "6-31g(d)", "molecule.basis"),
         family=_as_str(data.get("family"), "molecule.family", allow_empty=True) or None,
@@ -581,6 +590,30 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         raise ConfigError(
             "molecule.opt_force_threshold 应在 (0, 0.1] eV/Å（FHI-aims 的 relax_geometry "
             "判据是最大力分量，不是 Hartree/Bohr），实际是 %r" % cfg.opt_force_threshold)
+    if cfg.broken_symmetry:
+        # BS 单重态的四条硬前提：M=1、有初矩、合计 0（N↑=N↓）、正负都要有
+        # （否则 SCF 从处处同号/为零的初猜出发只会落回闭壳层解）。
+        if cfg.multiplicity != 1:
+            raise ConfigError(
+                "molecule.broken_symmetry=true 只适用于 multiplicity=1 的开壳层单重态，"
+                "当前 multiplicity=%d；三重态（M>1）用 multiplicity 本身即可"
+                % cfg.multiplicity)
+        moments = cfg.initial_moments or {}
+        if not moments:
+            raise ConfigError(
+                "molecule.broken_symmetry=true 需要 molecule.initial_moments："
+                "给两个自由基中心各一个反号初猜（如 {7: 1.0, 18: -1.0}）；"
+                "否则 SCF 没有破缺对称的起点")
+        total = sum(moments.values())
+        if abs(total) > 1e-6:
+            raise ConfigError(
+                "molecule.broken_symmetry=true 时 molecule.initial_moments 的合计应为 0"
+                "（BS 单重态 N↑=N↓），当前合计 %g μB" % total)
+        if not (any(v > 0 for v in moments.values())
+                and any(v < 0 for v in moments.values())):
+            raise ConfigError(
+                "molecule.broken_symmetry=true 时 molecule.initial_moments 至少要有一个"
+                "正、一个负分量；全同号的初猜收敛到的是固定自旋的另一种解")
     return cfg
 
 
@@ -906,6 +939,7 @@ molecule:
   multiplicity: 1
   initial_moments: null     # 开壳层初始磁矩 {{1-based 原子序号: μB}}，如 {{7: 1.0}}；null = 不写 initial_moment
   fixed_spin_moment: true   # 开壳层结是否钉住总自旋（M−1）；false = 解除约束的对照解
+  broken_symmetry: false    # M=1 的 BS 单重态：spin collinear + 反号 initial_moments，不写 fixed_spin_moment（需 initial_moments 合计 0）
   opt_engine: aims          # aims = 与 tip/SCF 同为 FHI-aims PBE/NAO（推荐）；gaussian = 旧口径
   opt_functional: pbe       # 仅 opt_engine=aims
   opt_basis: light          # 仅 opt_engine=aims；实际 species 由 cluster.species_dir 决定

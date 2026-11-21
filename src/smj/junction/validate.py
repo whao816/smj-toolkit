@@ -57,7 +57,7 @@ def _find_artifact(run_dir: Path, name: str):
 
 def validate_junction_run(run_dir, task_card=None, results=None, system=None,
                           temperature: float | None = None,
-                          multiplicity=None) -> dict:
+                          multiplicity=None, broken_symmetry: bool = False) -> dict:
     """smj run 校验: 按 run_dir(扁平阶段目录或含阶段子目录的 run 根)内实际产物判定。
 
     system: 体系标识(缺省取 task_card.material), 供 criteria 的判据适用域使用;
@@ -68,6 +68,8 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
     results.json 与 verdict 用的不是同一个温度。
     multiplicity: 分子多重度(>1 即开壳层)。开壳层的判据族未校准, 带 applies_to
     的判据一律降为记录 —— 由判据层(``criteria.applies``)统一处理。
+    broken_symmetry: ``molecule.broken_symmetry``(M=1 的 BS 单重态, 同样按开壳层
+    处理: 两套自旋通道、判据族不作闸门)。
     """
     run_dir = Path(run_dir)
     if system is None and task_card is not None:
@@ -152,6 +154,7 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
     checks.extend(evaluate_run_criteria(te.parent if te is not None else run_dir,
                                         system=system,
                                         multiplicity=multiplicity,
+                                        broken_symmetry=broken_symmetry,
                                         temperature=300.0 if temperature is None
                                         else float(temperature)))
     # A(2026-10-24): applicable=False(判据不适用于该体系族)的 check 不作闸门, 不计入

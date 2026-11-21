@@ -40,9 +40,12 @@ class AimsEngine(Engine):
 
         多重度 M 由 ``fixed_spin_moment = M - 1 = 2S`` 表达；早期实现把 M−1
         直接写进 ``spin``（如 ``spin 2``），FHI-aims 会因关键字取值非法而停止。
+        ``molecule.broken_symmetry``（M=1 的 BS 单重态）同样要 ``collinear``：
+        自旋通道必须存在，只是总自旋不钉。
         """
         multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
-        return "none" if multiplicity <= 1 else "collinear"
+        broken = bool(getattr(molecule, "broken_symmetry", False))
+        return "collinear" if (multiplicity > 1 or broken) else "none"
 
     @staticmethod
     def _initial_moments(molecule, natoms: int) -> dict[int, float]:
@@ -52,10 +55,12 @@ class AimsEngine(Engine):
         if not moments:
             return {}
         multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
-        if multiplicity <= 1:
+        broken = bool(getattr(molecule, "broken_symmetry", False))
+        if multiplicity <= 1 and not broken:
             raise StageError(
-                "molecule.initial_moments 只在 multiplicity > 1（开壳层）时有意义，"
-                "当前 multiplicity=1：请同时设 multiplicity，或删掉 initial_moments")
+                "molecule.initial_moments 只在开壳层时有意义：请设 multiplicity > 1，"
+                "或 molecule.broken_symmetry=true（M=1 的 BS 单重态）；"
+                "当前 multiplicity=1 且未开破缺对称")
         out_of_range = sorted(index for index in moments if not 1 <= index <= natoms)
         if out_of_range:
             raise StageError(
@@ -132,6 +137,7 @@ class AimsEngine(Engine):
         stage_dir = Path(stage_dir)
         species = ctx.species_dir()
         multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
+        broken = bool(getattr(molecule, "broken_symmetry", False))
         spin_moment = float(multiplicity - 1) if multiplicity > 1 else None
         functional = getattr(molecule, "opt_functional", "pbe")
         basis = getattr(molecule, "opt_basis", "light")
@@ -183,7 +189,13 @@ class AimsEngine(Engine):
 
         ctx.log("molecule_opt: 已写 %s（%d 原子，FHI-aims %s/%s，spin=%s）"
                 % (geom.name, natoms, functional, basis, self._spin(molecule)))
-        if spin_moment:
+        if broken:
+            shell_note = (
+                "破缺对称单重态（M=1）：spin collinear + 反号 per-atom initial_moment；"
+                "不写 fixed_spin_moment（2S=0 会直接压回闭壳层）。FHI-aims 单行列式给的是"
+                "BS 近似解，不打印 ⟨S²⟩——是否真落到开壳层单重态须由自旋密度/自然轨道"
+                "占据数确认")
+        elif spin_moment:
             shell_note = (
                 "开壳层：spin collinear + fixed_spin_moment %g（μB = 2S = M−1）把总自旋"
                 "固定住，弛豫过程不允许在步间改变自旋态" % spin_moment)
@@ -196,11 +208,17 @@ class AimsEngine(Engine):
                 % ("，".join("原子 %d=%g" % (index, value)
                             for index, value in sorted(moments.items())),
                    sum(moments.values())))
-            if abs(sum(moments.values()) - float(spin_moment)) > 1e-6:
-                moment_notes.append(
-                    "initial_moments 合计 %g μB ≠ M−1 = %g μB：fixed_spin_moment 仍会强制"
-                    "总自旋，初猜分布只影响收敛路径与落到哪个解"
-                    % (sum(moments.values()), spin_moment))
+            target = 0.0 if broken else (spin_moment if spin_moment is not None else 0.0)
+            if abs(sum(moments.values()) - target) > 1e-6:
+                if broken:
+                    moment_notes.append(
+                        "破缺对称单重态的 initial_moments 合计 %g μB ≠ 0：N↑≠N↓ 不是单重态，"
+                        "检查初猜符号" % sum(moments.values()))
+                else:
+                    moment_notes.append(
+                        "initial_moments 合计 %g μB ≠ M−1 = %g μB：fixed_spin_moment 仍会"
+                        "强制总自旋，初猜分布只影响收敛路径与落到哪个解"
+                        % (sum(moments.values()), spin_moment))
         elif spin_moment:
             moment_notes.append(
                 "未设 molecule.initial_moments：spin collinear 下 FHI-aims 用默认初始"
