@@ -990,6 +990,28 @@ def cmd_review(args: argparse.Namespace) -> int:
     return EXIT_OK if ok else EXIT_FAILED
 
 
+def cmd_spin(args: argparse.Namespace) -> int:
+    """S8：只读汇总一份 run 的自旋通道 / Sα-Sβ / Hirshfeld 分区。"""
+    from pathlib import Path
+
+    from .spin_report import build_spin_report, render_spin_report
+
+    if getattr(args, "run", None):
+        run = Path(args.run)
+    else:
+        run = _load_config(args).run_dir
+    try:
+        payload = build_spin_report(run, temperature=args.temperature)
+    except FileNotFoundError as exc:
+        _error(str(exc), debug=bool(getattr(args, "debug", False)))
+        return EXIT_FAILED
+    if args.json:
+        _emit_json(payload)
+        return EXIT_OK
+    print(render_spin_report(payload))
+    return EXIT_OK
+
+
 def cmd_audit(args: argparse.Namespace) -> int:
     """本地一致性检查：不连远端，只看 state.json 与 run 目录。"""
     config = _load_config(args)
@@ -1516,6 +1538,19 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--no-a2", dest="legacy_a2", action="store_false",
                         default=None, help=argparse.SUPPRESS)
     review.set_defaults(handler=cmd_review)
+
+    # spin ---------------------------------------------------------------- #
+    spin = subparsers.add_parser(
+        "spin", help="开壳层自旋汇总（通道 / Sα-Sβ / Hirshfeld 分区）",
+        description="只读：汇总 run_spec、TE.dat 的双通道积分、"
+                    "aims_scf/spin_partition.json 与 review 的自旋提示；"
+                    "不写任何文件（需要新结论请跑 smj review）。")
+    _add_common(spin)
+    spin.add_argument("run", nargs="?", default=None, metavar="RUN",
+                      help="run 目录（缺省用配置里的 run_dir）")
+    spin.add_argument("--temperature", type=float, default=None, metavar="K",
+                      help="覆盖积分温度(K)；缺省取 run_spec/transport.temperature")
+    spin.set_defaults(handler=cmd_spin)
 
     # audit / verify -------------------------------------------------------- #
     audit = subparsers.add_parser(

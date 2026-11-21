@@ -199,7 +199,7 @@ Mulliken 投影一致到 1e-3。
 
 ### S8（可选，需用户点名）`smj spin` 子命令
 
-汇总 `review` 的 spin 块 + 分区 + P(E) 到一张表/JSON。默认不做，避免与 S1/S2 重复；若要做，放批次 D。
+**状态（2026-11-21）：✅ 已实现（用户点名）。** `src/smj/spin_report.py` 的 `build_spin_report`/`render_spin_report` 加 `cli.cmd_spin`：只读汇总 `run_spec` 的自旋声明、`TE.dat` 双通道积分（α/β 点数、Tα/Tβ(E_F)、P(E_F)/P(L0)、Gα/Gβ/Gtotal、Sα/Sβ/S_total、P_S）、`aims_scf/spin_partition.json` 的分区与分子内 +/− 自旋矩、`review.json` 已有的自旋 code 与口径提醒；旧 run 的 spin 块缺分通道 S 时直接从 `TE.dat` 重算（`spin_source` 标明来源），分区侧车缺失时明说"自旋分布: 未采集"，不补零。`--json` 输出同一 payload。实测 `runs/ttf-cation`：Sα/Sβ/S_total = +10.720/+10.714/+10.717 μV/K、P_S +0.03%；`runs/ifs-bs`：+6.156/+6.159/+6.157、P_S −0.02%。测试 5 条（`tests/test_spin_cli.py`）；默认全量 571 passed。
 
 ## 4. 批次
 
@@ -208,7 +208,7 @@ Mulliken 投影一致到 1e-3。
 | A | S1 + S3 + S7 | `spin_partition.py`、`aims_scf.py`、`aitranss_te.py`、`config.py`、`report.py`、`review.py`、文档 | ✅ 2026-11-21：报告出现自旋分布；单列 TE 被拦；全量 549 passed |
 | B | S2 | `landauer_spin.py`、`criteria.py`、`junction_analyze.py`、`report.py` | Sα/Sβ 进结果与报告；provenance + demo 校验 | ✅ 2026-11-21（555 passed） |
 | C | S4 + S6 | `spin_partition.py`、`report.py`、`review.py`、`tests/integration/` | BS 证据行；`pytest -m integration` 通过 | ✅ 2026-11-21（默认 560 passed；`-m integration` 2 passed） |
-| D | S5（+S8 可选） | `criteria.py`、`report.py`、`validate.py` | 口径文案与 open_shell_protocol；无回归 | ✅ 2026-11-21（S5；默认 566 passed；S8 未做，需点名） |
+| D | S5（+S8） | `criteria.py`、`report.py`、`validate.py`、`spin_report.py`、`cli.py` | 口径文案与 open_shell_protocol；无回归 | ✅ 2026-11-21（S5 + S8；默认 571 passed） |
 
 顺序理由：S1/S3 是证据与闸门，先落地才能给 S2/S4 提供真实数字；S2 动 junction 内核，单独一批方便 provenance/demo 对账；S4/S6 依赖 S1；S5 只改文案与工程检查，放最后避免反复改文案。
 

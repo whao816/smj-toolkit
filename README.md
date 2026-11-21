@@ -446,6 +446,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj plot` | 按**统一版式**画 T(E)（四边框/刻度朝内/E_F 虚线/log 纵轴/固定配色，见 `docs/plot_style.md`）；可给 TE.dat、run 目录或逗号标签叠加多条 | `T_E.png` + `T_E.pdf`（默认 PNG+PDF 同源导出，600 dpi） |
 | `smj pdos` | 分组 PDOS：读 `aims_scf` 的 `mos.aims`（开壳层 `alpha.aims`/`beta.aims`，按 `$uhfmo_*` 头行判通道）与 `basis-indices.out`，按 `--groups molecule=1-20,left=21-52` 把原子分组投影到 α/β，占据数取 `aims.out` 的 `State Occupation` 表（闭壳层只取最后一张；开壳层取末两张分别给 α/β，行数允许不同，但与通道波函数态数不符时显式报错而不是按索引截断），落在 `TE.dat` 的 E − E_F 网格上（与 T(E) 同一能量轴）；权重按每态 `Σc²` 归一（NAO 非正交，真正 Mulliken 需要 `omat.aims` 重叠矩阵，本地只有表头）；`--plot` 出上下两栏共享 x 轴的图。默认回取只抓 `mos.aims` 表头，本地没有完整本征向量时会**显式失败**并提示用 `--fetch` 按清单整取 | 终端摘要或 `--json`；`-o` 写 `smj.pdos.v1` JSON；缺完整本征向量时退出 1 |
 | `smj review` | 结构复核门：建结几何 + 连接核对（原 A2：指纹/表面索引偏差）。默认由管线在 `electrode_build` 之后自动登记（`who=auto`，审计不过则拒绝登记并阻断）；也可人工签 `--approve --who <名字>`（审计或出图不通过时**拒绝签署**，退出 2），`--no-figure` 只在你已在别处看过图时使用，`--connection-check/--no-connection-check` 临时覆盖 `review.connection_check` | `review.json`、`electrode_build/connection_check.json`（旧 `a2_confirmation.json` / `surface_check.json` 仍可读）；`blocked` 时退出 1 |
+| `smj spin` | 开壳层自旋汇总（只读）：自旋声明、双通道 Tα/Tβ(E_F)、P(E_F)/P(L0)、Gα/Gβ/Gtotal、Sα/Sβ/S_total、P_S；旧 run 的 spin 块缺分通道 S 时直接从 `TE.dat` 重算；Hirshfeld 分区与分子内 +/− 自旋矩、review 已有的自旋 code 与口径提醒 | 终端摘要或 `--json`（`run_id`/`molecule`/`open_shell`/`spin`/`partition`/`findings`/`review_codes`/`caveats`）；不写任何文件 |
 | `smj audit` | 本地一致性检查（不连远端）：state 与阶段目录/产物/job id 对账 | issues 列表；有 error 退出 1 |
 | `smj verify` | 安装自检：Python/PyYAML/numpy、junction 内核、模板、阶段模块 | issues 列表；有 error 退出 1（不需要 `-c`） |
 | `smj plan` | 打印六阶段计划、依赖与当前状态，不落盘、不提交 | 终端表格 |
@@ -655,6 +656,12 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   被判 `inconclusive` 且原因是 `no_applicable_gate` 时，`wording` 会明说"开壳层判据
   未校准；如需物理解读，需先用开壳层参考体系标定 `g_in_theory_band` / `seebeck_sign`"，
   避免把"没有闸门"读成"数据不足"。
+- **`smj spin` 汇总子命令（2026-11-21，S8）**：`smj spin [RUN] [--json] [--temperature K]`
+  只读汇总一条 run 的自旋通道（α/β 点数、Tα/Tβ(E_F)、P(E_F)/P(L0)、Gα/Gβ/Gtotal、
+  Sα/Sβ/S_total、P_S）、Hirshfeld 分区与分子内 +/− 自旋矩、review 已有的自旋 code，
+  并给出口径提醒。旧 run 的 spin 块没有分通道 S 时直接从 `TE.dat` 重算
+  （`spin_source` 标明来源），分区侧车缺失就写"自旋分布: 未采集"。不写任何文件；
+  需要新结论仍跑 `smj review`。
 
 - **超时不是失败**：`--wait` 超时后状态留在 `waiting`，作业可能仍在跑；稍后重跑
   `smj stage <stage> --wait` 即可。

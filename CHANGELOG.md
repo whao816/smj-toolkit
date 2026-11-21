@@ -4,9 +4,26 @@
 
 ## 未发布
 
+### 新增：2026-11-21 自由基支线 S8（`smj spin` 汇总子命令）
+
+计划见 `docs/plan-radical-2026-11-21.md`（S8，用户点名后实现）。此前开壳层的通道数、
+Sα/Sβ、Hirshfeld 分区与 review 提示散在 `results.json`、侧车和 `review.json` 三处，
+看一条 run 要翻三个文件。
+
+- `smj spin [RUN] [--json] [--temperature K]`：只读汇总一条 run 的自旋声明、双通道
+  积分（α/β 点数、Tα/Tβ(E_F)、P(E_F)/P(L0)、Gα/Gβ/Gtotal、Sα/Sβ/S_total、P_S）、
+  Hirshfeld 分区与分子内 +/− 自旋矩、review 已有的自旋 code，并附口径提醒；不写任何
+  文件（需要新结论仍跑 `smj review`）。
+- 旧 run 的 `results.json` spin 块没有分通道 S 时，优先从 `TE.dat` 重算
+  （`spin_source` 标明来源）；`aims_scf/spin_partition.json` 不存在时明说"自旋分布:
+  未采集"，不补零。
+- `--json` 输出同一 payload（`run_id`、`molecule`、`open_shell`、`spin`、`partition`、
+  `findings`、`review_codes`、`caveats`），便于脚本消费。
+- 测试：`tests/test_spin_cli.py` 5 条；默认全量 571 passed，`-m integration` 2 passed。
+
 ### 新增：2026-11-21 自由基支线批次 D（开壳层协议自检 + 判据口径）
 
-计划见 `docs/plan-radical-2026-11-21.md`（批次 D = S5；S8 可选、未做）。此前开壳层 run
+计划见 `docs/plan-radical-2026-11-21.md`（批次 D = S5；S8 已在上一条单独实现）。此前开壳层 run
 被判 `inconclusive` 时只写"无法判定"，读者容易当成数据不足；同时"该采的自旋证据有没有
 采"没有任何工程检查。
 
