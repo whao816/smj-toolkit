@@ -6,7 +6,7 @@
 
 ### 修复：2026-11-22 全仓代码复审（批 1–4）
 
-用户要求按复审建议顺序修复。四批都补了回归测试；默认全量 607 passed / 2 deselected。
+用户要求按复审建议顺序修复。四批都补了回归测试；默认全量 620 passed / 2 deselected。
 
 1. **判定链**：`manifest` 记录判据指纹（`verdict.py` + `junction/criteria.py` +
    `junction/validate.py` 的源码 sha256），判据实现变化或旧 manifest 缺指纹时
@@ -29,6 +29,36 @@
    `Provides-Extra: all` 与 pyproject 的 `all` extra；sdist 带 `docs/` 与
    `demo/demo-reference.json`；README/RELEASING 的 CI 矩阵、报告节数、`independent`
    键名、verify 的 legacy 说明与测试基线同步更新。
+
+### 修复：2026-11-22 复审 P2（八项遗留）
+
+用户点名处理复审清单剩余的 P2。全部补了测试（`tests/test_p2_20261122.py` 13 例），
+全量 620 passed / 2 deselected。
+
+1. **P_S 近抵消**：`Sα+Sβ` 相对通道尺度 ≤1e-6 时 `spin_polarization_S` 记 `None`
+   并写 `spin_polarization_S_note`，`smj spin` 打印原因，不再输出 `+199999900%`
+   这种由数值噪声放大的巨值。
+2. **Au–S 带单一来源**：`criteria.AU_S_BOND_BAND = (2.40, 2.44)` 成为判据带唯一来源
+   （Jackson 2009 2.42±0.02）；`validate.AU_S_BAND` 改为引用它；`contacts.TARGET_BAND_A`
+   （2.40–2.49）明确标注为建结搜索目标带、不是判据带；preflight/validate/README 文案同步。
+3. **cube 负步长**：`read_cube` 把降序轴翻成升序（新原点=旧原点+(n-1)·step、体素翻转、
+   步长取反），修复 `searchsorted` 空窗导致 `anchor_weight` 静默 `fraction=0`；
+   步长为 0 时显式报错。同时修正原点换算 Å 的单位混用。
+4. **plot 参数契约**：`--labels` 数量与输入不一致时拒绝作图，不再 `zip` 截断静默丢曲线；
+   多输入叠加时显式非 `auto` 的 `--spin` 报错，不再悄悄丢掉自旋参数。
+5. **independent 复核进判定**：`validate_junction_run` 新增未注册检查
+   `independent_recheck`（独立解析 + Simpson 对 L0/L1/L2，相对差 1e-3）；一致记 info，
+   不一致按 unknown 把物理判定压成 inconclusive；无 TE.dat / 点数 <50 / 无管线矩阵时
+   applicable=False。
+6. **junction/review.py 接线**：`aims_tip_relax`、`electrode_build` 的 prepare 写
+   `review_tips.xyz` / `review_junction.xyz` 检查点；`smj review` 读取并报告
+   未确认/已确认/确认记录失效（`structure_check_*`）。几何不可解析时降级成 note，
+   不阻断阶段。
+7. **verify legacy-stages**：`smj verify` 新增 warning 级检查，确认
+   `state.LEGACY_STAGES`（`au_relax`）的模块仍可导入，旧 run 迁移不会因删模块而崩。
+8. **manifest 单一实现**：`junction.manifest.build_manifest` 在有 `aitranss_te` 时委托
+   `report.build_manifest` 并投影回旧形状（含判据指纹、completeness、unregistered），
+   消除两套 inventory/verdict 逻辑；无 TE 阶段仍只做 inventory、不伪造 verdict。
 
 ### 新增：2026-11-21 自由基支线 S8（`smj spin` 汇总子命令）
 

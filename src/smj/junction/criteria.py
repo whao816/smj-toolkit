@@ -33,6 +33,11 @@ THY = {'doi': '10.1016/j.chemphys.2005.05.032'}
 JAC = {'doi': '10.1016/j.susc.2009.01.022'}
 WID = {'doi': '10.1021/nl203634m'}
 
+#: Au–S 硫醇盐有源带（Å）：Jackson 2009 S–Au=2.42±0.02 Å 的一手实验锚点。
+#: 2026-11-22 复审 P2：这是**判据带**的唯一来源；建结搜索用的 2.40–2.49 Å
+#: 是目标带（contacts.TARGET_BAND_A），两者不得在文案里混用。
+AU_S_BOND_BAND = (2.40, 2.44)
+
 # 费米窗覆盖门限 f(E_min)-f(E_max)。0.95 ≈ E_F ± 3.66 kBT（300 K 时 ±0.095 eV）。
 # 这是**数值约定**（截窗积分的有代表性程度），不是文献物理常数 —— 也因此该判据
 # 在 KNOWN_GAPS 里登记为"无一手源"。取 0.95 而不是 0.99 的理由: 现有 52 份 run
@@ -71,7 +76,7 @@ CRITERIA = [
      'note': 'aitranss 语义: 左右电极共享原子即终止(trans.f); 见 P0-4'},
 
     {'name': 'au_s_bond', 'kind': 'physical', 'gate': 'warn', 'implemented': True,
-     'band': [2.40, 2.44], 'source': dict(JAC, locator='摘要: Au(111)(sqrt3xsqrt3)R30-CH3S atop, '
+     'band': list(AU_S_BOND_BAND), 'source': dict(JAC, locator='摘要: Au(111)(sqrt3xsqrt3)R30-CH3S atop, '
                                                        'NIXSW+S1s PhD, S-Au=2.42+-0.02 A'),
      'note': '实验锚点 Jackson 2009 2.42+-0.02 -> 带 [2.40, 2.44](2.44=2.42+0.02; 旧上端 2.49 '
              '无一手源)。Thygesen 2005 §V.2 的 d(Au-S)=2.40 A 是**采用 Stokbro 2003** 的模型'

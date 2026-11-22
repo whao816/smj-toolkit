@@ -924,6 +924,11 @@ def cmd_plot(args: argparse.Namespace) -> int:
 
     formats = tuple(f for f in (args.formats or "png,pdf").split(",") if f.strip())
     labels = [item.strip() for item in args.labels.split(",")] if args.labels else None
+    if labels is not None and len(labels) != len(te_files):
+        # 旧行为：zip 按较短的 labels 截断，剩余曲线被静默丢掉——图看起来"少了一条"，
+        # 而命令仍退出 0。叠加图的标签必须与输入一一对应，否则拒绝画。
+        raise SmjError("--labels 给了 %d 个标签，但有 %d 条输入；请按输入顺序逐一给出（或省略 --labels）"
+                       % (len(labels), len(te_files)))
     out = args.out
     if out is None:
         base = Path(sources[0])
@@ -937,6 +942,12 @@ def cmd_plot(args: argparse.Namespace) -> int:
         meta = plot_te(te_files[0], out, label=args.label, annotate=not args.no_annotate,
                        **common)
     else:
+        if args.spin and args.spin != "auto":
+            # plot_te_multi 没有 spin 参数；旧代码把 --spin 从 common 里悄悄删掉，
+            # 叠加图于是只画"总透射"，用户却以为看的是自旋分辨曲线。
+            # 默认值 "auto" 等价于"没指定"，不应拦截普通叠加图。
+            raise SmjError("叠加模式（多个 input）不支持 --spin：请对单个 TE.dat 单独出图，"
+                           "或去掉 --spin 画总透射")
         multi = {k: v for k, v in common.items() if k != "spin"}
         meta = plot_te_multi(list(zip(te_files, labels or [None] * len(te_files))),
                              out, **multi)
@@ -1223,6 +1234,21 @@ def cmd_verify(args: argparse.Namespace) -> int:
         check("stages", not _missing,
               "%d 个阶段模块可导入%s" % (len(_registered),
                                        "" if not _missing else "；缺 %s" % ", ".join(_missing)))
+        # 2026-11-22 复审 P2: verify 此前只查 STAGE_ORDER，退役阶段模块（如
+        # au_relax）是否还活着完全没人看。它在 state.LEGACY_STAGES 里仍用于
+        # 旧 run 的状态迁移，删模块会让旧 run 直接 respec/collect 失败。
+        from smj.state import LEGACY_STAGES
+        _legacy_missing = []
+        for _name in LEGACY_STAGES:
+            try:
+                _importlib.import_module("smj.stages.%s" % _name)
+            except Exception:  # noqa: BLE001
+                _legacy_missing.append(_name)
+        check("legacy-stages", not _legacy_missing,
+              ("已退役阶段模块仍在（旧 run 兼容）: %s" % ", ".join(LEGACY_STAGES))
+              if not _legacy_missing
+              else "LEGACY_STAGES 列了但模块不可导入: %s" % ", ".join(_legacy_missing),
+              severity="warning")
     except Exception as exc:  # noqa: BLE001
         check("stages", False, "smj.stages 不可导入: %s" % exc)
 

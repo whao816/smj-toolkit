@@ -125,6 +125,16 @@ class ElectrodeBuildStage(Stage):
                metadata.get("left_backplane_indices"), metadata.get("right_backplane_indices"),
                str(metadata.get("surface_fingerprint"))[:12]),
         ])
+        # 2026-11-22 复审 P2: 贴装后的结构检查点 xyz（人读文件，供 review 消费）。
+        # 检查点只是给人看的辅助产物，几何不可解析时降级成 note，不阻断建结。
+        from smj.junction.review import write_review_xyz
+        try:
+            checkpoint = write_review_xyz(stage_dir, "electrodes", stage=self.name)
+        except (OSError, ValueError) as exc:
+            notes.append("结构检查点未写出（不影响本阶段）: %s" % exc)
+        else:
+            notes.append("结构检查点已写出: %s（%d 原子；进入 SCF 前建议人工看一眼）"
+                         % (checkpoint["path"], checkpoint["atoms"]))
         return self.prepared(
             ctx, stage_dir,
             inputs=[source],

@@ -82,11 +82,32 @@ def build_manifest(run_root, run_id: str | None = None, spec: dict | None = None
 
     run_root: 形如 work/<material>/<run_id>/ 的目录(内含各阶段子目录)。
     system: 体系标识('BDT'/'2CN'), 传给判据适用域判定; 缺省未知 -> 全部判据适用。
+
+    2026-11-22 复审 P2：这里原来是与 ``report.build_manifest`` 平行的第二套
+    inventory/verdict 逻辑（键更少、没有 completeness/unregistered_checks、
+    只在 aitranss_te 存在时出 verdict），同一 run 的两份 manifest 可以互相打架。
+    现在有 TE 阶段时直接委托 report 的唯一实现，再投影回本模块的公开形状；
+    没有 TE 阶段（fixtures/半成品 run）仍只做 inventory，不伪造 verdict。
     """
     root = Path(run_root)
     rid = run_id or root.name
+    te_dir = root / 'aitranss_te'
+    if te_dir.is_dir():
+        try:
+            from ..report import build_manifest as _report_manifest
+            full = _report_manifest(root, run_id=rid, spec=spec, stages=stages,
+                                    include_checks=True, system=system)
+        except Exception as exc:  # noqa: BLE001 —— 保留旧契约: 失败写 error 而非抛
+            full = None
+            error = 'report.build_manifest 失败: %s' % exc
+        if full is not None:
+            return {k: full.get(k) for k in
+                    ('run_id', 'root', 'spec', 'stages', 'verdict', 'checks', 'totals')}
+        return {'run_id': rid, 'root': str(root), 'spec': spec or {},
+                'stages': {}, 'verdict': {'error': error}, 'totals': {}}
+
     man = {'run_id': rid, 'root': str(root), 'spec': spec or {},
-           'stages': {}, 'verdict': None, 'totals': {}}
+           'stages': {}, 'totals': {}}
     total = 0
     names = stages or discover_smj_stages(root)
     for st in names:
@@ -98,23 +119,7 @@ def build_manifest(run_root, run_id: str | None = None, spec: dict | None = None
         total += sub
         man['stages'][st] = {'dir': str(d), 'n_files': len(files),
                              'bytes': sub, 'files': files}
-
-    # 判定: 有 aitranss_te 阶段就按 P1-1/P1-2 的口径出 verdict
-    te_dir = root / 'aitranss_te'
-    if te_dir.is_dir():
-        try:
-            from .validate import validate_junction_run
-            # 传 run 根: 校验层按阶段子目录解析产物(gaussian/aims/te 全链),
-            # 只传 te_dir 会看不到 mol.log/aims.out, 工程判定不完整
-            v = validate_junction_run(root, system=system)
-            man['verdict'] = {k: v.get(k) for k in
-                              ('passed', 'engineering_passed', 'errors', 'warnings',
-                               'physics_verdict', 'wording', 'allowed_action',
-                               'failed_criteria', 'inconclusive_criteria',
-                               'not_applicable_criteria')}
-            man['checks'] = v.get('checks', [])
-        except Exception as exc:
-            man['verdict'] = {'error': 'validate_junction_run 失败: %s' % exc}
+    man['verdict'] = None
     man['totals'] = {'bytes': total, 'gib': round(total / (1024 ** 3), 3),
                      'stages': len(man['stages'])}
     return man

@@ -199,7 +199,11 @@ def _spin_lines(payload: Mapping[str, Any]) -> list[str]:
         _number(spin.get("S_alpha_uV_per_K"), "%+.3f"),
         _number(spin.get("S_beta_uV_per_K"), "%+.3f"),
         _number(spin.get("S_total_uV_per_K"), "%+.3f")))
-    lines.append("P_S = (Sα−Sβ)/(Sα+Sβ): %s" % percent(spin.get("spin_polarization_S")))
+    p_s = spin.get("spin_polarization_S")
+    line = "P_S = (Sα−Sβ)/(Sα+Sβ): %s" % percent(p_s)
+    if p_s is None and spin.get("spin_polarization_S_note"):
+        line += "（%s）" % spin["spin_polarization_S_note"]
+    lines.append(line)
     if spin.get("note"):
         lines.append("备注: %s" % spin["note"])
     return lines

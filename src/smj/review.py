@@ -319,6 +319,57 @@ def _load_json(path: Path) -> tuple[dict | None, str | None]:
     return (payload if isinstance(payload, dict) else None), None
 
 
+def _structure_checkpoint_issues(result: ReviewResult, run_dir: Path) -> None:
+    """消费 junction.review 的结构检查点（2026-11-22 复审 P2）。
+
+    该模块此前**全仓无 import**：引擎不写 review xyz，review 也不读记录，
+    "两处人工检查点"只是文档里的承诺。现在两条边都接上：
+
+    * 阶段 prepare 时写 ``review_tips.xyz`` / ``review_junction.xyz``；
+    * 本函数对已存在的检查点核对 ``structure_review.json`` 的记录。
+
+    未签署**不是**错误（独立包本来就不提供签署命令），记 info 提示"已写出、
+    等人看"；只有"签过但对不上当前几何"才记 warning（结构被改过/阶段重跑）。
+    system 一律用 None：xyz 注释行参与字节指纹，写与查必须同源；用配置名
+    会在无 smj.yaml 的独立 run 上写出与复核不一致的注释，把同一几何判失效。
+    """
+    try:
+        from smj.junction import review as checkpoint
+    except Exception as exc:  # noqa: BLE001 —— 内核缺失不应让整份 review 崩
+        result.add("info", "structure_checkpoint_unavailable",
+                   "junction.review 不可用，检查点复核跳过: %s" % exc)
+        return
+    try:
+        stages = checkpoint.discover_review_stages(run_dir)
+    except OSError as exc:
+        result.add("warning", "structure_checkpoint_failed",
+                   "列结构检查点失败: %s" % exc)
+        return
+    for stage in stages:
+        key = checkpoint.review_key(stage)
+        stage_dir = Path(run_dir) / stage
+        xyz = checkpoint.xyz_path(stage_dir, key)
+        if not xyz.is_file():
+            result.add("info", "structure_check_pending",
+                       "检查点 %s 尚未写出 %s（阶段 prepare 未完成？）"
+                       % (stage, checkpoint.REVIEW_XYZ[key]))
+            continue
+        chk = checkpoint.check_confirmation(stage_dir, key, system=None)
+        if chk.get("valid"):
+            result.add("info", "structure_checkpoint_confirmed",
+                       "检查点 %s 已人工确认（%s @ %s）"
+                       % (stage, chk.get("who") or "?", chk.get("when") or "?"),
+                       value=chk.get("fingerprint") or chk.get("current"))
+        elif chk.get("present"):
+            result.add("warning", "structure_check_stale",
+                       "检查点 %s 的确认记录已失效: %s"
+                       % (stage, chk.get("reason") or "指纹不符"))
+        else:
+            result.add("info", "structure_check_unconfirmed",
+                       "检查点 %s 已写出 %s，等待人工检查（本包不提供签署命令；"
+                       "确认与否不影响机械判据）" % (stage, xyz.name))
+
+
 # --------------------------------------------------------------------------- #
 # 结构几何
 # --------------------------------------------------------------------------- #
@@ -937,6 +988,7 @@ def review_run(target: Any, *, force: bool = True,
     if review_cfg.auto_connection_check:
         _auto_connection_check(result, run_dir, build_dir, review_cfg)
     _structure_review(result, build_dir, geometry=geometry, metadata=metadata)
+    _structure_checkpoint_issues(result, run_dir)
     _connection_check_review(result, build_dir, review_cfg)
     _provenance_review(result, run_dir, cfg)
     _spin_review(result, run_dir, cfg)

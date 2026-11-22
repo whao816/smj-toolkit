@@ -13,6 +13,8 @@ import json
 import math
 from pathlib import Path
 
+from .criteria import AU_S_BOND_BAND
+
 
 def _ok(name: str, value, detail: str) -> dict:
     return {'name': name, 'value': value, 'passed': True, 'severity': 'info', 'detail': detail}
@@ -30,6 +32,65 @@ def _na(name: str, detail: str) -> dict:
     """判据对当前协议不适用: 只记录, 不计入 errs/warns(见 _appl)。"""
     return {'name': name, 'value': None, 'passed': True, 'severity': 'info',
             'detail': detail, 'applicable': False}
+
+
+#: 独立复核要求的最小谱点数：Simpson 与管线 trapz 的离散差随 h² 收敛，
+#: 粗谱（7 点示例、敏感性扫描的半成品）上两者本来就会差几个百分点，
+#: 此时"复核不一致"说明不了实现有错，只会把 inconclusive 噪声放大。
+_MIN_INDEPENDENT_POINTS = 50
+
+
+def _independent_recheck(te, results, temperature: float) -> dict:
+    """独立解析 + Simpson 复核 L0/L1/L2（2026-11-22 复审 P2）。
+
+    只比积分矩阵，不重算 S/ZT/k_e（那会复制管线公式，失去独立性）。
+    登记为**未注册** check：一致记 info；不一致时 physics_verdict 会按
+    "unregistered + failed" 归到 unknown，从而把物理判定压成 inconclusive，
+    而不是让一个复核工具的容差直接否证 H0。证据不足（无 TE.dat / 点太少 /
+    没有管线矩阵）记 applicable=False，不参与归约。
+    """
+    if te is None:
+        return _na('independent_recheck', '没有 TE.dat：无法做独立积分复核')
+    try:
+        from .independent_check import compare, l0_l1_l2, parse_te
+        rows = parse_te(te)
+        if len(rows) < _MIN_INDEPENDENT_POINTS:
+            return _na('independent_recheck',
+                       '谱点过少（%d < %d）：Simpson 与 trapz 的离散差不具判别力'
+                       % (len(rows), _MIN_INDEPENDENT_POINTS))
+        independent = l0_l1_l2(rows, temperature)
+    except (OSError, ValueError, TypeError) as exc:
+        return _na('independent_recheck', '独立复核无法执行: %s' % exc)
+    pipeline = None
+    j = (results or {}).get('junction') if results else None
+    if isinstance(j, dict) and all(j.get(k) is not None for k in ('L0', 'L1', 'L2')):
+        pipeline = j
+    else:
+        for cand in (te.parent / 'results.json',
+                     te.parent.parent / 'junction_analyze' / 'results.json',
+                     te.parent.parent / 'results.json'):
+            if not cand.is_file():
+                continue
+            try:
+                data = json.loads(cand.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                continue
+            data = data.get('junction', data) if isinstance(data, dict) else None
+            if isinstance(data, dict) and all(data.get(k) is not None for k in ('L0', 'L1', 'L2')):
+                pipeline = data
+                break
+    if pipeline is None:
+        return _na('independent_recheck', '缺管线 L0/L1/L2（results.json 旧产物）：没有可比的积分矩阵')
+    cmp = compare(pipeline, independent, 1e-3, temperature)
+    if cmp['ok']:
+        return _ok('independent_recheck', independent['points'],
+                   '独立 Simpson 复核一致（%d 点；L0/L1/L2 相对差 ≤ 1e-3）'
+                   % independent['points'])
+    bad = ', '.join('%s 相对差 %.2e' % (d['key'], d['rel'])
+                    for d in cmp['diffs'] if not d['ok'] and d['rel'] is not None)
+    return _warn('independent_recheck', None,
+                 '独立 Simpson 复核不一致: %s；先查 TE.dat 与结果矩阵，'
+                 '不要直接发布这组 G/S（本判据不登记 CRITERIA，故按 unknown 处理）' % bad)
 
 
 # 产物归属: 引擎 run 根下产物按阶段分子目录存放(gaussian_opt/aims_scf/...),
@@ -205,6 +266,11 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
                                         broken_symmetry=broken_symmetry,
                                         temperature=300.0 if temperature is None
                                         else float(temperature)))
+    # 2026-11-22 复审 P2: 独立积分复核不再只躺在 analysis.json 里给人看，
+    # 而是进入同一份 checks。它不登记 CRITERIA（不参与 H0 归约的机械口径），
+    # 不一致时按 unknown → physics_verdict=inconclusive。
+    checks.append(_independent_recheck(
+        te, results, 300.0 if temperature is None else float(temperature)))
     # A(2026-10-24): applicable=False(判据不适用于该体系族)的 check 不作闸门, 不计入
     # errs/warns —— 否则 2CN 的 seebeck_sign 会把工程判定与科学判定一起拉垮。
     _appl = lambda c: c.get('applicable') is not False      # noqa: E731
@@ -234,7 +300,7 @@ COVALENT_RADII = {'H': 0.31, 'C': 0.76, 'N': 0.71, 'O': 0.66,
                   'S': 1.05, 'Au': 1.36, 'Ag': 1.45, 'Cu': 1.32, 'Ni': 1.24,
                   'Pt': 1.36, 'Pd': 1.39, 'Al': 1.21}
 MIN_BOND_FACTOR = 0.7        # d < 0.7*(r_i+r_j) 判为重叠
-AU_S_BAND = (2.40, 2.44)     # 实验锚点 Jackson 2009 S-Au=2.42+-0.02; Thygesen 2005 p.12 d(Au-S)=2.40 落带内
+AU_S_BAND = AU_S_BOND_BAND   # 判据带唯一来源: criteria.AU_S_BOND_BAND (Jackson 2009 ±0.02)
 #: 硫醚/硫醇等非硫醇盐锚定的 Au–S 接触上限。取 Au(1.66)+S(1.80) 的 vdW 和
 #: (~3.46 Å) 作“是否成接触”的几何门槛；这不是键长目标，不能与上面的有源带混用。
 AU_S_CONTACT_MAX = 3.50
@@ -470,7 +536,7 @@ def validate_junction_geometry(run_dir, metadata=None, geometry=None) -> dict:
                                     '未形成 Au–S 接触' % (si, ai, dmin, kind, AU_S_CONTACT_MAX)))
         else:
             checks.append(_ok('junction_geom_anchor_aus', value,
-                              'S%d-Au%d = %.4f A；锚定化学未识别，未套用 2.40–2.49 A 硫醇盐带'
+                              'S%d-Au%d = %.4f A；锚定化学未识别，未套用 2.40–2.44 A 硫醇盐判据带'
                               % (si, ai, dmin)))
     else:
         checks.append(_warn('junction_geom_anchor_aus', None,

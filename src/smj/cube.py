@@ -129,10 +129,25 @@ def read_cube(path: str | Path) -> Cube:
                          % (shape[0], shape[1], shape[2], expected, values.size))
     # x 下标变化最快 → 按 Fortran 顺序 reshape，使 values[i, j, k] 的 i 就是 x 轴。
     grid = values.reshape(shape, order="F")
+    # 负步长轴归一化（2026-11-22 复审 P2）：cube 规范不要求步长为正，但下游
+    # ``_window`` 用 searchsorted，隐含"轴升序"。负步长时 _axes 给降序轴，
+    # searchsorted 会得到空窗，anchor_weight 静默报 fraction=0（看起来像"轨道
+    # 不在锚定球内"）。这里把每个降序轴翻成升序：新原点=旧原点+(n-1)·step，
+    # 步长取反，体素数据沿该轴翻转，物理网格点集合不变。
+    steps_list = list(steps)
+    # origin 先换算成 Å，再与 Å 单位的 step 相加（两者单位必须一致）。
+    origin = [float(v) * BOHR for v in origin_au]
+    for axis, step in enumerate(steps_list):
+        if step == 0.0:
+            raise ValueError("cube 网格步长为 0（第 %d 轴）：%s" % (axis + 1, path.name))
+        if step < 0.0:
+            origin[axis] += (shape[axis] - 1) * step
+            grid = np.flip(grid, axis=axis).copy()
+            steps_list[axis] = -step
     return Cube(
         atoms=tuple(atoms),
-        origin=tuple(float(v) * BOHR for v in origin_au),
-        steps=steps,
+        origin=tuple(origin),
+        steps=tuple(steps_list),
         shape=shape,
         values=grid,
         comments=comments,

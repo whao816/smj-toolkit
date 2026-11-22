@@ -147,6 +147,17 @@ class AimsTipRelaxStage(Stage):
                 "（合计 = charge，满足 FHI-aims 一致性检查；初始电荷分布交给 "
                 "SCF 自洽）" % state.charge)
         ctx.log("aims_tip_relax: 已写 geometry.in（%d 原子）" % natoms)
+        # 2026-11-22 复审 P2: 结构检查点 xyz（人读文件，供 review 消费）。只写文件、
+        # 不阻断流水线；独立包不提供签署命令，确认状态不进入机械判据。几何内容
+        # 异常（例如测试里只有占位行）时降级成 note，而不是让 prepare 失败。
+        from smj.junction.review import write_review_xyz
+        try:
+            checkpoint = write_review_xyz(stage_dir, "tips", stage=self.name)
+        except (OSError, ValueError) as exc:
+            notes.append("结构检查点未写出（不影响本阶段）: %s" % exc)
+        else:
+            notes.append("结构检查点已写出: %s（%d 原子；smj review 会提示是否已确认）"
+                         % (checkpoint["path"], checkpoint["atoms"]))
         return self.prepared(
             ctx, stage_dir,
             inputs=[Path(written["geometry"]), Path(written["control"]),

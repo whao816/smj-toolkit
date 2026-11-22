@@ -575,7 +575,10 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   `a_lattice`。`aims_scf`/`aitranss_te`/`self_energy`/`validate`/连接核对出图都从
   `electrode_metadata.json` 的 `electrode_element` 取元素（缺键按 Au），
   不要再用「Au」当所有体系的默认假设。
-- **锚定化学不可混**：`2.40–2.49 Å` 是去质子**硫醇盐**的 Au–S 有源带，且只按 Au 标定；
+- **锚定化学不可混**：`2.40–2.44 Å` 是去质子**硫醇盐**的 Au–S **判据带**
+  （Jackson 2009 一手锚点 S–Au = 2.42 ± 0.02 Å），且只按 Au 标定；
+  `2.40–2.49 Å` 只是 `contacts.py` 的**建结目标/搜索带**（初猜排序用），不是判据带，
+  两者不要混用；
   非 Au 电极只报告接触距离、不做该带有源判定。`-SCH3` 等**硫醚**的 S–Au 是配位接触
   （2.6–2.7 Å 也可能正常），`smj review` 按 S 的成键环境（S–C 数 / S–H）分流，不把该带
   套到硫醚上。**分子里没有 S 也可以建结**：`left_anchor`/`right_anchor` 写 N/Se 等任意

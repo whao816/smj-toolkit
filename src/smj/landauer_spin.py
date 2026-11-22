@@ -14,6 +14,13 @@ from pathlib import Path
 from .junction.landauer import (
     energy_order, minus_fermi_derivative, sort_by_energy, transport_moments, trapz)
 
+#: ``P_S = (Sα−Sβ)/(Sα+Sβ)`` 的分母相对下限（2026-11-22 复审 P2）。
+#: 分母是两通道 Seebeck 之差：Sα≈−Sβ 时比值对数值噪声极端敏感——实测
+#: 分母 ~1e-6、|P_S|~2e6，打印出来是 ``+199999900%``，会被误读成"巨大自旋极化"。
+#: 判据不是"分母严格等于 0"，而是"分母相对通道尺度近抵消"，故用 max(|Sα|,|Sβ|)
+#: 作尺度；低于该阈值时 P_S 不可定义（None），并把原因写进 result。
+SPIN_POLARIZATION_RTOL = 1e-6
+
 
 def read_te_channels(path: str | Path) -> tuple[list[tuple[float, float, float, float]], int]:
     """``TE.dat`` -> ``[(E_Ha, E−E_F_eV, T_alpha, T_beta)]`` 与通道数（1 或 2）。
@@ -87,10 +94,18 @@ def analyze_te_spin(path: str | Path, temperature: float = 300.0) -> dict:
         temperature)
     s_alpha = moments_alpha["S_uV_per_K"]
     s_beta = moments_beta["S_uV_per_K"]
-    if s_alpha is None or s_beta is None or (s_alpha + s_beta) == 0:
-        spin_polarization_s = None
-    else:
-        spin_polarization_s = (s_alpha - s_beta) / (s_alpha + s_beta)
+    spin_polarization_s = None
+    spin_polarization_s_note = None
+    if s_alpha is not None and s_beta is not None:
+        denominator = s_alpha + s_beta
+        scale = max(abs(s_alpha), abs(s_beta), 1e-300)
+        if abs(denominator) <= SPIN_POLARIZATION_RTOL * scale:
+            spin_polarization_s_note = (
+                "P_S 不可定义：Sα+Sβ=%.6g 相对通道尺度近抵消"
+                "（|Sα+Sβ| ≤ %.0e·max(|Sα|,|Sβ|)），比值对数值噪声不稳定"
+                % (denominator, SPIN_POLARIZATION_RTOL))
+        else:
+            spin_polarization_s = (s_alpha - s_beta) / denominator
     nearest = min(range(len(rows)), key=lambda i: abs(e_ev[i]))
     t_alpha_ef = alpha[nearest]
     t_beta_ef = beta[nearest]
@@ -119,6 +134,7 @@ def analyze_te_spin(path: str | Path, temperature: float = 300.0) -> dict:
         "ZT_alpha_electronic": moments_alpha["ZT_electronic"],
         "ZT_beta_electronic": moments_beta["ZT_electronic"],
         "spin_polarization_S": spin_polarization_s,
+        "spin_polarization_S_note": spin_polarization_s_note,
         "T_alpha_at_ef": t_alpha_ef,
         "T_beta_at_ef": t_beta_ef,
         "spin_polarization_at_ef": (
