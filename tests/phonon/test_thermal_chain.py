@@ -224,6 +224,33 @@ def test_thermal_analyze_writes_thermal_json(workdir):
     assert payload["zt"]["available"] is False
 
 
+def test_thermal_cli_help_and_disabled(workdir, capsys):
+    """``smj thermal`` 只认热导链的名字,且 thermal 段没开时明确拒绝。"""
+    from smj.cli import build_parser, main
+    from smj.errors import SmjError
+
+    with pytest.raises(SystemExit) as exc:
+        build_parser().parse_args(["thermal", "--help"])
+    assert exc.value.code == 0
+
+    config_path = workdir / "plain.yaml"
+    config_path.write_text("run:\n  name: t\n  mode: dry-run\n", encoding="utf-8")
+    try:
+        code = main(["thermal", "-c", str(config_path)])
+    except SmjError:
+        code = 1
+    assert code != 0
+
+
+def test_thermal_stages_stay_out_of_plan_and_status():
+    """D12:``smj run`` / ``smj status`` 走的是 ``STAGE_ORDER``,热导链不在里面。"""
+    from smj.state import STAGE_ORDER, stage_range
+
+    assert len(STAGE_ORDER) == 6
+    assert not any(name.startswith("thermal_") for name in STAGE_ORDER)
+    assert stage_range() == list(STAGE_ORDER)
+
+
 def test_thermal_analyze_zt_folds_electronic(workdir):
     """``ZT_total = ZT_e/(1+G_ph/k_e)``:电子链在时按这个式子折进去。"""
     from smj.stages.thermal_analyze import ThermalAnalyzeStage

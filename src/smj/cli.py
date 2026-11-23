@@ -48,6 +48,7 @@ from .runner import StageOutcome, StageRunner, lazy_stage_getter
 from .state import (
     REMOTE_STAGES,
     STAGE_ORDER,
+    THERMAL_STAGE_ORDER,
     RunLayout,
     RunState,
     normalize_stage,
@@ -695,6 +696,135 @@ def cmd_stage(args: argparse.Namespace) -> int:
     if outcome.ok:
         return EXIT_OK
     return EXIT_UNFINISHED if outcome.status == "waiting" else EXIT_FAILED
+
+
+def cmd_thermal(args: argparse.Namespace) -> int:
+    """声子热导链：``thermal_device`` → ``thermal_relax`` → ``thermal_fc`` →
+    ``thermal_analyze``。
+
+    独立于六阶段电子链（方案 D12）：``smj run`` / ``smj plan`` / ``smj status``
+    的默认输出里看不到它，只有这一条命令能推进它。
+    """
+    config = _load_config(args)
+    thermal = getattr(config, "thermal", None)
+    if thermal is None or not thermal.enabled:
+        raise SmjError(
+            "thermal 段未启用：请在 smj.yaml 里加 `thermal:\\n  enabled: true`"
+            "（并配好热导链要用的 geometry/fc/negf 参数）")
+
+    if args.stage:
+        name = normalize_stage(args.stage)
+        if name not in THERMAL_STAGE_ORDER:
+            raise SmjError("%r 不是热导链阶段；可选: %s"
+                           % (args.stage, ", ".join(THERMAL_STAGE_ORDER)))
+        names = (name,)
+    else:
+        names = THERMAL_STAGE_ORDER
+
+    action = "status"
+    for candidate in ("prepare", "submit", "wait", "collect", "run"):
+        if getattr(args, candidate, False):
+            action = candidate
+            break
+    if args.analyze_only:
+        action = "analyze"
+
+    dry_run = bool(args.dry_run) or config.mode == "dry-run"
+    if action in ("submit", "wait") and dry_run:
+        raise SmjError("dry-run 模式不能 %s；把 run.mode 改成 local / slurm-ssh，"
+                       "或去掉 --dry-run" % action)
+
+    runner = _make_runner(args, config)
+
+    if action == "status":
+        rows = []
+        for name in names:
+            state = runner.state.stages.get(name)
+            rows.append((name, state.status if state else "pending",
+                         state.job_id if state else None))
+        if args.json:
+            _emit_json({"thermal": [
+                {"stage": n, "status": s, "job_id": j} for n, s, j in rows]})
+        else:
+            for name, status, job_id in rows:
+                print("  %-16s %-12s %s" % (name, status, job_id or ""))
+        return EXIT_OK
+
+    if action == "analyze":
+        # 只重算 NEGF + Landauer：力常数已经在盘上，不必再碰集群
+        payload = runner.collect("thermal_analyze", force=args.force)
+        if args.json:
+            _emit_json(payload)
+        else:
+            _print_collected(payload, stage="thermal_analyze")
+        return EXIT_OK
+
+    if action == "prepare":
+        for name in names:
+            payload = runner.prepare(name, force=args.force)
+            if args.json:
+                _emit_json(payload)
+            else:
+                _print_prepared(payload, stage=name)
+        return EXIT_OK
+
+    if action == "submit":
+        for name in names:
+            payload = runner.submit(name, force=args.force)
+            if args.json:
+                _emit_json(payload)
+            else:
+                _print_submission(payload, stage=name)
+        return EXIT_OK
+
+    if action == "wait":
+        for name in names:
+            payload = runner.wait(name)
+            if args.json:
+                _emit_json(payload)
+            else:
+                _print_wait(payload, stage=name)
+            if payload.get("failed"):
+                return EXIT_FAILED
+            if not payload.get("finished"):
+                return EXIT_UNFINISHED
+        return EXIT_OK
+
+    if action == "collect":
+        for name in names:
+            payload = runner.collect(name, force=args.force)
+            if args.json:
+                _emit_json(payload)
+            else:
+                _print_collected(payload, stage=name)
+        return EXIT_OK
+
+    # --run：逐阶段 prepare → (submit → wait) → collect，失败即停
+    from .stages.base import get_stage
+
+    for name in names:
+        stage = get_stage(name)
+        payload = runner.prepare(name, force=args.force)
+        if not args.json:
+            _print_prepared(payload, stage=name)
+        if stage.needs_submit:
+            if dry_run:
+                print("  [dry-run] 跳过 %s 的提交" % name)
+                continue
+            runner.submit(name, force=args.force)
+            waited = runner.wait(name)
+            if waited.get("failed"):
+                return EXIT_FAILED
+            if not waited.get("finished"):
+                return EXIT_UNFINISHED
+        elif not args.json:
+            print("  [本地] %s 无需提交，直接 collect" % name)
+        collected = runner.collect(name, force=args.force)
+        if args.json:
+            _emit_json(collected)
+        else:
+            _print_collected(collected, stage=name)
+    return EXIT_OK
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -1458,6 +1588,29 @@ def build_parser() -> argparse.ArgumentParser:
     stage.add_argument("--force", action="store_true", help="允许重跑/覆盖已完成阶段")
     _add_common(stage)
     stage.set_defaults(handler=cmd_stage)
+
+    # thermal --------------------------------------------------------------- #
+    thermal_cmd = subparsers.add_parser(
+        "thermal", help="声子热导链：器件 → 弛豫 → 力常数 → 热导（独立于六阶段）",
+        description=(
+            "推进 thermal_device → thermal_relax → thermal_fc → thermal_analyze。"
+            "不带动作 flag 时只打印这四个阶段的状态。"
+            "需要 smj.yaml 里 thermal.enabled: true。"))
+    thermal_cmd.add_argument("--stage", metavar="STAGE",
+                             help="只操作一个阶段: %s"
+                             % ", ".join(THERMAL_STAGE_ORDER))
+    group = thermal_cmd.add_mutually_exclusive_group()
+    group.add_argument("--prepare", action="store_true", help="只生成输入，不提交")
+    group.add_argument("--submit", action="store_true", help="只提交")
+    group.add_argument("--wait", action="store_true", help="只等待")
+    group.add_argument("--collect", action="store_true", help="只解析产物")
+    group.add_argument("--run", action="store_true", help="prepare→submit→wait→collect")
+    group.add_argument("--analyze-only", dest="analyze_only", action="store_true",
+                       help="只重算 NEGF/Landauer（力常数已在盘上，不碰集群）")
+    thermal_cmd.add_argument("--dry-run", action="store_true", help="只生成输入")
+    thermal_cmd.add_argument("--force", action="store_true", help="允许重跑/覆盖")
+    _add_common(thermal_cmd)
+    thermal_cmd.set_defaults(handler=cmd_thermal)
 
     # run ------------------------------------------------------------------- #
     run = subparsers.add_parser(
