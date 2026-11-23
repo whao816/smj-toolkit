@@ -4,6 +4,7 @@
 #SBATCH -n {ntasks}
 #SBATCH --mem={mem}
 #SBATCH --time={walltime}
+#SBATCH {gres_line}
 #SBATCH --array=0-{last}%{parallel}
 
 # 有限位移力常数扫描:每个数组任务算一个 (原子, 轴, 符号) 位移点。

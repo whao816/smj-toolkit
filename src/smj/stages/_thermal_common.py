@@ -62,6 +62,20 @@ def aims_launcher(env: dict, ntasks: int) -> tuple[str, str, str]:
     return module_load, exe_define, command
 
 
+def _gres_line(gres) -> str:
+    """生成 ``#SBATCH --gres`` 行。
+
+    gpu1 的 ``PartitionName=main`` 没有写 GRES 默认值，但节点带 ``Gres=gpu:4``，
+    未显式声明时 Slurm 会把整节点 4 张卡都算给该作业，于是**任何两个作业都
+    无法同时运行**（实测：``--test-only`` 一律排到当前作业的时限结束）。
+    这里在没有配置 gres 时显式要 ``gpu:0``：热导链的 FHI-aims 是纯 CPU 跑
+    （``input_summary.json`` 的 ``aims_gpus`` 为 ``"cpu"``），不要卡。
+    """
+    if gres:
+        return "--gres=%s" % gres
+    return "--gres=gpu:0"
+
+
 def render_thermal_sub(template: str, env: dict, *, ntasks: int,
                        extra: dict | None = None) -> str:
     """渲染 ``sub_thermal_*.sh``。"""
@@ -71,6 +85,7 @@ def render_thermal_sub(template: str, env: dict, *, ntasks: int,
         "ntasks": ntasks,
         "mem": env.get("aims_mem") or "12G",
         "walltime": env.get("aims_walltime") or "06:00:00",
+        "gres_line": _gres_line(env.get("gres")),
         "module_load": module_load,
         "exe_define": exe_define,
         "aims_bin": command,

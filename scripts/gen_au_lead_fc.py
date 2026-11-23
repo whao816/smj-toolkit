@@ -1,13 +1,13 @@
-"""生成冻结的体相 Au(111) 铅力常数（M4-T2）。
+"""生成冻结的体相 Au(111) lead 力常数（M4-T2）。
 
-为什么需要它（方案 §3.5 / D4）：热导链只对**器件区**做有限位移，铅区的
+为什么需要它（方案 §3.5 / D4）：热导链只对**器件区**做有限位移，lead 区的
 力常数行拿不到；而 ``thermal_analyze`` 需要 ``D_L``/``V_L`` 才能做表面自能
-decimation。铅区力常数与分子无关，算一次冻结入库，之后每个分子结复用。
+decimation。lead 区力常数与分子无关，算一次冻结入库，之后每个分子结复用。
 
-为什么是"体相"而不是"板的表面"：decimation 描述的是半无限铅，器件里那两层
-铅只是它的头两段。用带真空的板会把表面弛豫效应混进本该是体相的量。Pauly 组
+为什么是"体相"而不是"板的表面"：decimation 描述的是半无限 lead，器件里那两层
+lead 只是它的头两段。用带真空的板会把表面弛豫效应混进本该是体相的量。Pauly 组
 的做法相同（"a big cluster of several hundred atoms" 另算一次 + decimation），
-器件区与铅化学环境不一致是显式接受的近似（方案 §3.5）。
+器件区与 lead 化学环境不一致是显式接受的近似（方案 §3.5）。
 
 为什么只位移一层：6 层周期胞里，层 0 与层 1 之间的力常数只有一个直接耦合
 （另一个方向的近邻在 5 层之外，超出 10 Å 截断），所以不存在 ± 两个像叠加的
@@ -39,6 +39,7 @@ sys.path.insert(0, str(_ROOT / "src"))
 from smj.junction.geometry import Atom, write_aims_geometry          # noqa: E402
 from smj.junction.tcontrol import make_control                       # noqa: E402
 from smj.phonon.fc import assemble_fc, make_displacements, save_lead_fc  # noqa: E402
+from smj.stages._thermal_common import THERMAL_OCCUPATION_WIDTH_EV  # noqa: E402
 from smj.phonon.forces import read_forces                            # noqa: E402
 from smj.phonon.units import ELEMENT_MASS_AMU                        # noqa: E402
 
@@ -92,14 +93,19 @@ def generate(out: Path, *, species_dir: Path, layers: int, in_plane: tuple[int, 
 
     surface = layer_indices(in_plane, layers, 0)
     disps = make_displacements(len(atoms), surface, 0.01)
+    # 与 thermal_fc 阶段同格式:裸数组。apply_displacement.load_manifest 只收
+    # 数组,写成 {"displacements": [...]} 会让每个数组任务在第一步就退出。
     (out / "displacements.json").write_text(
-        json.dumps({"amplitude_A": 0.01, "n_atoms": len(atoms),
-                    "displacements": disps}, indent=2) + "\n",
-        encoding="utf-8")
+        json.dumps(disps, indent=2) + "\n", encoding="utf-8")
 
     make_control(out / "geometry.in", out / "control.in", "thermal_force",
                  str(species_dir), xc="pbe", k_grid=(1, 1, 1),
-                 sc_accuracy_forces="5E-3")
+                 sc_accuracy_forces="5E-3",
+                 # 体相 Au 是金属,和器件侧用同一个展宽,免得 lead 的化学环境
+                 # 与器件里的那两层因为展宽不同而对不上。
+                 occupation_width=THERMAL_OCCUPATION_WIDTH_EV,
+                 sc_accuracy_rho="1E-4", charge_mix_param=0.35,
+                 n_max_pulay=20)
 
     # 作业脚本：与热导链数组脚本同构（每任务一个目录 + 汇总哨兵）
     template = (_ROOT / "src" / "smj" / "junction" / "templates"
@@ -107,6 +113,9 @@ def generate(out: Path, *, species_dir: Path, layers: int, in_plane: tuple[int, 
     script = template.format(
         partition=partition, ntasks=ntasks, mem=mem, walltime=walltime,
         module_load=module_load, exe_define="",
+        # gpu1 的节点带 Gres=gpu:4，不显式要 gpu:0 时 Slurm 会把整节点 4 张卡
+        # 都算给该作业，于是数组任务之间无法并行（详见 _thermal_common._gres_line）。
+        gres_line="--gres=gpu:0",
         aims_bin='mpirun -np %d "%s" > aims.out 2>&1' % (
             ntasks, "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/"
                     "aims.221103.scalapack.mpi.x"),
@@ -179,7 +188,7 @@ def assemble(case: Path, out: Path, *, cutoff: float = 10.0) -> int:
                  source="gen_au_lead_fc.py: bulk 3x3x%d, Gamma, 0.01 A central differences"
                         % layers)
     residual = float(np.max(np.abs(block.sum(axis=1))))
-    print("铅力常数已写入 %s（%d×%d，截断半径 %.1f Å 丢掉 %d/%d 个原子对，"
+    print("lead 力常数已写入 %s（%d×%d，截断半径 %.1f Å 丢掉 %d/%d 个原子对，"
           "ASR 行和残差 %.3e eV/Å²）"
           % (out, 3 * pair, 3 * pair, cutoff, dropped, pair ** 2, residual))
     return 0

@@ -4,6 +4,7 @@
 #SBATCH -n {ntasks}
 #SBATCH --mem={mem}
 #SBATCH --time={walltime}
+#SBATCH {gres_line}
 
 # 热导链的弛豫作业:control.in 已由 prepare 按 control_thermal_relax.in 写好
 # (compute_forces + final_forces_cleaned),这里只负责跑。

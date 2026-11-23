@@ -234,3 +234,26 @@ def test_thermal_templates_have_no_control_characters():
         for line in raw.decode("utf-8").split("\n"):
             assert not line.lstrip().startswith("restart"), (
                 "%s 有一行以 restart 开头: %r" % (name, line))
+
+def test_thermal_scripts_request_no_gpu(workdir):
+    """gpu1 节点带 Gres=gpu:4:不显式要 gpu:0 时整个节点只容得下一个作业。
+
+    实测（2026-11-23）``sbatch --test-only -n 1 --mem=100M`` 会把新作业排到
+    当前作业时限结束,加 ``--gres=gpu:0`` 后立刻可跑;热导链的 FHI-aims 是纯 CPU
+    (input_summary.json 的 aims_gpus 为 "cpu"),不要卡。
+    """
+    from smj.stages._thermal_common import render_thermal_sub
+
+    env = {"partition": "main", "aims_mem": "12G", "aims_walltime": "06:00:00",
+           "aims_bin": "aims.x"}
+    relax = render_thermal_sub("sub_thermal_relax.sh", env, ntasks=8)
+    fc = render_thermal_sub("sub_thermal_fc.sh", env, ntasks=8,
+                            extra={"last": 3, "parallel": 2, "count": 4})
+    for text in (relax, fc):
+        assert "#SBATCH --gres=gpu:0" in text
+        assert "--gres=gpu:4" not in text
+    # 显式配了 gres 就照用
+    other = render_thermal_sub("sub_thermal_relax.sh",
+                               dict(env, gres="gpu:1"), ntasks=8)
+    assert "#SBATCH --gres=gpu:1" in other
+    assert "gpu:0" not in other
