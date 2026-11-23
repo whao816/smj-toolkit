@@ -251,6 +251,33 @@ def test_thermal_stages_stay_out_of_plan_and_status():
     assert stage_range() == list(STAGE_ORDER)
 
 
+def test_thermal_criteria_registered():
+    """M5-T1:十条热导判据进 CRITERIA,且不叫 ``ph_te_present``。"""
+    from smj.junction.criteria import CRITERIA, KNOWN_GAPS, lint_registry
+
+    names = [c["name"] for c in CRITERIA]
+    ph = [n for n in names if n.startswith("ph_")]
+    assert ph == [
+        "ph_transmission_present",
+        "ph_relax_converged",
+        "ph_band_top_zero",
+        "ph_quantum_bound",
+        "ph_acoustic_limit",
+        "ph_asr_residual",
+        "ph_fc_symmetry",
+        "ph_imaginary_modes",
+        "ph_lead_cell_match",
+        "ph_grid_independence",
+    ]
+    # 命名铁律:热导侧没有 TE.dat
+    assert not any("_te_" in n or n.endswith("_te") for n in ph)
+    assert not any("te_present" in n for n in ph)
+
+    # 4 条 physical 必须带源;新增判据不得进 KNOWN_GAPS(ratchet 只减不增)
+    problems = {p["name"] for p in lint_registry()}
+    assert not (problems - set(KNOWN_GAPS)) & set(ph)
+
+
 def test_thermal_analyze_zt_folds_electronic(workdir):
     """``ZT_total = ZT_e/(1+G_ph/k_e)``:电子链在时按这个式子折进去。"""
     from smj.stages.thermal_analyze import ThermalAnalyzeStage
