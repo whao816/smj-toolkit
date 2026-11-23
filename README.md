@@ -116,7 +116,7 @@ python -m pip install -e .
 # 或构建 wheel 后安装（产物在 dist/）
 python scripts/gen_junction_provenance.py           # 先刷新内核台账（PROVENANCE.json 随 wheel 分发）
 python scripts/build_wheel.py --check       # 只用标准库，不需要 setuptools/build；--check 按 RECORD 校验
-python -m pip install dist/smj_toolkit-0.2.2rc1-py3-none-any.whl
+python -m pip install dist/smj_toolkit-0.2.2rc2-py3-none-any.whl
 ```
 
 可选依赖：
