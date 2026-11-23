@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 PROVENANCE.json）",
-  "repo_commit": "228868b774c407a885c45148782450f0c670ae92",
+  "repo_commit": "78908f700627e08eacd4a3e9f4414b5684842cd1",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -110,8 +110,8 @@
       "bytes": 14953
     },
     "tcontrol.py": {
-      "sha256": "15fa60933d7ce7a268a339df438382327a9fe4cfaae195ace6cde13184992a3b",
-      "bytes": 13143
+      "sha256": "df5eb5f516c2b6975a680071b9ec1a737b1ed6da13ff24916baf4def6ca69311",
+      "bytes": 13231
     },
     "templates/control_orbital.in": {
       "sha256": "d090d1aaa25ac31b7004318b837cbab178b7bcefc080afc05340942e44146b5a",
@@ -126,12 +126,12 @@
       "bytes": 1250
     },
     "templates/control_thermal_force.in": {
-      "sha256": "d8a8a25d25e0c67258d06ed272c2cf8455a3d9656988d814b5ddd9ca7924e198",
-      "bytes": 1730
+      "sha256": "0a0dd33e8b8ebf15ad0466c135674cb9832c3fd4381b39c5723f77aaf31f2efd",
+      "bytes": 1743
     },
     "templates/control_thermal_relax.in": {
-      "sha256": "80444569a85ad0e93d60292ab24e7267b4783413e09e71f85f33175969e888c7",
-      "bytes": 1317
+      "sha256": "f12167f273cdb61dd5bf6567b2b7290274a6dfd2ed6d6f23183d5b94937b8053",
+      "bytes": 1330
     },
     "templates/gaussian_opt_freq.gjf": {
       "sha256": "af1147200db1e04931e6ef188ee3a1423adb940ddad35295f5b8b873da2d532e",

@@ -1,8 +1,17 @@
-refactor(phonon): 中文里的 lead 不再写成「铅」
+fix(phonon): 金属板 SCF 混参——relax 从卡死的第 175 圈救出来
 
-「铅」是 lead（电极引线）的音译，电极元素是 Au，写成「铅力常数/铅区/冻结铅」
-会被读成化学元素 Pb。代码标识符本来就是 lead_fc/lead_indices/left_lead_indices，
-只有中文注释、文档与提交信息用了「铅」。
+首版 thermal 模板直接沿用电子链的 scf 口径(sc_accuracy_rho 1E-5 /
+charge_mix_param 0.2 / n_max_pulay 10)。电子链算的是有限团簇,这一套没问题;
+但热导器件是「Au(111) 二维板 + ~20 Ang 真空 + Gamma-only」,是 charge
+sloshing 的经典场合:job 26372 跑满 175 个自洽圈仍卡在 4.5e-3。
 
-本提交把 19 个文件里的 94 处「铅」统一改成 lead（中文前后自动补空格），
-不涉及任何数值、判据或行为变化；provenance 已刷新，779 条测试全绿。
+改法(只影响两个 thermal 模板,电子链的 control_scf.in 一字未动):
+- 模板把 sc_accuracy_rho 提成占位符 {sc_accuracy_rho};
+- make_control 新增 sc_accuracy_rho 参数(默认 1E-4,thermal 分支用);
+- thermal_relax / thermal_fc 传 sc_accuracy_rho=1E-4、charge_mix_param=0.35、
+  n_max_pulay=20。
+
+力只需要 1E-4 量级的密度收敛,所以放松 rho 不损力常数的精度;两个阶段的
+注释里都写明了这条经验数据的来源(job 26372)。
+
+provenance 已刷新,demo 参考零漂移,779 条测试全绿。

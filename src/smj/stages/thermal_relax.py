@@ -56,6 +56,13 @@ class ThermalRelaxStage(Stage):
             force_threshold=str(fc.relax_force_threshold),
             k_grid=tuple(fc.k_grid),
             sc_accuracy_forces=str(fc.sc_accuracy_forces),
+            # 金属板 + ~20 Å 真空 + Γ 是 charge sloshing 的典型场合:300 K 下第一版
+            # (sc_accuracy_rho 1E-5 / charge_mix_param 0.2 / n_max_pulay 10) 跑满
+            # 175 圈还卡在 4.5e-3。放松 ρ 到 1E-4(力只需要这个量级)、加大混参与
+            # Pulay 历史。见 thermal-conductance-devplan §2.4。
+            sc_accuracy_rho="1E-4",
+            charge_mix_param=0.35,
+            n_max_pulay=20,
             vdw="hirshfeld" if getattr(ctx.config.electrode, "vdw", True) else None,
         )
         natoms = self.count_aims_atoms(geometry)

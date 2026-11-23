@@ -75,6 +75,11 @@ class ThermalFcStage(Stage):
             xc="pbe",
             k_grid=tuple(fc_cfg.k_grid),
             sc_accuracy_forces=str(fc_cfg.sc_accuracy_forces),
+            # 与 thermal_relax 同一套金属板混参(见该阶段注释):324 个位移作业
+            # 每个都是「金属板 + 真空 + Γ」,用 1E-5/0.2/10 会集体卡住。
+            sc_accuracy_rho="1E-4",
+            charge_mix_param=0.35,
+            n_max_pulay=20,
             vdw="hirshfeld" if getattr(ctx.config.electrode, "vdw", True) else None,
         )
         for name in _HELPERS:

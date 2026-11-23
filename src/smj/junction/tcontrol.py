@@ -140,6 +140,7 @@ def make_control(
     extra_outputs: tuple[str, ...] | list[str] | None = None,
     k_grid: tuple[int, int, int] | None = None,
     sc_accuracy_forces: str = "5E-3",
+    sc_accuracy_rho: str = "1E-4",
 ) -> None:
     atoms = read_aims_geometry(geometry_path)
     if mode == "relax":
@@ -160,7 +161,8 @@ def make_control(
         template_name = "control_thermal_%s.in" % mode.split("_", 1)[1]
         kx, ky, kz = _validate_k_grid(k_grid)
         extra = {"kx": kx, "ky": ky, "kz": kz,
-                 "sc_accuracy_forces": sc_accuracy_forces}
+                 "sc_accuracy_forces": sc_accuracy_forces,
+                 "sc_accuracy_rho": sc_accuracy_rho}
     else:
         raise ValueError(
             "mode must be relax, scf, orbital, thermal_relax or thermal_force")
