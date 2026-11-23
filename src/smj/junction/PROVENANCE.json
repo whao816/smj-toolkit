@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 PROVENANCE.json）",
-  "repo_commit": "9a856917250b7688132f8e8a7f293d8d0af938e4",
+  "repo_commit": "6827aabe31cfd1f97240a6983bd17b9cf98983c9",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -150,12 +150,12 @@
       "bytes": 913
     },
     "templates/sub_thermal_fc.sh": {
-      "sha256": "d0030292829edf62cf7145e2a7a21871bed20159ee1ca05cd03a0e27deef22be",
-      "bytes": 2135
+      "sha256": "8053648a563382a145deea15b240ecad6c0ce69c9aa650a778bef42df1ca83c8",
+      "bytes": 2155
     },
     "templates/sub_thermal_relax.sh": {
-      "sha256": "61affafd7cb99dceb66ee630b34a5424607185cfb7f987652a0ee631f6119a52",
-      "bytes": 605
+      "sha256": "8d4590e43ea1de78d90e1c3ac4454e2561055c2e6c23bd21cd4196f60739957c",
+      "bytes": 625
     },
     "templates/tcontrol.template": {
       "sha256": "b2809a0a0b3220043b03a05e4d1eb0dc128644448327de3c2447932371a6d669",
