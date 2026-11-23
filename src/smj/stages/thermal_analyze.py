@@ -33,6 +33,18 @@ from .base import Collected, Prepared, Stage, register
 SCHEMA = "smj.thermal.v1"
 
 
+def _fc_asymmetry(force_constants) -> float:
+    """`||K - K^T|| / ||K||`（Frobenius）。供判据 `ph_fc_symmetry`。"""
+    import numpy as np
+
+    matrix = np.asarray(force_constants, dtype=float)
+    scale = float(np.linalg.norm(matrix))
+    if scale <= 0.0:
+        return 0.0
+    return float(np.linalg.norm(matrix - matrix.T) / scale)
+
+
+
 def _lead_fc_path(value: str | Path) -> Path:
     """``thermal.lead_fc`` 可以写成目录(用其中的 ``lead_fc.json``)或直接写文件。
 
@@ -167,6 +179,9 @@ class ThermalAnalyzeStage(Stage):
             "band_top_meV": band_top,
             "eta_meV": float(negf.eta_meV),
             "energy_step_meV": step,
+            # 力常数的对称性偏差：判据 ph_fc_symmetry 用它（M5-T2）。
+            # 中心差分的力应当对称；明显不对称说明力噪声大或正负没配对。
+            "fc_asymmetry": _fc_asymmetry(full),
             "spectrum": {
                 "energy_meV": energy_mev.tolist(),
                 "transmission": t_ph.tolist(),
@@ -177,6 +192,17 @@ class ThermalAnalyzeStage(Stage):
         (stage_dir / "thermal.json").write_text(
             json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
             encoding="utf-8")
+        # 出图是演示品，不是判定依据：没有 matplotlib 时只记 note（同 junction_analyze）。
+        plot_note = None
+        try:
+            from ..plotting import plot_thermal
+            plotted = plot_thermal(stage_dir / "thermal.json",
+                                   stage_dir / "thermal_spectrum.png",
+                                   formats=("png", "pdf"))
+            if not plotted.get("ok"):
+                plot_note = "热导谱未出图：%s" % plotted.get("reason")
+        except Exception as exc:  # noqa: BLE001 —— 出图失败不得影响数值结论
+            plot_note = "热导谱未出图：%s" % exc
         results = {"thermal": {
             "g_ph_pw_per_k": g_ph,
             "temperature_K": temperature,
@@ -192,6 +218,8 @@ class ThermalAnalyzeStage(Stage):
             "ASR 残差 %.3e eV/Å²（相对 %.3e）；虚频 %d 个（最差 %.1f cm⁻¹）"
             % (residual, relative, imag["count"], imag["worst_cm1"]),
         ]
+        if plot_note:
+            notes.append(plot_note)
         if payload["zt"].get("zt_total") is not None:
             notes.append(
                 "ZT_total = %.5f（电子 ZT %.5f，G_ph/k_e = %.3f）；仅作参考，不参与门控"

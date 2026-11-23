@@ -85,6 +85,7 @@ class ReviewResult(Mapping):
     connection_check: dict | None = None
     structure: dict | None = None
     spin: dict | None = None
+    thermal: dict | None = None
     run_id: str | None = None
     accepted: bool = False
     review_path: str | None = None
@@ -130,6 +131,8 @@ class ReviewResult(Mapping):
                 str(i.get("code", "")).startswith("connection_check_")
                 or str(i.get("code", "")).startswith("a2_")
                 or str(i.get("code", "")).startswith("provenance_")
+                or str(i.get("code", "")).startswith("ph_")
+                or str(i.get("code", "")).startswith("thermal_")
                 or i.get("code") in ("geometry_missing", "geometry_metadata_missing",
                                      "geometry_metadata_unreadable", "geometry_check_failed",
                                      "open_shell_uncalibrated", "spin_channels_missing"))
@@ -159,6 +162,7 @@ class ReviewResult(Mapping):
             "connection_check": self.connection_check,
             "structure": self.structure,
             "spin": self.spin,
+            "thermal": self.thermal,
             "review_path": self.review_path,
             "written": self.written,
         }
@@ -992,6 +996,7 @@ def review_run(target: Any, *, force: bool = True,
     _connection_check_review(result, build_dir, review_cfg)
     _provenance_review(result, run_dir, cfg)
     _spin_review(result, run_dir, cfg)
+    _thermal_review(result, run_dir, cfg)
     result.finalize()
     # 供 Mapping 接口（CLI 的 _as_mapping 走 dict(result)）拿到本次实际配置。
     result.config_used = review_cfg
@@ -1008,3 +1013,149 @@ def review_run(target: Any, *, force: bool = True,
 #: 兼容别名（CLI 首选名是 review_run；备用 run_review/review）。
 review = review_run
 run_review = review_run
+# --------------------------------------------------------------------------- #
+# 热导链（M5-T2, 2026-11-23）
+#
+# 热导 run 走独立分支：判据定义在 `smj.junction.criteria`，数值评估在
+# `smj.phonon.checks`，这里只做"翻译"——把 checks 翻成 issues 与结论。
+#
+# 三条硬约束：
+# 1. `thermal.json` 不存在时**只记 info**：既有电子 run 的 review 结论必须
+#    零变化（devplan §4 的 M5 门禁）。
+# 2. 缺证据 → `inconclusive`，不判 passed（方案 §11）。
+# 3. 热导与电子的产物不混谈：`G_ph` 与 `G/G0` 来自两套几何，report 里
+#    必须显式标注，review 里也不把它们拼成一个结论。
+# --------------------------------------------------------------------------- #
+
+def _thermal_relax_evidence(run_dir: Path) -> tuple[float | None, str | None]:
+    """从 `thermal_relax/` 取 `max|F|` 与 `sc_accuracy_forces`。
+
+    直接读 aims.out 的最后一个力块（`phonon.forces.read_forces`），而不是
+    相信阶段 results —— review 的职责是独立复核。
+    """
+    relax_dir = run_dir / "thermal_relax"
+    max_force: float | None = None
+    aims_out = relax_dir / "aims.out"
+    if aims_out.is_file():
+        try:
+            from .phonon.forces import read_forces
+            forces = read_forces(aims_out)
+            import numpy as _np
+            max_force = float(_np.max(_np.linalg.norm(forces, axis=1)))
+        except (ValueError, OSError):
+            max_force = None
+    sc_forces: str | None = None
+    control = relax_dir / "control.in"
+    if control.is_file():
+        for line in control.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("sc_accuracy_forces"):
+                parts = stripped.split()
+                if len(parts) >= 2:
+                    sc_forces = parts[1]
+                break
+    return max_force, sc_forces
+
+
+def _thermal_lead_match(run_dir: Path, cfg: Any) -> bool | None:
+    """比对冻结铅 FC 的胞参数与本次器件配置；无法比对时返回 None。"""
+    meta_path = run_dir / "thermal_device" / "device_metadata.json"
+    lead_path = getattr(getattr(cfg, "thermal", None), "lead_fc", None)
+    if not meta_path.is_file() or not lead_path:
+        return None
+    from pathlib import Path as _Path
+    lead_dir = _Path(str(lead_path))
+    if lead_dir.is_dir():
+        lead_dir = lead_dir / "lead_fc.json"
+    if not lead_dir.is_file():
+        return None
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        lead = json.loads(lead_dir.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    spec = meta.get("spec") or {}
+    checks = (
+        (lead.get("a_lattice_A"), spec.get("a_lattice")),
+        (tuple(lead.get("in_plane") or ()), tuple(spec.get("in_plane") or ())),
+        (lead.get("layers"), spec.get("electrode_layers")),
+    )
+    for recorded, expected in checks:
+        if recorded is None or expected is None:
+            return None
+        if isinstance(recorded, (int, float)) and isinstance(expected, (int, float)):
+            if abs(float(recorded) - float(expected)) > 1.0e-6:
+                return False
+        elif recorded != expected:
+            return False
+    return True
+
+
+def _thermal_review(result: ReviewResult, run_dir: Path, cfg: Any) -> None:
+    """热导链的机械判定（只读、可重复）。"""
+    path = run_dir / "thermal_analyze" / "thermal.json"
+    if not path.is_file():
+        result.thermal = {"available": False,
+                          "reason": "thermal_analyze/thermal.json 不存在（该 run 没跑热导链）"}
+        result.add("info", "thermal_absent",
+                   "没有 thermal.json：该 run 未跑热导链，热导判据不适用")
+        return
+    try:
+        from .analysis import read_thermal
+        thermal, warnings = read_thermal(path)
+    except ValueError as exc:
+        result.thermal = {"available": False, "reason": str(exc)}
+        result.add("error", "thermal_unreadable",
+                   "thermal.json 不可用，热导结论无从判定：%s" % exc)
+        return
+    for message in warnings:
+        result.add("info", "thermal_schema_warning", message)
+
+    from .phonon.checks import evaluate_thermal
+    max_force, sc_forces = _thermal_relax_evidence(run_dir)
+    lead_match = _thermal_lead_match(run_dir, cfg)
+    asym = thermal.get("fc_asymmetry")
+    outcome = evaluate_thermal(
+        thermal,
+        relax_max_force=max_force,
+        relax_sc_accuracy_forces=sc_forces,
+        lead_cell_match=lead_match,
+        fc_asymmetry=float(asym) if isinstance(asym, (int, float)) else None,
+    )
+
+    g_ph = float(thermal["g_ph_pw_per_k"])
+    result.thermal = {
+        "available": True,
+        "verdict": outcome["verdict"],
+        "g_ph_pw_per_k": g_ph,
+        "g_quantum_pw_per_k": float(thermal["g_quantum_pw_per_k"]),
+        "n_channels_effective": float(thermal["n_channels_effective"]),
+        "temperature_K": float(thermal["temperature_K"]),
+        "n_atoms": int(thermal["n_atoms"]),
+        "zt": thermal.get("zt"),
+        "checks": outcome["checks"],
+        "failed": outcome["failed"],
+        "inconclusive": outcome["inconclusive"],
+    }
+
+    for check in outcome["checks"]:
+        if check["passed"] is True:
+            continue
+        name = check["name"]
+        if check["passed"] is False and check["gate"] == "error":
+            result.add("error", name, "%s 未过：%s" % (name, check["detail"]))
+        elif check["passed"] is False:
+            result.add("warning", name,
+                       "%s 未过（warn 级）：%s" % (name, check["detail"]))
+        else:
+            result.add("warning", "thermal_evidence_missing",
+                       "%s 缺证据：%s" % (name, check["detail"]))
+
+    verdict = outcome["verdict"]
+    if verdict == "inconclusive":
+        result.add("warning", "thermal_inconclusive",
+                   "热导结论为 inconclusive（不是 passed）：%s"
+                   % ", ".join(outcome["inconclusive"]))
+    elif verdict == "failed":
+        result.add("error", "thermal_failed",
+                   "热导结论为 failed：%s" % ", ".join(outcome["failed"]))

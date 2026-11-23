@@ -24,6 +24,7 @@ aitranss 的 ``T(E)`` 以 **G0 = 2e^2/h 为单位（per spin）**，非极化时
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -400,3 +401,85 @@ def te_header(te_path: str | Path) -> dict:
 
 #: CLI/兼容别名（首选名是 analyze_run）。
 analyze = analyze_run
+
+# --------------------------------------------------------------------------- #
+# 热导（声子）产物的 schema 校验（2026-11-23, M5-T4）
+#
+# `thermal.json` 由 `thermal_analyze` 阶段写、由 `review`/`report` 读。这里的
+# 作用与 `analysis.json` 一致：**只做契约校验，不做物理判据** —— 判据在
+# `smj.phonon.checks` 与 `smj.junction.criteria`，物理结论不在这里下。
+# --------------------------------------------------------------------------- #
+
+#: thermal.json 的 schema 标识（与 `thermal_analyze.SCHEMA` 同值）。
+THERMAL_SCHEMA = "smj.thermal.v1"
+
+#: 必需键。缺任何一个都 raise —— 静默补默认值会让"没算"看起来像"算过了"。
+THERMAL_REQUIRED_KEYS = (
+    "schema", "temperature_K", "n_atoms", "n_device_atoms", "n_lead_atoms",
+    "g_ph_pw_per_k", "g_quantum_pw_per_k", "n_channels_effective",
+    "acoustic_sum_residual", "acoustic_sum_relative_residual",
+    "imaginary_modes", "n_k_points", "band_top_meV", "eta_meV",
+    "energy_step_meV", "spectrum", "zt",
+)
+
+#: spectrum 段的三个等长数组。
+THERMAL_SPECTRUM_KEYS = ("energy_meV", "transmission", "cumulative_g_ph_pw_per_k")
+
+#: 允许出现在 thermal.json 里但不在必需键中的附加键（多出来的保留并告警）。
+THERMAL_OPTIONAL_KEYS = ("relax_max_force_ev_per_A", "lead_fc_sha256", "fc_asymmetry", "notes")
+
+
+def read_thermal(path: str | Path) -> tuple[dict, list[str]]:
+    """读并校验 ``thermal.json``，返回 ``(payload, warnings)``。
+
+    校验项：schema 值、必需键齐备、spectrum 三数组等长且长度为 >=2、
+    数值有限（``allow_nan=False`` 语义）。任何一项不过都 raise ``ValueError``
+    —— 与 :func:`read_analysis` 的口径一致：**契约坏掉时宁可炸，不要猜**。
+    """
+    p = Path(path)
+    if not p.is_file():
+        raise ValueError("thermal.json 不存在: %s" % p)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("thermal.json 不是合法 JSON: %s" % exc) from exc
+    if not isinstance(data, dict):
+        raise ValueError("thermal.json 顶层必须是对象")
+    if data.get("schema") != THERMAL_SCHEMA:
+        raise ValueError("thermal.json 的 schema 是 %r，期望 %r"
+                         % (data.get("schema"), THERMAL_SCHEMA))
+    missing = [k for k in THERMAL_REQUIRED_KEYS if k not in data]
+    if missing:
+        raise ValueError("thermal.json 缺必需键: %s" % ", ".join(missing))
+
+    warnings: list[str] = []
+    extra = sorted(set(data) - set(THERMAL_REQUIRED_KEYS) - set(THERMAL_OPTIONAL_KEYS))
+    if extra:
+        warnings.append("thermal.json 含未知键，已保留: %s" % ", ".join(extra))
+
+    spectrum = data["spectrum"]
+    if not isinstance(spectrum, dict):
+        raise ValueError("thermal.json 的 spectrum 必须是对象")
+    absent = [k for k in THERMAL_SPECTRUM_KEYS if k not in spectrum]
+    if absent:
+        raise ValueError("thermal.json 的 spectrum 缺: %s" % ", ".join(absent))
+    lens = {k: len(spectrum[k]) for k in THERMAL_SPECTRUM_KEYS}
+    if len(set(lens.values())) != 1:
+        raise ValueError("thermal.json 的 spectrum 三数组长度不一致: %r" % lens)
+    if lens["energy_meV"] < 2:
+        raise ValueError("thermal.json 的 spectrum 至少要有 2 个能量点")
+    for key in THERMAL_SPECTRUM_KEYS:
+        for value in spectrum[key]:
+            if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise ValueError("thermal.json 的 spectrum.%s 含非有限数值" % key)
+    for key in ("g_ph_pw_per_k", "g_quantum_pw_per_k", "n_channels_effective"):
+        try:
+            number = float(data[key])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("thermal.json 的 %s 不是数值" % key) from exc
+        if not math.isfinite(number):
+            raise ValueError("thermal.json 的 %s 非有限" % key)
+    if float(data["g_ph_pw_per_k"]) < 0.0:
+        raise ValueError("thermal.json 的 g_ph_pw_per_k 为负：%r"
+                         % data["g_ph_pw_per_k"])
+    return data, warnings

@@ -4,6 +4,32 @@
 
 ## 未发布
 
+### 新功能:单分子结热导（声子）计算链(2026-11-23)
+
+- 新增独立的四阶段链 	hermal_device → 	hermal_relax → 	hermal_fc →
+  	hermal_analyze，与电子六阶段链(D12)完全隔离：smj run/plan/status
+  的默认输出零变化，stage_range 仍只认六阶段。
+- 	hermal_fc 是一条 Slurm 数组作业：中心差分 6N 个位移（3x3 周期板、
+  器件区 54 原子时 324 个），每任务独立目录 + pply_displacement.py
+  改几何 + xtract_forces.py 取力块，最后一个完成的任务汇总写哨兵。
+- 数值内核 src/smj/phonon/：单位换算（EV_PER_SQRT=0.0646542、
+  THz=15.6333，与 phonopy VaspToTHz 相对差 1.4e-7）、López-Sancho
+  表面格林函数、Caroli 透射（含 1/N_k 归一化）、Landauer 线性响应积分、
+  动力学矩阵与虚频。63 条解析基准（完美链 T=1、带边 0.5、n 通道给 n·G_Q、
+  G∝T、L↔R 对称到 1e-12）。
+- smj thermal：新增子命令；	hermal.json 契约 smj.thermal.v1 由
+  smj.analysis.read_thermal 校验。
+- 十条热导判据进 CRITERIA（ph_*）：带顶归零、量子上限、声学极限、
+  ASR 残差、FC 对称性、虚频、铅胞匹配、网格独立性等；4 条 physical 各带
+  一手源。smj review 对热导 run 出 passed/inconclusive/ailed，
+  **缺证据一律 inconclusive，不当作通过**。
+- smj report 新增 ## 5. 热导（声子） 节，并显式标注"热导器件（周期板
+  3x3，~90 原子）与电子链器件（金字塔团簇）不是同一体系，G_ph 与
+  G/G0 不可并列"。
+- 唯一内核改动：write_aims_geometry(path, atoms, constrained=(), lattice=None)；
+  lattice=None 时输出逐字节不变（有逐字节回归用例）。PROVENANCE.json
+  已刷新，gen_demo_reference.py --check 最大相对偏差 0.00e+00。
+
 ### 可复现性：方法说明与验证数据入库（2026-11-23）
 
 - 方法说明 md/docx 的生成脚本从 `.tmp/`（被 gitignore）迁入 `scripts/`：

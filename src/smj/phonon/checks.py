@@ -1,0 +1,186 @@
+"""热导（声子）判据的机械评估（M5-T2 的数据侧）。
+
+分工：
+- ``smj.junction.criteria`` 登记**判据的定义**（名称/门限/源），是唯一的口径来源；
+- 本模块把 ``thermal.json`` 的数值喂进这些定义，产出一份 ``checks`` 清单；
+- ``smj.review`` 只负责把清单翻译成 review.json 的 issues 与结论。
+
+三条设计约束（都来自方案 §11）：
+1. **缺证据不判 pass**。拿不到的量（例如没留 ``thermal_relax/aims.out`` 时的
+   ``max|F|``）记成 ``missing``，整体归 ``inconclusive``，不当作通过。
+2. **error 门 → failed，warn 门 → inconclusive**，与 ``physics_verdict`` 同构。
+3. **不在这里改数据**。评估是只读的；任何"调参让它过"的冲动都应该写进报告。
+"""
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+import numpy as np
+
+from ..junction import criteria as _criteria
+from .landauer import thermal_conductance
+from .units import gq_pw_per_k
+
+__all__ = ["evaluate_thermal", "summarize"]
+
+#: 力收敛门限（eV/Å）。与 ``thermal_relax`` 的 ``relax_force_threshold`` 默认一致。
+MAX_RELAX_FORCE = 1.0e-2
+
+#: 网格独立性门限：粗化一半后 G_ph 的相对变化上限。
+MAX_GRID_DRIFT = 1.0e-2
+
+#: 带顶之上允许的最大透射（数值零）。
+MAX_ABOVE_BAND_T = 1.0e-6
+
+#: 声学支在 ω→0 的透射上限（k 平均口径，三条声学支）。
+MAX_ACOUSTIC_T = 3.0
+
+#: 能量低于此值才算"ω→0"（eV）。0.5 meV 远小于带顶 19.5 meV。
+ACOUSTIC_ENERGY_EV = 0.5e-3
+
+
+def _check(name: str, *, passed: bool | None, detail: str) -> dict:
+    spec = _criteria._spec(name)
+    return {
+        "name": name,
+        "kind": spec.get("kind"),
+        "gate": spec.get("gate"),
+        "passed": passed,
+        "missing": passed is None,
+        "detail": detail,
+    }
+
+
+def evaluate_thermal(
+    thermal: Mapping[str, Any],
+    *,
+    relax_max_force: float | None = None,
+    relax_sc_accuracy_forces: str | None = None,
+    lead_cell_match: bool | None = None,
+    fc_asymmetry: float | None = None,
+) -> dict:
+    """按 ``CRITERIA`` 的十条热导判据评估一份 ``thermal.json``。
+
+    返回 ``{"checks": [...], "verdict": "passed"|"inconclusive"|"failed",
+    "failed": [names], "inconclusive": [names]}``。
+    """
+    spectrum = thermal["spectrum"]
+    energy = np.asarray(spectrum["energy_meV"], dtype=float) * 1.0e-3   # eV
+    t_ph = np.asarray(spectrum["transmission"], dtype=float)
+    g_ph = float(thermal["g_ph_pw_per_k"])
+    band_top_mev = float(thermal["band_top_meV"])
+    temperature = float(thermal["temperature_K"])
+    band_top = band_top_mev * 1.0e-3
+
+    checks: list[dict] = []
+
+    checks.append(_check(
+        "ph_transmission_present", passed=True,
+        detail="spectrum 有 %d 个能量点（0-%.1f meV）" % (energy.size, energy[-1] * 1e3)))
+
+    if relax_max_force is None:
+        detail = "没找到 thermal_relax/aims.out 的力块，无法判定收敛"
+        passed: bool | None = None
+    elif relax_sc_accuracy_forces is None:
+        detail = "max|F|=%.3e eV/A，但 control.in 里没有 sc_accuracy_forces" % relax_max_force
+        passed = False
+    else:
+        passed = relax_max_force <= MAX_RELAX_FORCE
+        detail = "max|F|=%.3e eV/A（门限 %.1e），sc_accuracy_forces=%s" % (
+            relax_max_force, MAX_RELAX_FORCE, relax_sc_accuracy_forces)
+    checks.append(_check("ph_relax_converged", passed=passed, detail=detail))
+
+    above = energy > band_top * (1.0 + 1.0e-9)
+    t_above = float(np.max(np.abs(t_ph[above]))) if np.any(above) else 0.0
+    checks.append(_check(
+        "ph_band_top_zero", passed=t_above < MAX_ABOVE_BAND_T,
+        detail="带顶 %.1f meV 之上 %d 点，max|T|=%.1e（门限 %.0e）"
+               % (band_top_mev, int(above.sum()), t_above, MAX_ABOVE_BAND_T)))
+
+    g_q = gq_pw_per_k(temperature)
+    checks.append(_check(
+        "ph_quantum_bound", passed=g_ph < 3.0 * g_q,
+        detail="G_ph=%.3f pW/K，3*G_Q(%.0f K)=%.3f pW/K"
+               % (g_ph, temperature, 3.0 * g_q)))
+
+    low = energy <= ACOUSTIC_ENERGY_EV
+    t_low = float(t_ph[0]) if t_ph.size else float("nan")
+    checks.append(_check(
+        "ph_acoustic_limit",
+        passed=(t_low <= MAX_ACOUSTIC_T) if low.any() else None,
+        detail="T_ph(%.3f meV)=%.4f（k 平均口径，上限 %.0f）"
+               % (energy[0] * 1e3, t_low, MAX_ACOUSTIC_T)))
+
+    asr = float(thermal["acoustic_sum_residual"])
+    asr_rel = float(thermal.get("acoustic_sum_relative_residual", float("nan")))
+    checks.append(_check(
+        "ph_asr_residual", passed=asr < 1.0e-6,
+        detail="max|sum_j K_ij|=%.3e eV/A^2（相对 %.2e）" % (asr, asr_rel)))
+
+    if fc_asymmetry is None:      # 未显式给出时退回 thermal.json 里记录的值
+        recorded = thermal.get("fc_asymmetry")
+        if isinstance(recorded, (int, float)):
+            fc_asymmetry = float(recorded)
+    if fc_asymmetry is None:
+        checks.append(_check(
+            "ph_fc_symmetry", passed=None, detail="thermal.json 没记录 fc_asymmetry"))
+    else:
+        checks.append(_check(
+            "ph_fc_symmetry", passed=fc_asymmetry < 5.0e-2,
+            detail="||K-K^T||/||K||=%.2f%%（门限 5%%）" % (fc_asymmetry * 100.0)))
+
+    modes = thermal["imaginary_modes"]
+    count = int(modes.get("count", 0))
+    worst = modes.get("worst_cm1")
+    checks.append(_check(
+        "ph_imaginary_modes", passed=count == 0,
+        detail=("%d 个虚频，最差 %s cm^-1（容限 %.0f）"
+                % (count, "%.2f" % worst if worst is not None else "—",
+                   _criteria.PH_IMAGINARY_TOL_CM1)) if count else "无虚频"))
+
+    if lead_cell_match is None:
+        checks.append(_check(
+            "ph_lead_cell_match", passed=None, detail="没读到 lead_fc.json 的胞参数"))
+    else:
+        checks.append(_check(
+            "ph_lead_cell_match", passed=lead_cell_match,
+            detail="冻结铅 FC 的面内胞与本次器件配置一致" if lead_cell_match
+                   else "冻结铅 FC 的面内胞与本次器件配置**不一致**"))
+
+    passed = None
+    detail = "能量网格步长 %.3f meV，粗化一半后重算" % float(thermal["energy_step_meV"])
+    try:
+        coarse = slice(None, None, 2)
+        if energy[coarse].size >= 2 and g_ph > 0.0:
+            g_coarse = thermal_conductance(
+                energy[coarse], t_ph[coarse], temperature,
+                band_top_mev=band_top_mev)
+            drift = abs(g_coarse - g_ph) / g_ph
+            passed = drift < MAX_GRID_DRIFT
+            detail += "：ΔG/G=%.3e（门限 %.0e）" % (drift, MAX_GRID_DRIFT)
+        else:
+            detail += "：点数不足或 G_ph=0，无法比较"
+    except (ValueError, RuntimeError) as exc:      # 粗网格触发闸门 -> 证据不足
+        detail += "：粗化重算失败（%s）" % exc
+    checks.append(_check("ph_grid_independence", passed=passed, detail=detail))
+
+    return summarize(checks)
+
+
+def summarize(checks: list[dict]) -> dict:
+    """把 checks 归约成 verdict —— error 级未过即 failed，其余未过即 inconclusive。"""
+    failed = [c["name"] for c in checks
+              if c["passed"] is False and c.get("gate") == "error"]
+    inconclusive = [c["name"] for c in checks
+                    if c["passed"] is not True and c.get("gate") != "error"]
+    # warn 门未过也归 inconclusive；error 门 missing 同样是证据不足而非通过
+    inconclusive += [c["name"] for c in checks
+                     if c["passed"] is None and c.get("gate") == "error"]
+    if failed:
+        verdict = "failed"
+    elif inconclusive:
+        verdict = "inconclusive"
+    else:
+        verdict = "passed"
+    return {"checks": checks, "verdict": verdict,
+            "failed": failed, "inconclusive": inconclusive}

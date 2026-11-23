@@ -773,6 +773,89 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
                      "模型分子的 ⟨S²⟩ 交叉验证（默认不自动执行）。")
 
 
+def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
+    """``## 5. 热导`` —— 声子端到端热导（M5-T3）。"""
+    lines.append("## 5. 热导（声子）")
+    lines.append("")
+    root = man.get("root")
+    path = None if not root else Path(str(root)) / "thermal_analyze" / "thermal.json"
+    if path is None or not path.is_file():
+        lines.append("- 该 run 未跑热导链（无 `thermal_analyze/thermal.json`）。")
+        lines.append("")
+        return
+
+    from .analysis import read_thermal
+    try:
+        data, warnings = read_thermal(path)
+    except ValueError as exc:
+        lines.append("- `thermal.json` 不可用：%s" % _cell(str(exc)))
+        lines.append("")
+        return
+
+    lines.append("> ⚠️ **几何不可比**：热导器件是 Au(111) 3×3 周期板（~%d 原子，"
+                 "含 %d 层铅），电子六阶段链的器件是金字塔团簇（另一次计算）。"
+                 "`G_ph` 与 `G/G0` 来自**两套几何**，不可并列比较；`ZT_total` 只是"
+                 "把两者各自的数拼起来的**参考量**，不构成对该结的热电结论。"
+                 % (int(data["n_atoms"]), int(round(data["n_lead_atoms"] / 9 or 1))))
+    lines.append("")
+    lines.append("| 量 | 值 |")
+    lines.append("|---|---|")
+    lines.append("| G_ph (pW/K) | %s |" % _fmt(data.get("g_ph_pw_per_k"), "%.4f"))
+    lines.append("| G_Q (pW/K) | %s |" % _fmt(data.get("g_quantum_pw_per_k"), "%.4f"))
+    lines.append("| 有效通道数 N_eff | %s |" % _fmt(data.get("n_channels_effective"), "%.4f"))
+    zt = data.get("zt") or {}
+    if zt.get("available"):
+        lines.append("| k_e (pW/K) | %s |" % _fmt(zt.get("k_e_pW_per_K"), "%.4f"))
+        lines.append("| ZT_electronic | %s |" % _fmt(zt.get("zt_electronic"), "%.6f"))
+        lines.append("| ZT_total（参考） | %s |" % _fmt(zt.get("zt_total"), "%.6f"))
+    else:
+        lines.append("| ZT_total | 不可得（%s） |"
+                     % _cell(zt.get("reason") or "无电子结果"))
+    band_top = float(data.get("band_top_meV", 19.5))
+    spectrum = data.get("spectrum") or {}
+    energies = [float(v) for v in spectrum.get("energy_meV") or []]
+    transmission = [float(v) for v in spectrum.get("transmission") or []]
+    above = [abs(t) for e, t in zip(energies, transmission) if e > band_top]
+    lines.append("| T_ph(ω>带顶 %.1f meV) | %s |"
+                 % (band_top, "—" if not above else "%.2e" % max(above)))
+    lines.append("| ASR 残差 (eV/Å²) | %s |" % _fmt(data.get("acoustic_sum_residual"), "%.3e"))
+    modes = data.get("imaginary_modes") or {}
+    worst = modes.get("worst_cm1")
+    lines.append("| 虚频 | %d 个（最差 %s cm⁻¹） |"
+                 % (int(modes.get("count", 0)),
+                    "—" if worst is None else "%.2f" % float(worst)))
+    lines.append("| 温度 (K) | %s |" % _fmt(data.get("temperature_K"), "%.1f"))
+    lines.append("| 能量网格 | %s meV（η=%s meV） |"
+                 % (_fmt(data.get("energy_step_meV"), "%.3f"),
+                    _fmt(data.get("eta_meV"), "%.3f")))
+    lines.append("| 来源 | `%s` |" % _cell(str(path)))
+    lines.append("")
+
+    review_path = Path(str(man.get("root"))) / "review.json"
+    if review_path.is_file():
+        try:
+            payload = json.loads(review_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+        thermal = (payload or {}).get("thermal") or {}
+        if thermal.get("available"):
+            lines.append("热导判据结论：**%s**" % thermal.get("verdict"))
+            failed = thermal.get("failed") or []
+            unclear = thermal.get("inconclusive") or []
+            if failed:
+                lines.append("- failed：%s" % ", ".join("`%s`" % f for f in failed))
+            if unclear:
+                lines.append("- inconclusive：%s"
+                             % ", ".join("`%s`" % u for u in unclear))
+            if not failed and not unclear:
+                lines.append("- 十条判据全部通过。")
+            lines.append("")
+    for message in warnings:
+        lines.append("- %s" % _cell(message))
+    if warnings:
+        lines.append("")
+
+
 def render_report(manifest: Mapping[str, Any]) -> str:
     """manifest -> Markdown 报告（机械可生成部分，不写文件）。"""
     man = dict(manifest or {})
@@ -1045,7 +1128,9 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         _render_spin_section(lines, transport["spin"], transport.get("spin_partition"))
     lines.append("")
 
-    lines.append("## 5. 失败原因")
+    _thermal_section(lines, man)
+
+    lines.append("## 6. 失败原因")
     lines.append("")
     failures = man.get("failures") or []
     if failures:
@@ -1058,7 +1143,7 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         lines.append("- 无失败阶段。")
     lines.append("")
 
-    lines.append("## 6. 产物清单")
+    lines.append("## 7. 产物清单")
     lines.append("")
     lines.append("| 阶段 | 文件数 | 体积 (MiB) | 关键产物 sha256(前12) |")
     lines.append("|---|---|---|---|")

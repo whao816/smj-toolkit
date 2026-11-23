@@ -644,3 +644,75 @@ def plot_te_multi(
     if return_figure:
         meta["figure"] = (fig, ax)
     return meta
+
+def plot_thermal(
+    source: str | Path | Mapping[str, Any],
+    out: str | Path | None = None,
+    *,
+    formats: Sequence[str] | None = None,
+    dpi: float = 600,
+    return_figure: bool = False,
+) -> dict[str, Any]:
+    """画声子热导谱：左轴 ``T_ph(ω)``，右轴累积 ``G_ph(ω)``（M5-T3）。
+
+    ``source`` 可以是 ``thermal.json`` 的路径或已解析的 dict。竖向虚线标出
+    Au 声子带顶（19.5 meV）—— 越过它的透射必须是零，图上看得见比表里写着
+    更容易发现串味。
+
+    没有 matplotlib 时返回 ``{"ok": False, "reason": ...}``（与 ``plot_te`` 同口径）。
+    """
+    import json as _json
+
+    if isinstance(source, Mapping):
+        data = dict(source)
+    else:
+        path = Path(source)
+        if path.is_dir():
+            path = path / "thermal_analyze" / "thermal.json"
+        data = _json.loads(path.read_text(encoding="utf-8"))
+
+    spectrum = data["spectrum"]
+    energy = [float(v) for v in spectrum["energy_meV"]]
+    transmission = [float(v) for v in spectrum["transmission"]]
+    cumulative = [float(v) for v in spectrum["cumulative_g_ph_pw_per_k"]]
+    band_top = float(data.get("band_top_meV", 19.5))
+
+    try:
+        plt = _pyplot()
+    except RuntimeError as exc:
+        return {"ok": False, "reason": str(exc)}
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.0), dpi=dpi)
+    ax.plot(energy, transmission, color="#1f4e79", lw=1.4, label="T_ph")
+    ax.set_xlabel("phonon energy (meV)")
+    ax.set_ylabel("T_ph(ω)", color="#1f4e79")
+    ax.tick_params(axis="y", labelcolor="#1f4e79")
+    ax.axvline(band_top, color="#999999", ls="--", lw=0.9)
+    ax.text(band_top, ax.get_ylim()[1] * 0.96, " Au band top",
+            color="#666666", fontsize=7, va="top")
+
+    ax2 = ax.twinx()
+    ax2.plot(energy, cumulative, color="#a33", lw=1.2, ls="-")
+    ax2.set_ylabel("G_ph cumulative (pW/K)", color="#a33")
+    ax2.tick_params(axis="y", labelcolor="#a33")
+
+    g_ph = float(data.get("g_ph_pw_per_k", 0.0))
+    ax.set_title("G_ph(%.0f K) = %.2f pW/K  (N_eff = %.3f)"
+                 % (float(data.get("temperature_K", 300.0)), g_ph,
+                    float(data.get("n_channels_effective", 0.0))), fontsize=9)
+    fig.tight_layout()
+
+    written: list[str] = []
+    if out is not None:
+        base = Path(out)
+        suffixes = list(formats or ([base.suffix.lstrip(".")] if base.suffix else ["png"]))
+        stem = base.with_suffix("")
+        for suffix in suffixes:
+            target = stem.with_suffix("." + suffix)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(target)
+            written.append(str(target))
+    if not return_figure:
+        plt.close(fig)
+        fig = None
+    return {"ok": True, "written": written, "figure": fig}
