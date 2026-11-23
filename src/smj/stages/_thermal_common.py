@@ -1,0 +1,80 @@
+"""声子链三个远端阶段共用的作业脚本渲染。
+
+与电子链的 ``junction.inputs._render_aims_sub`` 保持同一套环境变量口径
+(``aims_module`` / ``aims_bin`` / ``aims_prefix`` / ``aims_mem`` / ``aims_walltime``),
+但**不重复实现**分支逻辑:这里只拼 ``module_load`` 与 ``aims_bin`` 两段,
+模板本身放在 ``junction/templates/`` 下,与 ``sub_aims.sh`` 并列。
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from ..errors import StageBlocked
+from ..junction.tcontrol import TEMPLATE_DIR, read_template
+
+
+def upstream_file(ctx, stage: str, filename: str, prev: str, *,
+                  override=None) -> Path:
+    """取上游产物文件。
+
+    热导链不在 :data:`smj.state.STAGE_ORDER` 里,``Context.upstream`` 内部靠
+    ``previous_stage()`` 推导上游,对它必然报错;所以这里把 ``prev`` 显式传进来,
+    其余行为(``--geometry`` 覆盖、缺失即 ``StageBlocked``)与电子链完全一致。
+    """
+    if override is not None:
+        path = ctx.resolve(override)
+        if path is None or not path.exists():
+            raise StageBlocked(stage, "显式输入不存在: %s" % (override,),
+                               [str(path)] if path else [])
+        return path
+    return ctx.require_stage_file(prev, filename, target=stage)
+
+
+def aims_launcher(env: dict, ntasks: int) -> tuple[str, str, str]:
+    """返回 ``(module_load, exe_define, aims_bin)``,与电子链分支一致。"""
+    if str(env.get("aims_module") or "").strip():
+        module_load = "module load %s" % str(env["aims_module"]).strip()
+        exe_define = 'AIMS_EXE="${FHI_AIMS_BIN:?FHI-aims module did not define FHI_AIMS_BIN}"'
+        command = 'mpirun -np %d "$AIMS_EXE" > aims.out 2>&1' % ntasks
+    elif str(env.get("aims_bin") or "").strip():
+        ldmod = str(env.get("aims_ld_module") or "").strip()
+        module_load = ("module load %s" % ldmod) if ldmod else ""
+        exe_define = ""
+        command = 'mpirun -np %d "%s" > aims.out 2>&1' % (
+            ntasks, str(env["aims_bin"]).strip())
+    else:
+        prefix = env.get("aims_prefix") or "UNCONFIGURED"
+        module_load = ("export PATH={p}/install/bin:$PATH\n"
+                       "export LD_LIBRARY_PATH={p}/install/lib:$LD_LIBRARY_PATH\n"
+                       "export INCLUDE={p}/install/include:$INCLUDE").format(p=prefix)
+        exe_define = ""
+        command = "mpirun -np %d aims.x > aims.out 2>&1" % ntasks
+    return module_load, exe_define, command
+
+
+def render_thermal_sub(template: str, env: dict, *, ntasks: int,
+                       extra: dict | None = None) -> str:
+    """渲染 ``sub_thermal_*.sh``。"""
+    module_load, exe_define, command = aims_launcher(env, ntasks)
+    fields = {
+        "partition": env.get("partition") or "UNCONFIGURED",
+        "ntasks": ntasks,
+        "mem": env.get("aims_mem") or "12G",
+        "walltime": env.get("aims_walltime") or "06:00:00",
+        "module_load": module_load,
+        "exe_define": exe_define,
+        "aims_bin": command,
+    }
+    fields.update(extra or {})
+    return read_template(template).format(**fields)
+
+
+def write_script(path: Path, text: str) -> Path:
+    path = Path(path)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def template_path(name: str) -> Path:
+    return Path(TEMPLATE_DIR) / name

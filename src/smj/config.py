@@ -305,6 +305,95 @@ class TransportConfig:
 
 
 @dataclass
+class ThermalElectrodeConfig:
+    """声子热导的电极几何。
+
+    **刻意不使用电子链的金字塔团簇**（``electrode`` 段继续管电子链，两者互不影响）：
+    声子 NEGF 需要半无限铅与横向元胞，只有二维周期板才给得出来（方案 §4.1）。
+    """
+
+    #: Au fcc 晶格常数(Å)。最近邻 = a/√2 = 2.8845 Å。
+    a_lattice: float = 4.078230
+    #: 面内超胞 (nx, ny)：3×3 给 9 原子/层，总原子数压到 ~90。
+    in_plane: tuple[int, int] = (3, 3)
+    #: 每侧铅层数。
+    layers: int = 4
+    #: 每侧参与位移的层数（靠近分子的那些层）；其余层用冻结铅力常数。
+    device_layers: int = 2
+    #: 沿 c 轴的真空厚度(Å)。二维板沿 c 是真空，所以 kz 恒为 1。
+    vacuum: float = 20.0
+    #: 表面 Au 平面到 S 的距离(Å)。
+    au_s_distance: float = 2.35
+    #: 两个 S 之间的距离(Å)。苯/萘二硫醇 8.0–8.7 Å。
+    gap: float = 8.4
+    element: str = "Au"
+    anchor_element: str = "S"
+    #: 建结前去 S–H。**默认必须为真**：molecule_opt 产出的是中性二硫醇，
+    #: 直接贴 Au 就是报告 §6 陷阱⑥。关掉只在明确想复现"带 H 的错模型"时用。
+    strip_thiol_h: bool = True
+    #: 弛豫时冻结的最外层数（每侧）。
+    freeze_outer_layers: int = 1
+
+
+@dataclass
+class ThermalFCConfig:
+    """有限位移力常数扫描的数值参数。"""
+
+    #: 中心差分位移幅度(Å)。0.01 Å 是 Sadeghi–Lambert 组的标准做法；
+    #: 本仓更小会让力噪声(1e-4 eV/Å)主导，更大则非谐截断误差上升。
+    displacement: float = 0.01
+    #: 力常数截断半径(Å)。<7 Å 直接拒绝：4 层铅沿 z 的跨度就是 7.06 Å。
+    cutoff: float = 10.0
+    #: Slurm 数组并发数。gpu1 是 64 核、每作业 8 核 → 上限 8（不是 16）。
+    array_parallel: int = 8
+    array_time_limit: str = "06:00:00"
+    #: ``--mem``。实测 92 原子峰值 871.9 MB/task；12G×8=96G < 124.7G 物理内存。
+    memory: str = "12G"
+    #: ``sc_accuracy_forces``(eV/Å)：力的收敛阈值，必须与位移幅度配套。
+    sc_accuracy_forces: str = "5E-3"
+    #: 弛豫的 ``relax_geometry bfgs`` 阈值(eV/Å)。
+    relax_force_threshold: str = "1.e-2"
+    #: 面内 k 网格。``kz`` 必须是 1（沿 c 是真空）。
+    k_grid: tuple[int, int, int] = (3, 3, 1)
+
+
+@dataclass
+class ThermalNEGFConfig:
+    """声子 NEGF 的谱参数。"""
+
+    #: 虚部展宽 η(meV)。0.5 meV 与 Pauly 组的 1e-5 a.u.(0.27 meV) 同量级。
+    eta_meV: float = 0.5
+    #: 能量步长(meV)。9.5–19.5 meV 之间 0.1 meV 步长 = 101 点。
+    energy_step_meV: float = 0.1
+    #: Au 声子带顶(meV)。实测 fcc-Au 最高支在 L 点 4.71 THz = 19.5 meV
+    #: (Lynn, Smith & Nicklow, PRB 8, 3493 (1973))。超过它的弹性透射必须为零。
+    band_top_meV: float = 19.5
+
+
+@dataclass
+class ThermalConfig:
+    """声子热导链的配置（``thermal`` 段）。
+
+    整段默认关闭：不写 ``thermal`` 段时 ``enabled=False``，电子链行为零变化。
+    """
+
+    enabled: bool = False
+    #: 计算温度(K)。``None`` = 继承 ``transport.temperature``（默认 300 K）。
+    temperature_K: float | None = None
+    #: 冻结铅力常数的路径（JSON）。相对路径按 yaml 所在目录解析。
+    lead_fc: str | None = None
+    electrode: ThermalElectrodeConfig = field(default_factory=ThermalElectrodeConfig)
+    fc: ThermalFCConfig = field(default_factory=ThermalFCConfig)
+    negf: ThermalNEGFConfig = field(default_factory=ThermalNEGFConfig)
+
+    def resolved_temperature(self, fallback: float = 300.0) -> float:
+        """``temperature_K`` 为 None 时回落到 ``transport.temperature``。"""
+        if self.temperature_K is not None:
+            return float(self.temperature_K)
+        return float(fallback)
+
+
+@dataclass
 class ClusterConfig:
     """Slurm / SSH 集群与外部程序部署路径。"""
 
@@ -420,6 +509,7 @@ class RunConfig:
     molecule: MoleculeConfig = field(default_factory=MoleculeConfig)
     electrode: ElectrodeConfig = field(default_factory=ElectrodeConfig)
     transport: TransportConfig = field(default_factory=TransportConfig)
+    thermal: ThermalConfig = field(default_factory=ThermalConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     review: ReviewConfig = field(default_factory=ReviewConfig)
@@ -466,7 +556,8 @@ class RunConfig:
 # --------------------------------------------------------------------------- #
 # 解析
 # --------------------------------------------------------------------------- #
-_KNOWN_SECTIONS = {"run", "molecule", "electrode", "transport", "cluster", "paths", "review"}
+_KNOWN_SECTIONS = {"run", "molecule", "electrode", "transport", "thermal",
+                   "cluster", "paths", "review"}
 
 _RUN_KEYS = {"name", "dir", "mode", "clean", "keep_going"}
 _MOLECULE_KEYS = {
@@ -486,6 +577,17 @@ _TRANSPORT_KEYS = {"temperature", "energy_window", "energy_window_unit",
                    "ener", "estep", "eend", "require_te_out", "allow_single_channel",
                    "extra_outputs", "occupation_width", "charge_mix_param",
                    "n_max_pulay"}
+_THERMAL_KEYS = {"enabled", "temperature", "lead_fc", "electrode", "fc", "negf"}
+_THERMAL_ELECTRODE_KEYS = {
+    "a_lattice", "in_plane", "layers", "device_layers", "vacuum",
+    "au_s_distance", "gap", "element", "anchor_element", "strip_thiol_h",
+    "freeze_outer_layers",
+}
+_THERMAL_FC_KEYS = {
+    "displacement", "cutoff", "array_parallel", "array_time_limit", "memory",
+    "sc_accuracy_forces", "relax_force_threshold", "k_grid",
+}
+_THERMAL_NEGF_KEYS = {"eta_mev", "energy_step_mev", "band_top_mev"}
 _CLUSTER_KEYS = {
     "host", "user", "port", "key", "remote_root", "partition", "ntasks", "gres",
     "account", "qos", "species_dir", "poll_seconds", "timeout_hours", "env",
@@ -505,6 +607,7 @@ def known_keys() -> dict[str, set[str]]:
     return {
         "run": set(_RUN_KEYS), "molecule": set(_MOLECULE_KEYS),
         "electrode": set(_ELECTRODE_KEYS), "transport": set(_TRANSPORT_KEYS),
+        "thermal": set(_THERMAL_KEYS),
         "cluster": set(_CLUSTER_KEYS), "paths": set(_PATHS_KEYS),
         "review": set(_REVIEW_KEYS),
     }
@@ -760,6 +863,126 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
     return cfg
 
 
+def _parse_thermal(data: Mapping[str, Any], warnings: list[str]) -> ThermalConfig:
+    """``thermal`` 段。整段缺省 = 关闭，电子链行为零变化。"""
+    _warn_unknown("thermal", data, _THERMAL_KEYS, warnings)
+
+    electrode_raw = _section(data, "electrode", "thermal", warnings)
+    fc_raw = _section(data, "fc", "thermal", warnings)
+    negf_raw = _section(data, "negf", "thermal", warnings)
+    # 2026-11-23：``_meV`` 这类键在文档里写成了 ``band_top_meV``（保留物理量写法），
+    # 而本仓其它段的键一律小写。两种写法都接受：先统一小写再校验、再取值。
+    negf_raw = {str(k).lower(): v for k, v in dict(negf_raw).items()}
+    _warn_unknown("thermal.electrode", electrode_raw, _THERMAL_ELECTRODE_KEYS, warnings)
+    _warn_unknown("thermal.fc", fc_raw, _THERMAL_FC_KEYS, warnings)
+    _warn_unknown("thermal.negf", negf_raw, _THERMAL_NEGF_KEYS, warnings)
+
+    in_plane = _as_pair(electrode_raw.get("in_plane", [3, 3]),
+                        "thermal.electrode.in_plane")
+    k_grid = _as_triple(fc_raw.get("k_grid", [3, 3, 1]), "thermal.fc.k_grid")
+    if k_grid[2] != 1:
+        raise ConfigError(
+            "thermal.fc.k_grid 的 kz 必须为 1（得到 %d）：器件是带真空的二维板，"
+            "沿 c 轴的 k 采样没有物理意义" % k_grid[2])
+
+    electrode = ThermalElectrodeConfig(
+        a_lattice=_as_float(electrode_raw.get("a_lattice", 4.078230),
+                            "thermal.electrode.a_lattice"),
+        in_plane=in_plane,
+        layers=_as_int(electrode_raw.get("layers", 4), "thermal.electrode.layers",
+                       minimum=2),
+        device_layers=_as_int(electrode_raw.get("device_layers", 2),
+                              "thermal.electrode.device_layers", minimum=1),
+        vacuum=_as_float(electrode_raw.get("vacuum", 20.0),
+                         "thermal.electrode.vacuum"),
+        au_s_distance=_as_float(electrode_raw.get("au_s_distance", 2.35),
+                                "thermal.electrode.au_s_distance"),
+        gap=_as_float(electrode_raw.get("gap", 8.4), "thermal.electrode.gap"),
+        element=_as_str(electrode_raw.get("element", "Au"),
+                        "thermal.electrode.element"),
+        anchor_element=_as_str(electrode_raw.get("anchor_element", "S"),
+                               "thermal.electrode.anchor_element"),
+        strip_thiol_h=_as_bool(electrode_raw.get("strip_thiol_h", True),
+                               "thermal.electrode.strip_thiol_h"),
+        freeze_outer_layers=_as_int(electrode_raw.get("freeze_outer_layers", 1),
+                                    "thermal.electrode.freeze_outer_layers",
+                                    minimum=0),
+    )
+    if electrode.device_layers >= electrode.layers:
+        raise ConfigError(
+            "thermal.electrode.device_layers(%d) 必须小于 layers(%d)："
+            "至少留一层给冻结铅" % (electrode.device_layers, electrode.layers))
+
+    fc = ThermalFCConfig(
+        displacement=_as_float(fc_raw.get("displacement", 0.01),
+                               "thermal.fc.displacement"),
+        cutoff=_as_float(fc_raw.get("cutoff", 10.0), "thermal.fc.cutoff"),
+        array_parallel=_as_int(fc_raw.get("array_parallel", 8),
+                               "thermal.fc.array_parallel", minimum=1),
+        array_time_limit=_as_str(fc_raw.get("array_time_limit", "06:00:00"),
+                                 "thermal.fc.array_time_limit"),
+        memory=_as_str(fc_raw.get("memory", "12G"), "thermal.fc.memory"),
+        sc_accuracy_forces=_as_str(fc_raw.get("sc_accuracy_forces", "5E-3"),
+                                   "thermal.fc.sc_accuracy_forces"),
+        relax_force_threshold=_as_str(fc_raw.get("relax_force_threshold", "1.e-2"),
+                                      "thermal.fc.relax_force_threshold"),
+        k_grid=k_grid,
+    )
+    if not 0.0 < fc.displacement <= 0.05:
+        raise ConfigError(
+            "thermal.fc.displacement 应在 (0, 0.05] Å，实际是 %s（0.01 Å 是标准值）"
+            % fc.displacement)
+    if fc.cutoff < 7.0:
+        raise ConfigError(
+            "thermal.fc.cutoff 应 >= 7.0 Å，实际是 %s：4 层铅沿 z 的跨度就是 7.06 Å，"
+            "更小的截断会把相邻层的耦合切掉" % fc.cutoff)
+
+    negf = ThermalNEGFConfig(
+        eta_meV=_as_float(negf_raw.get("eta_mev", 0.5), "thermal.negf.eta_mev"),
+        energy_step_meV=_as_float(negf_raw.get("energy_step_mev", 0.1),
+                                  "thermal.negf.energy_step_mev"),
+        band_top_meV=_as_float(negf_raw.get("band_top_mev", 19.5),
+                               "thermal.negf.band_top_mev"),
+    )
+    if negf.eta_meV <= 0:
+        raise ConfigError("thermal.negf.eta_mev 应 > 0，实际是 %s" % negf.eta_meV)
+    if negf.energy_step_meV <= 0:
+        raise ConfigError("thermal.negf.energy_step_mev 应 > 0，实际是 %s"
+                          % negf.energy_step_meV)
+
+    temperature = data.get("temperature")
+    temperature_K = None if temperature is None else _as_float(
+        temperature, "thermal.temperature")
+    if temperature_K is not None and temperature_K <= 0:
+        raise ConfigError("thermal.temperature 应 > 0 K，实际是 %s" % temperature_K)
+
+    lead_fc = data.get("lead_fc")
+    return ThermalConfig(
+        enabled=_as_bool(data.get("enabled", False), "thermal.enabled"),
+        temperature_K=temperature_K,
+        lead_fc=_as_str(lead_fc, "thermal.lead_fc") if lead_fc else None,
+        electrode=electrode,
+        fc=fc,
+        negf=negf,
+    )
+
+
+def _as_pair(raw: Any, where: str) -> tuple[int, int]:
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        raise ConfigError("%s 应为两个整数，实际是 %r" % (where, raw))
+    values = tuple(_as_int(v, "%s[%d]" % (where, i), minimum=1)
+                   for i, v in enumerate(raw))
+    return (values[0], values[1])
+
+
+def _as_triple(raw: Any, where: str) -> tuple[int, int, int]:
+    if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+        raise ConfigError("%s 应为三个整数，实际是 %r" % (where, raw))
+    values = tuple(_as_int(v, "%s[%d]" % (where, i), minimum=1)
+                   for i, v in enumerate(raw))
+    return (values[0], values[1], values[2])
+
+
 def _parse_extra_outputs(raw: Any) -> tuple[str, ...]:
     """``transport.extra_outputs`` -> 去重、保序的白名单元组。
 
@@ -914,6 +1137,7 @@ def load_config(path: str | Path | None = None) -> RunConfig:
         molecule=_parse_molecule(_section(raw, "molecule", "config", warnings), warnings),
         electrode=_parse_electrode(_section(raw, "electrode", "config", warnings), warnings),
         transport=_parse_transport(_section(raw, "transport", "config", warnings), warnings),
+        thermal=_parse_thermal(_section(raw, "thermal", "config", warnings), warnings),
         cluster=_parse_cluster(_section(raw, "cluster", "config", warnings), warnings),
         paths=_parse_paths(_section(raw, "paths", "config", warnings), warnings),
         review=_parse_review(_section(raw, "review", "config", warnings), warnings),
@@ -944,6 +1168,8 @@ def load_config(path: str | Path | None = None) -> RunConfig:
         config.paths.species_defaults = str(config.resolve(config.paths.species_defaults))
     if config.electrode.library_dir:
         config.electrode.library_dir = str(config.resolve(config.electrode.library_dir))
+    if config.thermal.lead_fc:
+        config.thermal.lead_fc = str(config.resolve(config.thermal.lead_fc))
     return config
 
 

@@ -90,3 +90,17 @@ def gq_pw_per_k(temperature_k: float) -> float:
         raise ValueError("温度必须为正:%r K" % (temperature_k,))
     g_w_per_k = math.pi ** 2 * KB_J_PER_K ** 2 * temperature_k / (3.0 * H_J_S)
     return g_w_per_k * 1.0e12
+
+
+#: 元素的标准原子量(amu)。只收本仓真正会用到的元素:锚定基团 S/Se、
+#: 电极金属 Au/Ag/Cu/Pt/Pd/Ni/Al、分子骨架 C/H/N/O 与常见取代卤素。
+#: 来源:CIAAW 2021 标准原子量(常规值),与 FHI-aims species 默认值一致到 1e-4。
+ELEMENT_MASS_AMU = {
+    "H": 1.008, "He": 4.002602,
+    "C": 12.011, "N": 14.007, "O": 15.999, "F": 18.998403163,
+    "Si": 28.085, "P": 30.973761998, "S": 32.06, "Cl": 35.45,
+    "Se": 78.971, "Br": 79.904,
+    "Al": 26.9815385, "Ni": 58.6934, "Cu": 63.546,
+    "Pd": 106.42, "Ag": 107.8682,
+    "Pt": 195.084, "Au": 196.966569,
+}

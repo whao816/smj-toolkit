@@ -11,6 +11,7 @@ import pathlib
 
 import pytest
 
+from smj.config import ConfigError, load_config
 from smj.junction.geometry import Atom, write_aims_geometry
 from smj.junction.tcontrol import make_control
 
@@ -116,3 +117,93 @@ def test_unknown_mode_still_rejected(setup):
     geometry, species = setup
     with pytest.raises(ValueError):
         make_control(geometry, geometry.parent / "c.in", "thermal", species)
+
+
+# --- thermal 配置段 ---------------------------------------------------------
+
+_MINIMAL = "run:\n  name: t\n  mode: dry-run\n"
+
+
+def _load(workdir, extra: str = ""):
+    path = workdir / "smj.yaml"
+    path.write_text(_MINIMAL + extra, encoding="utf-8")
+    return load_config(path)
+
+
+def test_thermal_disabled_by_default(workdir):
+    """不写 thermal 段时电子链行为零变化:全部默认值,enabled=False。"""
+    config = _load(workdir)
+    thermal = config.thermal
+    assert thermal.enabled is False
+    assert thermal.temperature_K is None
+    assert thermal.lead_fc is None
+    assert thermal.electrode.in_plane == (3, 3)
+    assert thermal.electrode.layers == 4
+    assert thermal.electrode.device_layers == 2
+    assert thermal.electrode.strip_thiol_h is True
+    assert thermal.fc.displacement == pytest.approx(0.01)
+    assert thermal.fc.cutoff == pytest.approx(10.0)
+    assert thermal.fc.array_parallel == 8
+    assert thermal.fc.k_grid == (3, 3, 1)
+    assert thermal.negf.eta_meV == pytest.approx(0.5)
+    assert thermal.negf.band_top_meV == pytest.approx(19.5)
+    # 温度缺省继承 transport.temperature(默认 300 K)
+    assert thermal.resolved_temperature(config.transport.temperature) == 300.0
+
+
+def test_thermal_section_parsed_and_paths_resolved(workdir):
+    config = _load(workdir, """
+thermal:
+  enabled: true
+  temperature: 250.0
+  lead_fc: leads/au111.npz
+  electrode:
+    in_plane: [4, 4]
+    layers: 6
+    device_layers: 3
+    vacuum: 18.0
+  fc:
+    displacement: 0.005
+    k_grid: [2, 2, 1]
+  negf:
+    eta_mev: 0.25
+""")
+    thermal = config.thermal
+    assert thermal.enabled is True
+    assert thermal.resolved_temperature(300.0) == pytest.approx(250.0)
+    assert thermal.electrode.in_plane == (4, 4)
+    assert thermal.electrode.layers == 6
+    assert thermal.electrode.device_layers == 3
+    assert thermal.electrode.vacuum == pytest.approx(18.0)
+    assert thermal.fc.displacement == pytest.approx(0.005)
+    assert thermal.fc.k_grid == (2, 2, 1)
+    assert thermal.negf.eta_meV == pytest.approx(0.25)
+    # lead_fc 相对 yaml 所在目录解析成绝对路径
+    assert pathlib.Path(thermal.lead_fc).is_absolute()
+    assert (pathlib.Path(thermal.lead_fc)
+            == (workdir / "leads" / "au111.npz").resolve())
+
+
+@pytest.mark.parametrize("extra", [
+    "thermal:\n  fc:\n    k_grid: [3, 3, 4]\n",       # kz 必须是 1
+    "thermal:\n  electrode:\n    layers: 4\n    device_layers: 4\n",
+    "thermal:\n  fc:\n    displacement: 0.0\n",
+    "thermal:\n  fc:\n    displacement: 0.2\n",
+    "thermal:\n  fc:\n    cutoff: 6.5\n",              # 4 层铅跨度就是 7.06 Å
+    "thermal:\n  negf:\n    eta_mev: 0.0\n",
+    "thermal:\n  temperature: -5\n",
+])
+def test_thermal_invalid_values_rejected(workdir, extra):
+    with pytest.raises(ConfigError):
+        _load(workdir, extra)
+
+
+def test_thermal_unknown_keys_warn_not_fail(workdir):
+    """未知字段只 warning(向前兼容),与其它段一致。"""
+    config = _load(workdir, "thermal:\n  enabled: true\n  bogus: 1\n"
+                            "  fc:\n    bogus2: 2\n")
+    assert config.thermal.enabled is True
+    joined = " ".join(config.warnings)
+    assert "thermal" in joined
+    assert "bogus" in joined
+    assert "bogus2" in joined

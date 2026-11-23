@@ -140,3 +140,23 @@ def acoustic_sum_relative_residual(force_constants) -> float:
     if scale <= 0.0:
         return 0.0 if abs_sum == 0.0 else float("inf")
     return abs_sum / scale
+
+
+def masses_from_elements(elements) -> "np.ndarray":
+    """元素符号列表 → 原子量数组(amu)。
+
+    质量表在 :mod:`smj.phonon.units` 里(与其它常量同处),未知元素直接报错 ——
+    猜一个质量会让动力学矩阵的每一行都错,而且错得很像"物理"。
+    """
+    import numpy as np
+
+    from .units import ELEMENT_MASS_AMU
+
+    masses = []
+    for element in elements:
+        try:
+            masses.append(ELEMENT_MASS_AMU[element])
+        except KeyError:
+            raise ValueError("未知元素 %r:请先把它的原子量加进 units.ELEMENT_MASS_AMU"
+                             % (element,)) from None
+    return np.asarray(masses, dtype=float)

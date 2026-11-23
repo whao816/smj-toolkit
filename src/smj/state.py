@@ -47,6 +47,17 @@ STAGE_ORDER: tuple[str, ...] = (
     "junction_analyze",
 )
 
+#: 2026-11-23：热导（声子）链。与六阶段电子链**并行独立**，只在显式
+#: ``smj stage thermal_xxx`` / ``--run`` 时使用；按设计 DECISIONS D12，
+#: 它不出现在 ``smj status`` / ``smj plan`` 的默认阶段序列里，因此不进
+#: :data:`STAGE_ORDER`，:func:`stage_index` 对它显式报错。
+THERMAL_STAGE_ORDER: tuple[str, ...] = (
+    "thermal_device",
+    "thermal_relax",
+    "thermal_fc",
+    "thermal_analyze",
+)
+
 #: 2026-11-13：``au_relax`` 已从主链路移除。保留该名字仅用于读取/操作旧 run
 #: （``smj stage au_relax`` 仍可用），不再参与 ``run``、``plan``、report 的阶段序列。
 LEGACY_STAGES: tuple[str, ...] = ("au_relax",)
@@ -106,6 +117,22 @@ _ALIASES = {
     "analysis": "junction_analyze",
     "junction-analyze": "junction_analyze",
     "landauer": "junction_analyze",
+    # 热导链（2026-11-23）
+    "thermal-device": "thermal_device",
+    "tdevice": "thermal_device",
+    "t_device": "thermal_device",
+    "thermal-relax": "thermal_relax",
+    "trelax": "thermal_relax",
+    "t_relax": "thermal_relax",
+    "thermal-fc": "thermal_fc",
+    "tfc": "thermal_fc",
+    "t_fc": "thermal_fc",
+    "finite_fc": "thermal_fc",
+    "thermal-fc-array": "thermal_fc",
+    "thermal-analyze": "thermal_analyze",
+    "tanalyze": "thermal_analyze",
+    "t_analyze": "thermal_analyze",
+    "thermal-analysis": "thermal_analyze",
 }
 
 
@@ -120,7 +147,7 @@ def normalize_stage(name: str) -> str:
         raise SmjError("阶段名不能为空")
     key = str(name).strip().lower().replace(" ", "_")
     key = re.sub(r"_+", "_", key)
-    if key in STAGE_ORDER or key in LEGACY_STAGES:
+    if key in STAGE_ORDER or key in LEGACY_STAGES or key in THERMAL_STAGE_ORDER:
         return key
     if key in _ALIASES:
         return _ALIASES[key]
@@ -128,12 +155,18 @@ def normalize_stage(name: str) -> str:
     # electrode_build（具体目录由 RunLayout.stage_dir 回退定位）。
     if re.match(r"^au\d+_build$", key):
         return "electrode_build"
-    raise SmjError("未知阶段 %r；可选: %s（legacy: %s）"
-                   % (name, ", ".join(STAGE_ORDER), ", ".join(LEGACY_STAGES)))
+    raise SmjError("未知阶段 %r；可选: %s（legacy: %s；热导链: %s）"
+                   % (name, ", ".join(STAGE_ORDER), ", ".join(LEGACY_STAGES),
+                      ", ".join(THERMAL_STAGE_ORDER)))
 
 
 def stage_index(name: str) -> int:
     normalized = normalize_stage(name)
+    if normalized in THERMAL_STAGE_ORDER:
+        raise SmjError(
+            "%s 属于热导链，不在电子六阶段链上；请直接 "
+            "`smj stage %s --run`（它不参与 --from/--to 区间）"
+            % (normalized, normalized))
     if normalized not in STAGE_ORDER:
         raise SmjError("阶段 %s 已从主链路移除（仅兼容旧 run）" % normalized)
     return STAGE_ORDER.index(normalized)
