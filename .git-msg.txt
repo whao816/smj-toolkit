@@ -1,17 +1,11 @@
-fix(phonon): 金属板 SCF 混参——relax 从卡死的第 175 圈救出来
+fix(phonon): thermal 模板启用 Kerker 预条件(金属板收敛)
 
-首版 thermal 模板直接沿用电子链的 scf 口径(sc_accuracy_rho 1E-5 /
-charge_mix_param 0.2 / n_max_pulay 10)。电子链算的是有限团簇,这一套没问题;
-但热导器件是「Au(111) 二维板 + ~20 Ang 真空 + Gamma-only」,是 charge
-sloshing 的经典场合:job 26372 跑满 175 个自洽圈仍卡在 4.5e-3。
+job 26372/26373 用纯 Pulay 混参在金属板 + 20 Ang 真空 + Gamma 上跑不动:
+175 圈仍停在 4.5e-3。加
+  preconditioner     kerker 1.5
+(q_0 = 1.5 是 FHI-aims 金属表面用例的常用起点;关键词必须带这个数值参数,
+只写 kerker 会被报 missing keyword argument)。job 26375 起残差单调下降,
+不再出现 sloshing。
 
-改法(只影响两个 thermal 模板,电子链的 control_scf.in 一字未动):
-- 模板把 sc_accuracy_rho 提成占位符 {sc_accuracy_rho};
-- make_control 新增 sc_accuracy_rho 参数(默认 1E-4,thermal 分支用);
-- thermal_relax / thermal_fc 传 sc_accuracy_rho=1E-4、charge_mix_param=0.35、
-  n_max_pulay=20。
-
-力只需要 1E-4 量级的密度收敛,所以放松 rho 不损力常数的精度;两个阶段的
-注释里都写明了这条经验数据的来源(job 26372)。
-
-provenance 已刷新,demo 参考零漂移,779 条测试全绿。
+电子链的 control_scf.in / control_relax.in 未动——它们算的是有限团簇,不需要
+预条件,加进去反而改变冻结基线的收敛路径。

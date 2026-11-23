@@ -9,6 +9,9 @@
 
   occupation_type    gaussian {occupation_width}
   mixer              pulay
+  # Same Kerker preconditioning as the relax template: these are the same
+  # metal-slab-plus-vacuum cells, only displaced by 0.01 Ang.
+  preconditioner     kerker 1.5
   n_max_pulay        {n_max_pulay}
   charge_mix_param   {charge_mix_param}
   sc_accuracy_rho    {sc_accuracy_rho}

@@ -9,6 +9,10 @@
 
   occupation_type    gaussian {occupation_width}
   mixer              pulay
+  # Kerker damps the long-wavelength charge sloshing that a metal slab plus
+  # vacuum produces; plain Pulay stalled at 4.5e-3 (job 26372). The keyword
+  # takes the q_0 screening wavevector as its second argument.
+  preconditioner     kerker 1.5
   n_max_pulay        {n_max_pulay}
   charge_mix_param   {charge_mix_param}
   sc_accuracy_rho    {sc_accuracy_rho}
