@@ -23,13 +23,11 @@
   relax_geometry bfgs {force_threshold}
   aggregated_energy_tolerance 1.0e-1
 
-  # 2D-periodic slab: in-plane sampling only (kz must stay 1 with ~20 Ang vacuum).
+  # 2D-periodic slab: in-plane sampling only (kz stays 1 with ~20 Ang vacuum).
   k_grid {kx} {ky} {kz}
 
-  # No output aitranss / output mulliken / 
-estart aims.restart: this stage
+  # No output aitranss, no output mulliken, and no restart keyword: this stage
   # only produces the relaxed geometry that the force-constant scan starts from.
-
 ################################################################################
 # Species blocks appended below
 ################################################################################

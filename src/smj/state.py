@@ -293,7 +293,9 @@ class RunState:
         if key not in self.stages:
             # 2026-11-13：au_relax 已从主链路移除，但旧 run 的 state 和显式的
             # `smj stage au_relax ...` 仍需可读；按需创建 legacy 段，不污染新 run。
-            if key in LEGACY_STAGES:
+            # 2026-11-23：热导链同理——它不参与 STAGE_ORDER/--from/--to，但要能
+            # 单独 prepare/collect，所以在第一次被引用时按需建段（D12）。
+            if key in LEGACY_STAGES or key in THERMAL_STAGE_ORDER:
                 self.stages[key] = StageState()
             else:
                 raise KeyError(key)
@@ -356,6 +358,9 @@ class RunState:
     def to_dict(self) -> dict[str, Any]:
         ordered = list(STAGE_ORDER)
         ordered += [name for name in LEGACY_STAGES if name in self.stages]
+        # 热导链按需出现：不参与 stage_range/plan/status 的默认展示，
+        # 但 prepare/collect 的状态必须落盘，否则 --submit 会认不出 --prepare(D12)。
+        ordered += [name for name in THERMAL_STAGE_ORDER if name in self.stages]
         return {
             "schema": "smj.state.v1",
             "run": self.run,

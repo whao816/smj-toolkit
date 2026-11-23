@@ -1,0 +1,10 @@
+fix(phonon): 热导阶段可持久化、作业脚本用 LF、模板去掉控制字符
+
+三处在 M4 上机时暴露的真实缺陷:
+- state.py: RunState.stage() 与 to_dict() 只认 STAGE_ORDER/LEGACY_STAGES,
+  热导阶段既建不了段也存不住盘 --prepare 之后 --submit 报「尚未 prepare」。
+- _thermal_common.write_script 在 Windows 上写 CRLF, sbatch 拒收。
+- control_thermal_{force,relax}.in 里混进真实 CR/FF, 一条注释被拆成两行,
+  后半行以 restart 开头被 FHI-aims 当成关键字, 作业白跑一次(job 26369)。
+
+模板重写为纯 ASCII, 并加字节卫生回归测试。

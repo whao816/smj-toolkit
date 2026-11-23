@@ -71,8 +71,17 @@ def render_thermal_sub(template: str, env: dict, *, ntasks: int,
 
 
 def write_script(path: Path, text: str) -> Path:
+    """写作业脚本。
+
+    **必须显式 ``newline="\\n"``**：``Path.write_text`` 在 Windows 上会把
+    ``\\n`` 翻成 ``\\r\\n``，而 gpu1 的 ``sbatch`` 直接拒收 DOS 行尾
+    (``Batch script contains DOS line breaks``)。本仓其余写远端正文本的地方
+    (``inputs._write_script`` / ``geometry.write_aims_geometry`` / ``tcontrol``)
+    也都显式指定了 ``newline="\\n"``。
+    """
     path = Path(path)
-    path.write_text(text, encoding="utf-8")
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
     return path
 
 

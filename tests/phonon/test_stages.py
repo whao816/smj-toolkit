@@ -207,3 +207,30 @@ def test_thermal_unknown_keys_warn_not_fail(workdir):
     assert "thermal" in joined
     assert "bogus" in joined
     assert "bogus2" in joined
+
+
+# --------------------------------------------------------------------------
+# 模板的字节卫生:E/FHI-aims 与 sbatch 都会把控制字符当成语法的一部分
+# --------------------------------------------------------------------------
+
+def test_thermal_templates_have_no_control_characters():
+    """模板里不得出现 CR / FF 之类的控制字符。
+
+    为什么钉这条(2026-11-23 真实事故):写模板时文本里混进了 ``\\r`` 与 ``\\f``,
+    它们落成真实控制字符之后,``control.in`` 里一条注释被 CR 拆成两行,后半行
+    以 ``restart aims.restart`` 开头,于是 FHI-aims 把它当真关键字,报
+    ``Unknown keyword estart`` 并停止 —— 作业白跑,而且报错信息指向的关键字在
+    模板里根本不存在。sbatch 也会因为 CRLF 直接拒收脚本。
+    """
+    from smj.junction.tcontrol import TEMPLATE_DIR
+
+    for name in ("control_thermal_force.in", "control_thermal_relax.in",
+                 "sub_thermal_relax.sh", "sub_thermal_fc.sh"):
+        path = pathlib.Path(TEMPLATE_DIR) / name
+        raw = path.read_bytes()
+        assert b"\r" not in raw, "%s 含 CR" % name
+        bad = [c for c in raw if c < 0x20 and c not in (0x0A, 0x09)]
+        assert not bad, "%s 含控制字符 %r" % (name, [hex(c) for c in bad[:4]])
+        for line in raw.decode("utf-8").split("\n"):
+            assert not line.lstrip().startswith("restart"), (
+                "%s 有一行以 restart 开头: %r" % (name, line))
