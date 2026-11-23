@@ -136,6 +136,35 @@ def test_lattice_and_vacuum(device4):
                                                                   abs=0.01)
 
 
+def test_adjacent_layers_keep_abc_stacking(device4):
+    """相邻层 Au-Au 必须是 a/sqrt(2),不能是层间距 delta_z。
+
+    2026-11-23 的 bug:平移量按**每一层**各自 snap 到 S 正下方,于是所有层
+    对齐到同一个原子(AA 堆垛),相邻层 Au-Au 只有 2.355 A(=a/sqrt(3))。
+    relax 一开始就报 5 eV/A 的力。这条测试直接钉住堆垛。
+    """
+    atoms, meta = device4
+    coord = np.array([a.coord() for a in atoms])
+    gold = [i for i, a in enumerate(atoms) if a.element == "Au"]
+    nn = 4.078230 / math.sqrt(2)
+    worst = math.inf
+    for k, i in enumerate(gold):
+        for j in gold[k + 1:]:
+            if meta.side[i] != meta.side[j]:
+                continue
+            worst = min(worst, float(np.linalg.norm(coord[i] - coord[j])))
+    assert worst == pytest.approx(nn, abs=1e-3), "相邻层 Au-Au %.4f A" % worst
+    # ABC 堆垛:任一原子都不会与上下层原子在同一条 z 轴上
+    for k, i in enumerate(gold):
+        for j in gold[k + 1:]:
+            if meta.side[i] != meta.side[j]:
+                continue
+            if abs(meta.layer_index[i] - meta.layer_index[j]) != 1:
+                continue
+            planar = float(np.linalg.norm(coord[i][:2] - coord[j][:2]))
+            assert planar > 1.0, "层间原子在同一 xy 柱上(AA 堆垛)"
+
+
 def test_six_layers_gives_126_atoms():
     atoms, meta = build_device(MOLECULE, DeviceSpec(electrode_layers=6))
     assert meta.n_atoms == 18 + 2 * 6 * 9 == 126

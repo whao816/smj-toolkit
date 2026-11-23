@@ -229,6 +229,19 @@ def build_device(molecule_atoms: list[Atom], spec: DeviceSpec | None = None
     sbond: list[float] = []
 
     for which in ("left", "right"):
+        # 平移量必须**每个电极只算一次**,用表面层的格点定:层与层之间的 ABC
+        # 堆垛就体现在 offset 的差上,如果每层各自 snap 到 S 正下方,所有层会
+        # 对齐到同一个原子(AA 堆垛),相邻层 Au-Au 只剩 delta_z=2.355 Å,
+        # 而正常的最近邻应是 a/sqrt(2)=2.885 Å。2026-11-23 就是这样在 relax
+        # 里出现 5 eV/Å 的初始力。
+        anchor_xy = (s_left[0], s_left[1]) if which == "left" else \
+            (s_right[0], s_right[1])
+        surface_offset = (stack[0] * (layers - 1), stack[1] * (layers - 1))
+        surface_sites = _in_plane_sites(a1, a2, spec.in_plane, surface_offset)
+        nearest = min(surface_sites,
+                      key=lambda s: (s[0] - anchor_xy[0]) ** 2
+                      + (s[1] - anchor_xy[1]) ** 2)
+        shift = (anchor_xy[0] - nearest[0], anchor_xy[1] - nearest[1])
         for layer in range(layers):
             # layer 0 = 最外层(远离分子);layers-1 = 表面层
             distance_from_surface = (layers - 1) - layer
@@ -237,12 +250,6 @@ def build_device(molecule_atoms: list[Atom], spec: DeviceSpec | None = None
                 z = -z
             offset = (stack[0] * layer, stack[1] * layer)
             sites = _in_plane_sites(a1, a2, spec.in_plane, offset)
-            # 让表面层离 z 轴最近的那个原子正对 S(投影到 xy)
-            anchor_xy = (s_left[0], s_left[1]) if which == "left" else \
-                (s_right[0], s_right[1])
-            nearest = min(sites, key=lambda s: (s[0] - anchor_xy[0]) ** 2
-                          + (s[1] - anchor_xy[1]) ** 2)
-            shift = (anchor_xy[0] - nearest[0], anchor_xy[1] - nearest[1])
             layer_start = len(atoms)
             for (x, y) in sites:
                 atoms.append(Atom(spec.element, x + shift[0], y + shift[1], z))
