@@ -109,7 +109,7 @@ def thermal_conductance(
         频率**:分子内 100–400 meV 的模在 Au 里没有可透射通道,把它们算进去
         等于给弹性透射编造出不存在的通道(调研报告 §6 陷阱⑨)。
     max_acoustic : float
-        声学支数上限(3D 铅 = 3)。``T_ph(ω→0)`` 超过它、或总热导超过
+        声学支数上限(3D lead = 3)。``T_ph(ω→0)`` 超过它、或总热导超过
         ``max_acoustic·3·G_Q``,直接报错而不是返回一个数。
 
     Returns
@@ -140,7 +140,7 @@ def thermal_conductance(
         worst = float(e[above][int(np.argmax(np.abs(t[above])))] * 1e3)
         raise ValueError(
             "T_ph 在电极声子带顶(%.2f meV)之上仍非零(最大在 %.2f meV);"
-            "弹性声子透射没有高于铅最高支的通道,积分上限与自能都要查"
+            "弹性声子透射没有高于 lead 最高支的通道,积分上限与自能都要查"
             % (band_top_mev, worst))
 
     # 2) 声学极限

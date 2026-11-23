@@ -106,7 +106,7 @@ def test_evaluate_thermal_inconclusive_without_relax_evidence():
     from smj.phonon.checks import evaluate_thermal
 
     outcome = evaluate_thermal(_thermal())
-    # 缺 max|F| 与铅胞证据 -> 不判 passed(方案 §11)
+    # 缺 max|F| 与 lead 胞证据 -> 不判 passed(方案 §11)
     assert outcome["verdict"] == "inconclusive"
     assert "ph_relax_converged" in outcome["inconclusive"]
     assert "ph_lead_cell_match" in outcome["inconclusive"]

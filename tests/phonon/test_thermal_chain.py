@@ -209,7 +209,7 @@ def test_thermal_analyze_writes_thermal_json(workdir):
     assert payload["schema"] == "smj.thermal.v1"
     assert payload["n_k_points"] == 1
     assert payload["n_atoms"] == 50
-    # ASR 残差是**诊断量**而不是硬零：器件行来自实测、铅行来自冻结铅，
+    # ASR 残差是**诊断量**而不是硬零：器件行来自实测、lead 行来自冻结 lead，
     # 交界处本来就不闭合。这里只要求它被算出来、有限。
     assert np.isfinite(payload["acoustic_sum_residual"])
     assert 0.0 <= payload["acoustic_sum_relative_residual"] < 10.0

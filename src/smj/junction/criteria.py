@@ -205,7 +205,7 @@ CRITERIA = [
     {'name': 'ph_asr_residual', 'kind': 'engineering', 'gate': 'warn',
      'implemented': True, 'band': [None, 1.0e-6], 'source': None,
      'note': '声学求和规则残差 max|sum_j K_ij| < 1e-6 eV/A^2, 必须在**完整**'
-             '(器件+铅)矩阵上算 —— 只有器件行时行和不闭合, 算出来是伪指标。'
+             '(器件+lead)矩阵上算 —— 只有器件行时行和不闭合, 算出来是伪指标。'
              '先测残差再投影(apply_asr), 否则这条退化成空检查'},
 
     {'name': 'ph_fc_symmetry', 'kind': 'engineering', 'gate': 'warn',
@@ -222,7 +222,7 @@ CRITERIA = [
 
     {'name': 'ph_lead_cell_match', 'kind': 'engineering', 'gate': 'error',
      'implemented': True, 'band': None, 'source': None,
-     'note': '冻结铅 FC 的面内胞(n_atoms_per_layer/in_plane/a_lattice)必须与'
+     'note': '冻结 lead FC 的面内胞(n_atoms_per_layer/in_plane/a_lattice)必须与'
              '本次器件配置一致; 不一致时自能来自另一套几何, G_ph 无意义'},
 
     {'name': 'ph_grid_independence', 'kind': 'engineering', 'gate': 'warn',

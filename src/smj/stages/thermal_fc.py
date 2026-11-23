@@ -56,7 +56,7 @@ class ThermalFcStage(Stage):
             raise StageBlocked(
                 self.name,
                 "缺 thermal_device/device_metadata.json 的 device_indices："
-                "无法确定哪些原子要位移（放宽到全部原子会让位移数翻倍且包含冻结铅）",
+                "无法确定哪些原子要位移（放宽到全部原子会让位移数翻倍且包含冻结 lead）",
                 [str(ctx.artifact("thermal_device", "device_metadata.json"))])
         disps = make_displacements(natoms, device_indices,
                                    float(fc_cfg.displacement))

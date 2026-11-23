@@ -309,16 +309,16 @@ class ThermalElectrodeConfig:
     """声子热导的电极几何。
 
     **刻意不使用电子链的金字塔团簇**（``electrode`` 段继续管电子链，两者互不影响）：
-    声子 NEGF 需要半无限铅与横向元胞，只有二维周期板才给得出来（方案 §4.1）。
+    声子 NEGF 需要半无限 lead 与横向元胞，只有二维周期板才给得出来（方案 §4.1）。
     """
 
     #: Au fcc 晶格常数(Å)。最近邻 = a/√2 = 2.8845 Å。
     a_lattice: float = 4.078230
     #: 面内超胞 (nx, ny)：3×3 给 9 原子/层，总原子数压到 ~90。
     in_plane: tuple[int, int] = (3, 3)
-    #: 每侧铅层数。
+    #: 每侧 lead 层数。
     layers: int = 4
-    #: 每侧参与位移的层数（靠近分子的那些层）；其余层用冻结铅力常数。
+    #: 每侧参与位移的层数（靠近分子的那些层）；其余层用冻结 lead 力常数。
     device_layers: int = 2
     #: 沿 c 轴的真空厚度(Å)。二维板沿 c 是真空，所以 kz 恒为 1。
     vacuum: float = 20.0
@@ -342,7 +342,7 @@ class ThermalFCConfig:
     #: 中心差分位移幅度(Å)。0.01 Å 是 Sadeghi–Lambert 组的标准做法；
     #: 本仓更小会让力噪声(1e-4 eV/Å)主导，更大则非谐截断误差上升。
     displacement: float = 0.01
-    #: 力常数截断半径(Å)。<7 Å 直接拒绝：4 层铅沿 z 的跨度就是 7.06 Å。
+    #: 力常数截断半径(Å)。<7 Å 直接拒绝：4 层 lead 沿 z 的跨度就是 7.06 Å。
     cutoff: float = 10.0
     #: Slurm 数组并发数。gpu1 是 64 核、每作业 8 核 → 上限 8（不是 16）。
     array_parallel: int = 8
@@ -380,7 +380,7 @@ class ThermalConfig:
     enabled: bool = False
     #: 计算温度(K)。``None`` = 继承 ``transport.temperature``（默认 300 K）。
     temperature_K: float | None = None
-    #: 冻结铅力常数的路径（JSON）。相对路径按 yaml 所在目录解析。
+    #: 冻结 lead 力常数的路径（JSON）。相对路径按 yaml 所在目录解析。
     lead_fc: str | None = None
     electrode: ThermalElectrodeConfig = field(default_factory=ThermalElectrodeConfig)
     fc: ThermalFCConfig = field(default_factory=ThermalFCConfig)
@@ -911,7 +911,7 @@ def _parse_thermal(data: Mapping[str, Any], warnings: list[str]) -> ThermalConfi
     if electrode.device_layers >= electrode.layers:
         raise ConfigError(
             "thermal.electrode.device_layers(%d) 必须小于 layers(%d)："
-            "至少留一层给冻结铅" % (electrode.device_layers, electrode.layers))
+            "至少留一层给冻结 lead" % (electrode.device_layers, electrode.layers))
 
     fc = ThermalFCConfig(
         displacement=_as_float(fc_raw.get("displacement", 0.01),
@@ -934,7 +934,7 @@ def _parse_thermal(data: Mapping[str, Any], warnings: list[str]) -> ThermalConfi
             % fc.displacement)
     if fc.cutoff < 7.0:
         raise ConfigError(
-            "thermal.fc.cutoff 应 >= 7.0 Å，实际是 %s：4 层铅沿 z 的跨度就是 7.06 Å，"
+            "thermal.fc.cutoff 应 >= 7.0 Å，实际是 %s：4 层 lead 沿 z 的跨度就是 7.06 Å，"
             "更小的截断会把相邻层的耦合切掉" % fc.cutoff)
 
     negf = ThermalNEGFConfig(

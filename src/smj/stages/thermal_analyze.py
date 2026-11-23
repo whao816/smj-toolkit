@@ -2,10 +2,10 @@
 
 这一步是全链唯一产出物理量的地方，也是**唯一**做单位换算的地方：
 
-1. ``force_constants`` 组装成完整的 ``3N×3N``（器件行来自 DFT，铅行来自冻结铅 FC）；
+1. ``force_constants`` 组装成完整的 ``3N×3N``（器件行来自 DFT，lead 行来自冻结 lead FC）；
 2. ``D = K/√(m_i m_j) × (0.0646542)²`` —— 因子把 ``eV/(Å²·amu)`` 换成 ``eV²``
    （方案 §3.2 与附录 A-1：报告里的 0.2543 是把正确系数又开了一次方，偏大 3.93 倍）；
-3. 铅侧取**一个主层**（D11），做 López-Sancho decimation 得表面格林函数；
+3. lead 侧取**一个主层**（D11），做 López-Sancho decimation 得表面格林函数；
 4. Caroli 公式 ``T_ph = Tr[G^r Γ_L G^a Γ_R]``，``N_k=1``（D10：3×3 超胞的 Γ）；
 5. Landauer 积分，三条 fail-closed（带顶非零 / 声学支 > 3 / G > 3G_Q）。
 
@@ -78,7 +78,7 @@ class ThermalAnalyzeStage(Stage):
         if not thermal.lead_fc:
             raise StageBlocked(
                 self.name,
-                "配置缺 thermal.lead_fc：声子 NEGF 需要冻结铅力常数（方案 D4）。"
+                "配置缺 thermal.lead_fc：声子 NEGF 需要冻结 lead 力常数（方案 D4）。"
                 "先用一份 bulk/厚板算一次并 save_lead_fc 落盘。",
                 [])
         path = _lead_fc_path(thermal.lead_fc)
@@ -143,7 +143,7 @@ class ThermalAnalyzeStage(Stage):
         d_c = dynamical[np.ix_(centre, centre)]
         d_l = dynamical[np.ix_(left_pl, left_pl)]
         d_r = dynamical[np.ix_(right_pl, right_pl)]
-        # negf.transmission 的 v 约定是「中心区 × 铅」,即 (n_c, n_lead)
+        # negf.transmission 的 v 约定是「中心区 × lead」,即 (n_c, n_lead)
         v_l = dynamical[np.ix_(centre, left_pl)]
         v_r = dynamical[np.ix_(centre, right_pl)]
         v_lead_l = dynamical[np.ix_(left_pl, left_outer)]

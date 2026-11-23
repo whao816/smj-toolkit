@@ -1,4 +1,4 @@
-"""``fc.py``:位移集、中心差分、ASR 投影、铅力常数装载与拼接。
+"""``fc.py``:位移集、中心差分、ASR 投影、lead 力常数装载与拼接。
 
 中心差分的两条性质在这里被钉死:①对**线性**体系逐位复原 K;②对含三次非谐项
 的体系误差随 δ 呈 O(δ²) 下降(δ 减半 → 误差降到 1/4)。第二条是"位移幅度选
@@ -194,7 +194,7 @@ def test_lead_fc_missing_metadata(workdir):
 
 def test_assemble_full_fc_places_blocks(workdir):
     lead = _lead(workdir)
-    # 铅 FC 是 2 层 × 2 原子 = 4 原子/侧,所以每侧要给 4 个下标
+    # lead FC 是 2 层 × 2 原子 = 4 原子/侧,所以每侧要给 4 个下标
     meta = FullFCMeta(n_atoms=12, device_indices=(4, 5),
                       left_indices=(0, 1, 2, 3), right_indices=(8, 9, 10, 11))
     k_dev = np.arange(3 * 2 * 3 * 12, dtype=float).reshape(6, 36)

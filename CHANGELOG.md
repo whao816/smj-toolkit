@@ -20,7 +20,7 @@
 - smj thermal：新增子命令；	hermal.json 契约 smj.thermal.v1 由
   smj.analysis.read_thermal 校验。
 - 十条热导判据进 CRITERIA（ph_*）：带顶归零、量子上限、声学极限、
-  ASR 残差、FC 对称性、虚频、铅胞匹配、网格独立性等；4 条 physical 各带
+  ASR 残差、FC 对称性、虚频、lead 胞匹配、网格独立性等；4 条 physical 各带
   一手源。smj review 对热导 run 出 passed/inconclusive/ailed，
   **缺证据一律 inconclusive，不当作通过**。
 - smj report 新增 ## 5. 热导（声子） 节，并显式标注"热导器件（周期板

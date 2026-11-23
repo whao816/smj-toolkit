@@ -1058,7 +1058,7 @@ def _thermal_relax_evidence(run_dir: Path) -> tuple[float | None, str | None]:
 
 
 def _thermal_lead_match(run_dir: Path, cfg: Any) -> bool | None:
-    """比对冻结铅 FC 的胞参数与本次器件配置；无法比对时返回 None。"""
+    """比对冻结 lead FC 的胞参数与本次器件配置；无法比对时返回 None。"""
     meta_path = run_dir / "thermal_device" / "device_metadata.json"
     lead_path = getattr(getattr(cfg, "thermal", None), "lead_fc", None)
     if not meta_path.is_file() or not lead_path:

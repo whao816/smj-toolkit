@@ -3,7 +3,7 @@
 **与电子链的 ``electrode_build`` 是两条独立的几何**，两者互不覆盖：
 
 * ``electrode_build`` 造的是三角金字塔团簇 —— aitranss 的 ``self.energy`` 与
-  ``basis-indices`` 都按"逐原子"给，团簇足够；但声子 NEGF 需要**半无限铅**的
+  ``basis-indices`` 都按"逐原子"给，团簇足够；但声子 NEGF 需要**半无限 lead**的
   表面格林函数，团簇既没有横向元胞、也没有可迭代的层间耦合，做不出自能。
 * 本阶段造的是带横向元胞的二维周期板：面内 ``in_plane`` 个原胞（3×3 → 9 原子/
   层）、每侧 ``layers`` 层、沿 c 轴 ``vacuum`` 埃真空。这样层间力常数 V₁/V₂ 与
@@ -89,7 +89,7 @@ class ThermalDeviceStage(Stage):
             "器件总 %d 原子：Au %d（每侧 %d 层 × %d 原子/层）+ 分子 %d"
             % (meta.n_atoms, len(meta.lead_indices) + device_au,
                layers_per_side, atoms_per_layer, molecule_atoms),
-            "器件区 %d 原子（将参与有限位移），冻结铅 %d 原子"
+            "器件区 %d 原子（将参与有限位移），冻结 lead %d 原子"
             % (len(meta.device_indices), len(meta.lead_indices)),
             "面内 %.4f × %.4f Å，c 轴 %.4f Å（含 %.1f Å 真空）"
             % (meta.lattice[0][0], meta.lattice[1][1], meta.lattice[2][2],
@@ -129,7 +129,7 @@ class ThermalDeviceStage(Stage):
         lead_indices = meta.get("lead_indices") or []
         if len(device_indices) + len(lead_indices) != actual:
             raise StageError(
-                "thermal_device 分区不完整：器件区 %d + 铅 %d ≠ 总原子 %d"
+                "thermal_device 分区不完整：器件区 %d + lead %d ≠ 总原子 %d"
                 % (len(device_indices), len(lead_indices), actual))
         results = {
             "thermal_device": {

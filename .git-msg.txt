@@ -1,10 +1,8 @@
-fix(phonon): 热导阶段可持久化、作业脚本用 LF、模板去掉控制字符
+refactor(phonon): 中文里的 lead 不再写成「铅」
 
-三处在 M4 上机时暴露的真实缺陷:
-- state.py: RunState.stage() 与 to_dict() 只认 STAGE_ORDER/LEGACY_STAGES,
-  热导阶段既建不了段也存不住盘 --prepare 之后 --submit 报「尚未 prepare」。
-- _thermal_common.write_script 在 Windows 上写 CRLF, sbatch 拒收。
-- control_thermal_{force,relax}.in 里混进真实 CR/FF, 一条注释被拆成两行,
-  后半行以 restart 开头被 FHI-aims 当成关键字, 作业白跑一次(job 26369)。
+「铅」是 lead（电极引线）的音译，电极元素是 Au，写成「铅力常数/铅区/冻结铅」
+会被读成化学元素 Pb。代码标识符本来就是 lead_fc/lead_indices/left_lead_indices，
+只有中文注释、文档与提交信息用了「铅」。
 
-模板重写为纯 ASCII, 并加字节卫生回归测试。
+本提交把 19 个文件里的 94 处「铅」统一改成 lead（中文前后自动补空格），
+不涉及任何数值、判据或行为变化；provenance 已刷新，779 条测试全绿。

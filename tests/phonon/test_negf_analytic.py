@@ -50,7 +50,7 @@ def test_outside_band_matches_finite_stack(omega):
     """带外(渐逝)区:半无限 decimation 必须与 200 层直接求逆逐位一致。
 
     只在这里比有限链:带**内**的有限链本征值是离散的,η→0 时逆矩阵在
-    本征值处出极,有限链与半无限铅不可比(这不是 bug,是物理)。
+    本征值处出极,有限链与半无限 lead 不可比(这不是 bug,是物理)。
     """
     got = negf.surface_gf(omega, D_CHAIN, V_CHAIN, ETA)[0, 0]
     ref = _finite_stack_surface_gf(omega, D_CHAIN, V_CHAIN, ETA)
@@ -130,7 +130,7 @@ CHANNEL_OMEGA = [0.2, 0.5, 1.0, 1.5, 1.9]
 
 
 def test_perfect_chain_transmission_is_one():
-    """完美周期链(器件层与铅层同参数)通带内 T=1,带外 T=0。
+    """完美周期链(器件层与 lead 层同参数)通带内 T=1,带外 T=0。
 
     偏差 ~1e-9 来自 η 对带边的正则化,不是误差累积。
     """
@@ -144,7 +144,7 @@ def test_perfect_chain_transmission_is_one():
 
 @pytest.mark.parametrize("eps_c", [2.0, 2.3, 3.0])
 def test_single_site_impurity_matches_closed_form(eps_c):
-    """单个「杂质层」夹在两个完美铅之间,有闭式解可对:
+    """单个「杂质层」夹在两个完美 lead 之间,有闭式解可对:
 
     G = 1/(z - ε_c - 2Σ),  Σ = V² g_lead,  Γ = -2 Im Σ,  T = |G|² Γ_L Γ_R。
 
@@ -261,7 +261,7 @@ def test_wide_band_chain_approaches_quantum_bound():
 
 
 def test_chain_end_to_end_matches_band_limited_reference():
-    """带顶压到 Au 量级:半无限铅 + 中心区链的热导与解析台阶透射一致。
+    """带顶压到 Au 量级:半无限 lead + 中心区链的热导与解析台阶透射一致。
 
     参考值用同一公式、40 倍密的网格对 ``T_ph = Θ(top − E)`` 积分 —— 它检验的是
     「NEGF 在生产网格(251 点)上给出的透射是否足以支撑这个积分」,而不是再抄

@@ -793,7 +793,7 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
         return
 
     lines.append("> ⚠️ **几何不可比**：热导器件是 Au(111) 3×3 周期板（~%d 原子，"
-                 "含 %d 层铅），电子六阶段链的器件是金字塔团簇（另一次计算）。"
+                 "含 %d 层 lead），电子六阶段链的器件是金字塔团簇（另一次计算）。"
                  "`G_ph` 与 `G/G0` 来自**两套几何**，不可并列比较；`ZT_total` 只是"
                  "把两者各自的数拼起来的**参考量**，不构成对该结的热电结论。"
                  % (int(data["n_atoms"]), int(round(data["n_lead_atoms"] / 9 or 1))))

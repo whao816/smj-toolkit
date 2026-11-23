@@ -12,7 +12,7 @@
 
 | 现状 | 缺口 | 本方案 |
 |---|---|---|
-| 六阶段链只算电子：`TE.dat` → `results.json`（`log10_G_over_G0_like`/`S`/`k_e`/`ZT_electronic`）。全仓 `phonon`/`hessian`/`force_constant` 零命中；`aims_out.py` 只解析一个「Maximum force component」标量，**没有力矢量解析器**；SCF 不开力关键字（实测 `aims_scf/aims.out` 无 `Total atomic forces` 段）。 | ① 没有力常数（FC）生产链路；② 没有声子 NEGF / Landauer 积分；③ **现有金字塔团簇几何在物理上做不了声子 NEGF**（无横向周期性，无法构造主层与半无限铅）；④ 配置/几何/判据/报告/CLI 全链路都没有热导位置。 | 新增**独立的「热导支线」**：`thermal_device`（周期板器件几何）→ `thermal_relax` → `thermal_fc`（6N 位移 + 力，数组作业）→ `thermal_negf`（自写声子 NEGF + Landauer）。**不进 `STAGE_ORDER`，默认关闭**，`smj run` 行为逐字节不变。产出 `thermal.json`（`G_ph`、`T_ph(ω)`、`N_eff`、`ZT_total`）。 |
+| 六阶段链只算电子：`TE.dat` → `results.json`（`log10_G_over_G0_like`/`S`/`k_e`/`ZT_electronic`）。全仓 `phonon`/`hessian`/`force_constant` 零命中；`aims_out.py` 只解析一个「Maximum force component」标量，**没有力矢量解析器**；SCF 不开力关键字（实测 `aims_scf/aims.out` 无 `Total atomic forces` 段）。 | ① 没有力常数（FC）生产链路；② 没有声子 NEGF / Landauer 积分；③ **现有金字塔团簇几何在物理上做不了声子 NEGF**（无横向周期性，无法构造主层与半无限 lead）；④ 配置/几何/判据/报告/CLI 全链路都没有热导位置。 | 新增**独立的「热导支线」**：`thermal_device`（周期板器件几何）→ `thermal_relax` → `thermal_fc`（6N 位移 + 力，数组作业）→ `thermal_negf`（自写声子 NEGF + Landauer）。**不进 `STAGE_ORDER`，默认关闭**，`smj run` 行为逐字节不变。产出 `thermal.json`（`G_ph`、`T_ph(ω)`、`N_eff`、`ZT_total`）。 |
 
 **最大的科学增值不是「补一个 κ_ph」，而是把 `ZT` 从电子口径改成总口径。** 本仓已有 `k_e_pW_per_K` 与 `ZT_electronic`，`ZT_total = ZT_e / (1 + G_ph/k_e)` 是恒等式。用实测 `k_e` 代入可见：强耦合结（nap-sh 116 pW/K、az 224 pW/K）热导只是 10–20% 的修正；**弱耦合结（2CN 1.24 pW/K、hdt 0.91 pW/K）声子项压倒电子项，`ZT` 掉一个数量级**。这把「萘/薁/茚 对比」从电子输运问题变成了**热-电联合优化**问题（§2.3）。
 
@@ -43,7 +43,7 @@
 | G3 | 没有 FC 生产链路 | 全仓无位移生成、无力常数矩阵、无 ASR 投影 |
 | G4 | 没有声子 NEGF | 无动力学矩阵、无表面格林函数/decimation、无声子 Landauer 积分 |
 | G5 | **几何不可用** | 全部 60+ 真实 run 的 `geometry.in` 中 `lattice_vector`/`k_grid` 计数为 **0**；`write_aims_geometry` 不支持晶格矢量；`config.py` 无 `k_grid` |
-| G6 | 电极模型是唯象的 | `src/smj/junction/self_energy.py` 给每个电极原子一个**常数虚部** `DEFAULT_SIGMA_NEAR=0.05`/`DEFAULT_SIGMA_FAR=0.10` Ha，docstring 明写「是**模型常数**, 不是收敛参数」——这不是半无限铅，套到声子上会让 `G_ph` 变成 σ 的函数 |
+| G6 | 电极模型是唯象的 | `src/smj/junction/self_energy.py` 给每个电极原子一个**常数虚部** `DEFAULT_SIGMA_NEAR=0.05`/`DEFAULT_SIGMA_FAR=0.10` Ha，docstring 明写「是**模型常数**, 不是收敛参数」——这不是半无限 lead，套到声子上会让 `G_ph` 变成 σ 的函数 |
 | G7 | 电极元数据无层号 | `electrode_metadata.json` 无逐原子 `layer_index`；电极随分子倾斜，按 z 聚类得不到层（实测 z 连续分布） |
 | G8 | 配置/报告/CLI 无位置 | `config.py:469 _KNOWN_SECTIONS`、`report.py:1010` 输运表、`cli.py:1319` 起 parser |
 
@@ -163,22 +163,22 @@ T_ph(ω)    = (1/N_k) Σ_k w_k · Tr[G^r_k Γ_L,k G^a_k Γ_R,k]
 - **`(ħω)²` 而不是 `ω²`**：一旦 `ω` 用 eV 表示，`D` 必须乘 `EV_PER_SQRT²`，否则量纲错。这是最容易错的一行，单元测试直接钉死（§9 T1）。
 - **ASR**：对 `D` 做投影 `D ← (I − P)D(I − P)`，`P` 由三个平动零模张成；同时记录残差 `‖D·1‖`。
 - **对称化**：`K ← (K + Kᵀ)/2` 前先记录 `‖K − Kᵀ‖/‖K‖`（中心差分下应为 O(δ²) 小量，见 §5.1）。
-- **η**：`η = 0.5 meV` 默认；周期性铅使 `T_ph(ω)` 连续，η 只需抹掉数值锯齿。**文献锚点**：A 支用 `η = 1e-5 a.u. ≈ 0.27 meV`（Klöckner et al., [PRB **95**, 245404 (2017)](https://arxiv.org/abs/1704.00591) 是唯一给全 NEGF 参数的一篇），本方案 0.5 meV 与其同量级。开发期验证 `η ∈ {0.25, 0.5, 1.0} meV` 对 `G_ph` 影响 < 3%（§9 T7）。
+- **η**：`η = 0.5 meV` 默认；周期性 lead 使 `T_ph(ω)` 连续，η 只需抹掉数值锯齿。**文献锚点**：A 支用 `η = 1e-5 a.u. ≈ 0.27 meV`（Klöckner et al., [PRB **95**, 245404 (2017)](https://arxiv.org/abs/1704.00591) 是唯一给全 NEGF 参数的一篇），本方案 0.5 meV 与其同量级。开发期验证 `η ∈ {0.25, 0.5, 1.0} meV` 对 `G_ph` 影响 < 3%（§9 T7）。
 - **网格**：`ħω ∈ [0, 25] meV`，步长 `0.1 meV` → 251 点；梯形积分。收敛判据：步长减半 `ΔG/G < 1%`。
 
 ### 3.5 电极与自能
 
-**必须是真半无限铅**，不能沿用 `self_energy.py` 的常数虚部模型（G6）。理由不是洁癖：常数 σ 会把 `G_ph` 变成 `σ_near/σ_far` 的函数，而这两个数在声子问题里没有任何标定依据（电子的 0.05/0.10 Ha 来自冻结的 BDT/C4/2CN 基准，与声子无关）。
+**必须是真半无限 lead**，不能沿用 `self_energy.py` 的常数虚部模型（G6）。理由不是洁癖：常数 σ 会把 `G_ph` 变成 `σ_near/σ_far` 的函数，而这两个数在声子问题里没有任何标定依据（电子的 0.05/0.10 Ha 来自冻结的 BDT/C4/2CN 基准，与声子无关）。
 
-主层（principal layer）取 **一层 Au(111)（3×3 = 9 原子）**，`D_L`/`V_L` 为 27×27，decimation 每次迭代 `O(27³)`，251 个频点 < 1 s。铅的力常数用**冻结数据文件**（§5.4），不每次现算。
+主层（principal layer）取 **一层 Au(111)（3×3 = 9 原子）**，`D_L`/`V_L` 为 27×27，decimation 每次迭代 `O(27³)`，251 个频点 < 1 s。lead 的力常数用**冻结数据文件**（§5.4），不每次现算。
 
-**这套结构与文献 A 支完全同构**：Pauly 组的电极力常数也是**另算一次体相**（原文「a big cluster of several hundred atoms」）再做 decimation，器件区与铅的化学环境不一致是他们**显式接受的近似**（[Cui et al., Nature **572**, 628 (2019)](https://doi.org/10.1038/s41586-019-1420-z)；[Klöckner et al., PRB **95**, 245404 (2017)](https://arxiv.org/abs/1704.00591)）。我们唯一的差别是：铅的 FC 来自**二维周期板**而不是团簇，因此带横向 k 采样；团簇电极做不到这一点，只能给分立谱。
+**这套结构与文献 A 支完全同构**：Pauly 组的电极力常数也是**另算一次体相**（原文「a big cluster of several hundred atoms」）再做 decimation，器件区与 lead 的化学环境不一致是他们**显式接受的近似**（[Cui et al., Nature **572**, 628 (2019)](https://doi.org/10.1038/s41586-019-1420-z)；[Klöckner et al., PRB **95**, 245404 (2017)](https://arxiv.org/abs/1704.00591)）。我们唯一的差别是：lead 的 FC 来自**二维周期板**而不是团簇，因此带横向 k 采样；团簇电极做不到这一点，只能给分立谱。
 
 ### 3.6 数值纪律（fail-closed，与本仓现有风格一致）
 
 | 检查 | 阈值 | 动作 |
 |---|---|---|
-| `T_ph(ħω > 19.5 meV)` | > 1e-6 | **raise**（铅里没有模式，非零即错） |
+| `T_ph(ħω > 19.5 meV)` | > 1e-6 | **raise**（lead 里没有模式，非零即错） |
 | `T_ph(ω→0)` | > 3 | **raise**（超过声学支数） |
 | `G_ph` | > `3G_Q` | **raise**（物理不可能） |
 | 器件区虚频 | < −10 cm⁻¹ | **raise**；`−10…0` 记 warning（金属界面软模噪声） |
@@ -194,7 +194,7 @@ T_ph(ω)    = (1/N_k) Σ_k w_k · Tr[G^r_k Γ_L,k G^a_k Γ_R,k]
 
 三个独立理由，任何一个都足以否决：
 
-1. **主层不存在**。`Electrode111` 的层原子数是三角数 `1, 3, 6, 10, 15, …`（`electrode.py`），**层与层不等价**。decimation 要求铅是同一主层的无限重复；金字塔既无横向周期性，也无重复单元，`Σ_L/R` 无法定义。
+1. **主层不存在**。`Electrode111` 的层原子数是三角数 `1, 3, 6, 10, 15, …`（`electrode.py`），**层与层不等价**。decimation 要求 lead 是同一主层的无限重复；金字塔既无横向周期性，也无重复单元，`Σ_L/R` 无法定义。
 2. **谱是离散的，而且正好缺掉最要紧的那一段**。有限团簇的振动谱是一堆分立峰，没有 0–19.5 meV 的连续声子带。而全部热流都走这一段。用 η 把分立峰抹成连续谱，`G_ph` 就变成 η 的函数——**这是把数值伪影当物理**。
 3. **唯一的替代方案是唯象的**。若沿用 `self_energy.py` 的常数虚部吸收边界，`G_ph` 由 `σ_near=0.05`/`σ_far=0.10` 决定，而这两个数是为电子链的冻结基线标定的，与声子无任何关系。得到的数无法写进论文。
 
@@ -205,7 +205,7 @@ T_ph(ω)    = (1/N_k) Σ_k w_k · Tr[G^r_k Γ_L,k G^a_k Γ_R,k]
 | | A. 周期板 + 自写 NEGF（**推荐**） | B. 现成包（GOLLUM / PHtrans / QuantumATK） | C. 团簇 + 唯象 σ（否决） |
 |---|---|---|---|
 | 几何 | Au(111) 3×3、每侧 4 层、真空 ≥15 Å、`k_grid 3 3 1` | 同 A | 复用现有 92 原子团簇 |
-| 铅模型 | 真半无限（decimation） | 真半无限 | 常数虚部 |
+| lead 模型 | 真半无限（decimation） | 真半无限 | 常数虚部 |
 | 力常数来源 | 本仓 FHI-aims 有限位移 | **必须换电子结构引擎**：GOLLUM 的声子模式读 SIESTA `.FC`（[Gollum2 manual](http://www.physics.lancs.ac.uk/gollum/images/manual/Gollum2_manual.pdf)，**且 gpu1 上没装**）；PHtrans 不吃原始 `.FC`，要 TSHS 类容器（[TBtrans/PHtrans 手册](https://siesta-project.gitlab.io/-/documentation/siesta-docs/-/jobs/14622928758/artifacts/public/reference/tbtrans.html)，SIESTA 5.4.2 与 phtrans 二进制**已装在 gpu1**，见 §12）；QuantumATK 商业 | 本仓 FHI-aims |
 | 与现有链的关系 | 加新几何，**电子链零改动** | 需要引入第二套 DFT 引擎与格式转换 | 复用，但结果不可发表 |
 | **文献先例** | ✅ **本方案就是 A 支本身**：Pauly 组（TURBOMOLE + DFPT + 自研 NEGF + decimation）2016–2019 连续四篇；Sadeghi–Lambert 组（SIESTA + 0.01 Å 中心差分 + 自研 NEGF）2015–2021。**两组的输运都是自写码** | ❌ **检索范围内没有一篇用它算过单分子结 `κ_ph`**：GOLLUM 2014 原文无声子模块；PHtrans 实际输入是 GULP；QuantumATK 模块零文献（附录 A-10～A-12） | ❌ 无 |
@@ -232,7 +232,7 @@ T_ph(ω)    = (1/N_k) Σ_k w_k · Tr[G^r_k Γ_L,k G^a_k Γ_R,k]
 层数：每侧 4 层（报告 4–6；4 层是成本/收敛折中，§9 T8 验证）
 真空：≥15 Å（FHI-aims 对 ≥50 Å 真空几乎不计成本，可直接给 20 Å）
 器件区（参与位移）：分子 18 + 每侧 2 层 36 = 54 原子
-铅（半无限）：第 3 层起，力常数取冻结文件
+lead（半无限）：第 3 层起，力常数取冻结文件
 k 点：3×3×1
 总原子数：≈ 90（72 Au + 18 原子分子；nap-sh 实测分子为 92−74=18 原子）
 ```
@@ -248,7 +248,7 @@ k 点：3×3×1
 - **中心差分**：每个器件区原子 `±0.01 Å` × 3 方向 → `6·N_dev` 个位移。`N_dev = 54`（nap-sh）→ **324 个 SCF**。
 - 为什么用中心差分而不是前向（3N）：本仓没有 DFPT 交叉验证，`K_ij = K_ji` 是**唯一可用的内部一致性检验**；前向差分的对称性误差是 O(δ)，中心差分是 O(δ²)。代价 2×，用数组并发摊掉。
 - 位移幅度 `0.01 Å` 默认（报告 §3.3）；开发期验 `0.005/0.02 Å` 对 `∫T_ph dω` 的影响 < 3%（§9 T6）。
-- 只位移器件区，其余原子冻结（`constrain_relaxation .true.`）——这就是「extended molecule + frozen leads」的标准做法。力要记录**全部原子**，这样 `V_{c,lead}`（器件区 ↔ 铅第一层）自然落在同一个矩阵里。
+- 只位移器件区，其余原子冻结（`constrain_relaxation .true.`）——这就是「extended molecule + frozen leads」的标准做法。力要记录**全部原子**，这样 `V_{c,lead}`（器件区 ↔ lead 第一层）自然落在同一个矩阵里。
 - **文献先例**：`0.01 Å` 中心差分正是 B 支的标准做法——Mosso 2019 的 SI 给出 `K_ij = [F_i(δ) − F_i(−δ)]/2δ`，Sadeghi 2015 把整个流程写全。A 支用 DFPT 解析 Hessian，**根本没有「位移幅度」这个参数**；我们与 B 支同构，与 A 支的差别**纯粹是引擎能力**（FHI-aims 221103 无 DFPT，§12.1），不是方法选择。
 - **一个刻意不采用的技巧**：Mosso 把对角块用动量守恒补齐（`K_ii = −Σ_{j≠i}K_ij`）。本方案**保留自作用力测得的对角块**，因为 §3.6 要拿 `‖D·1‖` 当**独立的质量指标**；若对角块由 ASR 构造性给出，这个残差恒为 0，检查就退化成空检查。ASR 投影放在**测完残差之后**（§3.4），两者不冲突。
 
@@ -298,7 +298,7 @@ k_grid 3 3 1
 
 去掉 `output aitranss`/`output mulliken`/`restart aims.restart`（热导不需要，省时）。
 
-**铅力常数**：`src/smj/junction/data/au111_3x3_l4.json` 冻结文件，由 `scripts/gen_au_lead_fc.py` 一次性生成（体相 Au 同一面内胞、周期 z、位移中央主层的 9 个原子 = 54 个 SCF）。文件带 `in_plane`/`layers`/`method`/`sha256` 元数据；配置里的面内胞与之不匹配 → **fail closed**。理由：铅的力常数是**材料常数**，不是体系属性，与冻结 BDT/C4/2CN 基线同一设计哲学。
+**lead 力常数**：`src/smj/junction/data/au111_3x3_l4.json` 冻结文件，由 `scripts/gen_au_lead_fc.py` 一次性生成（体相 Au 同一面内胞、周期 z、位移中央主层的 9 个原子 = 54 个 SCF）。文件带 `in_plane`/`layers`/`method`/`sha256` 元数据；配置里的面内胞与之不匹配 → **fail closed**。理由：lead 的力常数是**材料常数**，不是体系属性，与冻结 BDT/C4/2CN 基线同一设计哲学。
 
 **FC 截断半径取 10 Å**（在文件里记 `fc_cutoff_A`）。依据：[Müller et al., PRB **106**, 195401 (2022)](https://arxiv.org/abs/2208.09171) 把 `r_c` 从 2 扫到 52 Å，最终取 **10 Å**；本器件 4 层沿 z 的跨度是 `3 × 2.3545 = 7.06 Å`，面内 Au(111) 最近邻 `a/√2 = 2.885 Å`，10 Å 覆盖约 3.5 个近邻壳层，足够。截断小于 7 Å 会切断层间耦合，必须 raise。
 
@@ -330,7 +330,7 @@ t_SCF ≈ 1563.9 s × (N_atoms/92) × (N_kpts/1) × (cycles/68)
 
 > **第一个位移就是标定实验**：跑 `disp_0000` 后看 `aims.out` 的「Number of self-consistency cycles」，若 > 40 说明 restart 没生效（检查文件是否随位移目录复制过去），此时退回上表的保守上界。
 
-> **不确定度的诚实边界**：`device_layers=1` 时器件区与铅的耦合只到一层，界面 FC 的截断误差未标定。默认 `2`；降到 `1` 必须在报告里显式标注。
+> **不确定度的诚实边界**：`device_layers=1` 时器件区与 lead 的耦合只到一层，界面 FC 的截断误差未标定。默认 `2`；降到 `1` 必须在报告里显式标注。
 
 **与文献的成本对照（唯一的公开 core-hour 数据）**：[Müller, Cuevas, Pauly & Nielaba, PRB **106**, 195401 (2022)](https://arxiv.org/abs/2208.09171) 逐字写「the dynamical matrix ... **is typically the most time-demanding computational step**」，并给了三档实测：NEMD 单次 288 core-h × 20 构型 × 14 温度 ≈ **80,640 core-h**；温度依赖 FC ≈ **13,440 core-h**；固定温度 FC ≈ **960 core-h**。
 
@@ -449,7 +449,7 @@ thermal:
 | `ph_asr_residual` | engineering | `< 1e-6 eV/Å²` | — |
 | `ph_fc_symmetry` | engineering | `‖K−Kᵀ‖/‖K‖ < 5%` | — |
 | `ph_imaginary_modes` | physical | 无 `< −10 cm⁻¹` | 报告 §6 陷阱④（−10 cm⁻¹ 噪声容限） |
-| `ph_lead_cell_match` | engineering | 冻结铅 FC 的面内胞 == 器件配置 | — |
+| `ph_lead_cell_match` | engineering | 冻结 lead FC 的面内胞 == 器件配置 | — |
 | `ph_grid_independence` | engineering | 步长减半 `ΔG/G < 1%` | — |
 
 `physical` 四条都带 `source`，满足 `lint_registry()` 的铁律；`KNOWN_GAPS` 只减不增。
@@ -458,7 +458,7 @@ thermal:
 
 ### 6.6 报告与 CLI
 
-- `report.py`：新增 `## 5. 热导`（现有 `## 4. 输运结果` 在 1010-1043 之后）。表行：`G_ph`、`G_Q`、`N_eff`、`ZT_e`、`ZT_total`、`T_ph(ω>带顶)`、ASR 残差、虚频数、铅 FC 文件 sha。图：`T_ph(ω)` + 累积 `G_cum(ω)` 双轴。
+- `report.py`：新增 `## 5. 热导`（现有 `## 4. 输运结果` 在 1010-1043 之后）。表行：`G_ph`、`G_Q`、`N_eff`、`ZT_e`、`ZT_total`、`T_ph(ω>带顶)`、ASR 残差、虚频数、lead FC 文件 sha。图：`T_ph(ω)` + 累积 `G_cum(ω)` 双轴。
 - `report.py` 的 `_transport_summary`（:391）不动；热导单独一个 `_thermal_summary`。
 - `cli.py`：新增子命令 `smj thermal`（`--run/--prepare/--submit/--wait/--collect`，照 `cmd_stage`:637 的形状），以及 `smj thermal --analyze-only`（只重跑 NEGF，不重跑 DFT）。
 - `state.py`：`STAGE_ORDER` **不变**；新增 `THERMAL_STAGES = ("thermal_device", "thermal_relax", "thermal_fc", "thermal_negf")` 供 `smj thermal` 按序调用。
@@ -486,7 +486,7 @@ B1 可以完全离线做，是**风险最低、信息量最大**的一批：解�
 | **D1** | 热导用新几何（周期板）还是复用金字塔团簇？ | **新几何** | §4.1；复用会让 `G_ph` 变成唯象 σ 的函数 |
 | **D2** | 自写 NEGF 还是接 GOLLUM/PHtrans/QuantumATK？ | **自写** | ① 三个包都要求换电子结构引擎（§4.2）；② **文献侧：这个领域没有一支主线用现成声子输运包**——Pauly 组与 Sadeghi 组的输运都是自写码，GOLLUM 2014 原文无声子模块，PHtrans 实际输入是 GULP，QuantumATK 模块零文献（§4.2、附录 A-10～A-12）；③ 自写 NEGF 的核心 < 200 行，且有解析基准可钉（T2–T4） |
 | **D3** | 是否申请把集群 FHI-aims 从 221103 升到 ≥240507 用 DFPT？ | **不升**（结论已从「并行提申请」改为否定，理由见 §12.1） | ① 官方文档：周期体系的 DFPT「only limited support (**LDA functional**, and systems that do not require large memory)」——我们的 slab 用 PBE，**升了也用不上**；② 官方对「其他泛函 + 大体系」推荐的恰恰是 FHI-vibes 有限位移，即本方案路线；③ 升级风险不对称：`aitranss 071813` 与全部冻结基线绑在 221103 上。若将来要做，只能**旁装**（不替换 221103）并在小团簇上单独验证 |
-| **D4** | 铅力常数冻结入库还是每次现算？ | **冻结入库** | 是材料常数；与 BDT/C4/2CN 冻结基线同一哲学；省 54 个 SCF/次 |
+| **D4** | lead 力常数冻结入库还是每次现算？ | **冻结入库** | 是材料常数；与 BDT/C4/2CN 冻结基线同一哲学；省 54 个 SCF/次 |
 | **D5** | 中心差分（6N）还是前向（3N）？ | **中心差分** | 唯一可用的内部一致性检验是 `K_ij=K_ji`（无 DFPT 交叉验证）；2× 成本由数组并发吸收 |
 | **D6** | 基组用 `light` 还是 `tight`？ | **生产 `light`（与电子链一致），开发期做一次 light vs tight 对比** | 换基组会让热导与电子结果不可比；但 FC 对基组比能量敏感，必须量一次偏差并写进报告 |
 | **D7** | `G_ph` 与 `ZT_total` 进不进 `smj review` 的 gate？ | **进，但 `ZT_total` 为 `engineering` 非门控** | `G_ph` 的物理判据可以门控；`ZT_total` 依赖电子结果，取不到时为 `null`，不能门控 |
@@ -675,7 +675,7 @@ FHI-vibes 就是 phonopy + 有限位移。也就是说：对 PBE、对 90 原子
 
 - 「热输运由分子与金属电极之间的**声子失配**支配」——Mosso et al. 摘要。
 - 「非谐会散射**携带大部分热量的低频声子**」——Li et al. 2021。
-- 分子内 100–400 meV 的振动**弹性透射严格为零**（远高于 19.5 meV 的铅带顶）；玻色因子压制（300 K、100 meV 时 `e^{-E/k_BT}≈0.02`）只是次要原因。**报告 §0 的结论对，但理由不完整**——主因是能带失配，不是玻色因子。
+- 分子内 100–400 meV 的振动**弹性透射严格为零**（远高于 19.5 meV 的 lead 带顶）；玻色因子压制（300 K、100 meV 时 `e^{-E/k_BT}≈0.02`）只是次要原因。**报告 §0 的结论对，但理由不完整**——主因是能带失配，不是玻色因子。
 
 **B-4 同族体系的更多数值（文献调研补充，供 D9 对账带用）**
 

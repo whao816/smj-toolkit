@@ -189,7 +189,7 @@ thermal:
     "thermal:\n  electrode:\n    layers: 4\n    device_layers: 4\n",
     "thermal:\n  fc:\n    displacement: 0.0\n",
     "thermal:\n  fc:\n    displacement: 0.2\n",
-    "thermal:\n  fc:\n    cutoff: 6.5\n",              # 4 层铅跨度就是 7.06 Å
+    "thermal:\n  fc:\n    cutoff: 6.5\n",              # 4 层 lead 跨度就是 7.06 Å
     "thermal:\n  negf:\n    eta_mev: 0.0\n",
     "thermal:\n  temperature: -5\n",
 ])

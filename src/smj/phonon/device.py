@@ -1,7 +1,7 @@
-"""周期板器件构造:Au(111) 3×3 × layers + 分子,按角色划分器件区/铅区。
+"""周期板器件构造:Au(111) 3×3 × layers + 分子,按角色划分器件区/lead 区。
 
 为什么不复用电子链的金字塔团簇(方案 §4.1):金字塔团簇没有面内周期性,
-无法定义横向 k 采样,也无法给半无限铅一个确定的表面元胞;声子 NEGF 需要的是
+无法定义横向 k 采样,也无法给半无限 lead 一个确定的表面元胞;声子 NEGF 需要的是
 "二维周期板 + 沿 z 的层堆叠",而不是一个尖朝分子的原子堆。
 
 坐标约定:
@@ -63,10 +63,10 @@ class DeviceSpec:
 
     def __post_init__(self):
         if self.electrode_layers < 2:
-            raise ValueError("electrode_layers 至少 2(表面层 + 至少一层铅)")
+            raise ValueError("electrode_layers 至少 2(表面层 + 至少一层 lead)")
         if not 1 <= self.device_layers < self.electrode_layers:
             raise ValueError(
-                "device_layers 必须在 1..%d 之间(留至少一层给冻结铅)"
+                "device_layers 必须在 1..%d 之间(留至少一层给冻结 lead)"
                 % (self.electrode_layers - 1))
         if self.vacuum_A <= 0:
             raise ValueError("vacuum_A 必须为正")

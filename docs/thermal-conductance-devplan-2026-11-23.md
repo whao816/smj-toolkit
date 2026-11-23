@@ -39,7 +39,7 @@
 | `src/smj/phonon/landauer.py` | 130 | `thermal_conductance`（唯一公式源） | M1-T4 |
 | `src/smj/phonon/dynamical.py` | 100 | `dynamical_matrix`、`imaginary_modes` | M1-T5 |
 | `src/smj/phonon/forces.py` | 95 | `read_forces` | M2-T3 |
-| `src/smj/phonon/fc.py` | 260 | 位移生成、FC 组装、ASR、铅 FC 装载与拼接 | M2-T4 |
+| `src/smj/phonon/fc.py` | 260 | 位移生成、FC 组装、ASR、lead FC 装载与拼接 | M2-T4 |
 | `src/smj/phonon/device.py` | 380 | 周期板构造、角色/层号、S–H 去除 | M2-T5 |
 | `src/smj/phonon/extract_forces.py` | 60 | **远程**用（仅 stdlib），阵列作业里把 `aims.out` → `forces.json` | M2-T6 |
 | `src/smj/junction/templates/control_thermal_relax.in` | 40 | 弛豫模板 | M2-T2 |
@@ -48,8 +48,8 @@
 | `src/smj/stages/thermal_relax.py` | 140 | 阶段 | M3-T3 |
 | `src/smj/stages/thermal_fc.py` | 260 | 阶段（数组作业） | M3-T4 |
 | `src/smj/stages/thermal_negf.py` | 180 | 阶段（纯后处理） | M3-T5 |
-| `src/smj/junction/data/au111_3x3_l4.json` | 数据 | 冻结铅力常数（约 200 KB） | M4-T2 |
-| `scripts/gen_au_lead_fc.py` | 200 | 一次性生成铅 FC | M4-T2 |
+| `src/smj/junction/data/au111_3x3_l4.json` | 数据 | 冻结 lead 力常数（约 200 KB） | M4-T2 |
+| `scripts/gen_au_lead_fc.py` | 200 | 一次性生成 lead FC | M4-T2 |
 | `tests/phonon/`（10 个文件） | 约 900 | 见 §2 | M1…M5 |
 | `tests/data/aims_force_block_20atoms.out` | 约 40 行 | 力解析夹具 | M2-T3 |
 | `tests/test_thermal_integration.py` | 120 | `@pytest.mark.integration` | M5-T5 |
@@ -113,7 +113,7 @@
   ```python
   def surface_gf(omega_ev, d_layer, v_coupling, eta_ev,
                  *, max_iter: int = 500, tol: float = 1e-12) -> np.ndarray:
-      """返回半无限铅的表面格林函数 g_surf(ω)，形状 (n,n)，n = d_layer 的维数。
+      """返回半无限 lead 的表面格林函数 g_surf(ω)，形状 (n,n)，n = d_layer 的维数。
       d_layer: 主层动力学矩阵，单位 eV²；v_coupling: 相邻主层耦合，单位 eV²。"""
   ```
 - **实现要点**：标准 López-Sancho 迭代 `g ← (ω²I + iη − d − v·g·v†)⁻¹`，收敛判据 `‖g_new − g_old‖_F < tol`；**必须支持批量 ω**（输入 `(Nω, n, n)`，避免 251 次 Python 循环）。`η` 用 `iη` 加在 `ω²` 上。
@@ -247,7 +247,7 @@
   - `K[3i+a, 3j+b] = −(F[+,i,a][3j+b] − F[−,i,a][3j+b]) / (2δ)`；只有 `i ∈ device` 的行有值。
   - `apply_asr`：先算 `acoustic_sum_residual(K)`（**在 K 上**），再对 D 做正交投影 `D ← (I−P)D(I−P)`，`P = T(TᵀT)⁻¹Tᵀ`，T 为三条质量加权平移模。返回 `(D_proj, residual)`。
   - `load_lead_fc`：读 JSON，校验 `in_plane`/`layers`/`fc_cutoff_A`/`sha256`；`sha256` 不符或面内胞与配置不符 → raise（`ph_lead_cell_match` 的数据源）。
-  - `assemble_full_fc`：把 `k_dev` 填进器件行，铅行由 `LeadFC` 的层间块填充；重叠区（器件区与铅的交界）用**器件侧实测值**优先，并记录冲突数。
+  - `assemble_full_fc`：把 `k_dev` 填进器件行，lead 行由 `LeadFC` 的层间块填充；重叠区（器件区与 lead 的交界）用**器件侧实测值**优先，并记录冲突数。
 - **测试**：人造 3 原子体系的解析 K；中心差分对 O(δ²) 误差的收敛（δ→δ/2 时误差 /4）；ASR 投影后 `residual < 1e-12`；`sha256` 篡改 → raise；`k_dev` 与 `lead` 重叠冲突 > 0 时 warning 而非 raise。
 - **DoD**：`fc.py` 全部纯函数、无 IO 副作用（除 `load_lead_fc`）。
 
@@ -313,7 +313,7 @@
 #### M3-T5 `thermal_negf` 阶段
 
 - **文件**：`src/smj/stages/thermal_negf.py`
-- **实现要点**：`needs_submit=False`；读 `fc_device.npz` + 冻结铅 FC → `assemble_full_fc` → 取器件块 `d_c`、铅块 `d_l/d_r`、耦合 `v_l/v_r` → 251 个 ω → `transmission`（`k_weights=None`，**N_k=1**，见 §8 D10）→ `thermal_conductance` → 写 `thermal.json`、`transmission_ph.csv`、`conductance_cum.csv`；`plotting` 出 png/pdf（失败只记 note，与 `junction_analyze` 同风格）；只读 `junction_analyze/results.json` 取 `k_e`/`ZT_e`，取不到写 `null` + warning。
+- **实现要点**：`needs_submit=False`；读 `fc_device.npz` + 冻结 lead FC → `assemble_full_fc` → 取器件块 `d_c`、lead 块 `d_l/d_r`、耦合 `v_l/v_r` → 251 个 ω → `transmission`（`k_weights=None`，**N_k=1**，见 §8 D10）→ `thermal_conductance` → 写 `thermal.json`、`transmission_ph.csv`、`conductance_cum.csv`；`plotting` 出 png/pdf（失败只记 note，与 `junction_analyze` 同风格）；只读 `junction_analyze/results.json` 取 `k_e`/`ZT_e`，取不到写 `null` + warning。
 - **测试**：对合成 FC（人造）跑通；`thermal.json` 通过 schema 校验；缺 `results.json` 时 `ZT_total=null` 且不失败。
 - **DoD**：纯后处理 < 10 s；`--analyze-only` 可单独重跑。
 
@@ -342,7 +342,7 @@
 - **内容**：本地 `smj thermal --prepare`（4 阶段）→ 检查 324 个目录、脚本、元数据；用 `preflight` 校验 `geometry.in`。
 - **DoD**：无 `UNCONFIGURED` 占位；`--time`/`--mem` 符合 §5.2 三条实测约束。
 
-#### M4-T2 冻结铅力常数
+#### M4-T2 冻结 lead 力常数
 
 - **文件**：`scripts/gen_au_lead_fc.py`、`src/smj/junction/data/au111_3x3_l4.json`
 - **内容**：体相 Au、3×3 面内胞、沿 z 周期（≥8 层）、位移中央主层 9 个原子 × 3 轴 × ± → **54 个 SCF**；提取层内与层间 FC 到 10 Å；写 `in_plane`/`layers`/`method`/`fc_cutoff_A`/`sha256`。
@@ -397,7 +397,7 @@
 #### M5-T3 报告节
 
 - **文件**：`src/smj/report.py`（`:1010` 之后）、`_thermal_summary`
-- **实现要点**：`## 5. 热导` 表（`G_ph`/`G_Q`/`N_eff`/`ZT_e`/`ZT_total`/`T_ph(ω>带顶)`/ASR/虚频数/铅 FC sha）+ `T_ph(ω)` 与 `G_cum(ω)` 双轴图；**必须显式写明**「热导器件几何（周期板 ~90 原子 3×3）与电子链几何（金字塔团簇 92 原子）不是同一体系，`G_ph` 与 `G/G0` 不可并列」。
+- **实现要点**：`## 5. 热导` 表（`G_ph`/`G_Q`/`N_eff`/`ZT_e`/`ZT_total`/`T_ph(ω>带顶)`/ASR/虚频数/lead FC sha）+ `T_ph(ω)` 与 `G_cum(ω)` 双轴图；**必须显式写明**「热导器件几何（周期板 ~90 原子 3×3）与电子链几何（金字塔团簇 92 原子）不是同一体系，`G_ph` 与 `G/G0` 不可并列」。
 - **测试**：报告快照含该警告句；缺 thermal.json 时报告不崩。
 - **DoD**：`smj report` 在 nap-sh 的既有 run 上零变化（无 thermal.json）。
 
@@ -456,7 +456,7 @@ M2 (4.25 人日) ──┘
 | M2-T1 | **单独一个提交**（唯一内核改动 + provenance 刷新 + demo 对账） | `git revert` 一个提交，基线立刻回来 |
 | M2 其余 | 每任务一提交 | 删文件 |
 | M3 | 配置/阶段/CLI 各一提交 | 删注册行即完全回退 |
-| M4 | 不提交数据（`runs/` 已 gitignore）；铅 FC 单独一个提交 | 删 JSON 文件 |
+| M4 | 不提交数据（`runs/` 已 gitignore）；lead FC 单独一个提交 | 删 JSON 文件 |
 | M5 | 判据/报告/schema 各一提交 | 删判据条目（`KNOWN_GAPS` 只减不增，注意不要反向） |
 
 **整体回滚点**：`thermal.enabled` 默认 `false` + 阶段不进 `STAGE_ORDER` + 新包独立 → 把 `src/smj/phonon/` 与 4 个 stage 文件删掉、`criteria.py` 的 10 条去掉，电子链回到 `608368e` 的行为。
@@ -482,7 +482,7 @@ M2 (4.25 人日) ──┘
 
 | 项 | 内容 | 位移数 | 墙钟（8 路） |
 |---|---|---|---|
-| 铅 FC | 体相 54 SCF | 54 | 2–4 h |
+| lead FC | 体相 54 SCF | 54 | 2–4 h |
 | `thermal_relax` | 1 个弛豫作业 | — | 1–2 h |
 | 单位移标定 | `disp_0000` | 1 | 0.5–1 h |
 | **生产 FC** | 全量 | **324** | **20–36 h** |
@@ -522,7 +522,7 @@ M2 (4.25 人日) ──┘
 |---|---|---|---|
 | **D9** | 要不要跑 T14 文献对账（C8 或 BDT）？ | **建议跑一次**，但须用户明确同意 | +1 个完整 FC 集（20–36 h）；结果单列 |
 | **D10** | NEGF 的横向 k：`N_k=1`（3×3 超胞的 Γ）还是真 k 分辨？ | **`N_k=1`**。3×3 超胞的 Γ 已经把 9 个原胞 q 点折叠进来，是标准做法；真 k 分辨需要跨胞 FC，而有限位移只给胞内力常数。API 保留 `k_weights`，`N_k=1` 时归一化自动为 1 | 若坚持 k 分辨，M3-T5 增加 ~2 人日且需要 3×3×3 超胞的 DFT |
-| **D11** | 铅主层厚度：1 层（27 DOF，只保留 V₁）还是 4 层（108 DOF，耦合只到相邻主层）？ | **先 1 层**，M4-T5 加一条 T8b 量 `V₂` 的影响；若 `ΔG/G > 5%` 改 4 层（NEGF 代码不变，只是矩阵变大） | 影响 `G_ph` 的 5–10% 量级 |
+| **D11** | lead 主层厚度：1 层（27 DOF，只保留 V₁）还是 4 层（108 DOF，耦合只到相邻主层）？ | **先 1 层**，M4-T5 加一条 T8b 量 `V₂` 的影响；若 `ΔG/G > 5%` 改 4 层（NEGF 代码不变，只是矩阵变大） | 影响 `G_ph` 的 5–10% 量级 |
 | **D12** | 热导阶段要不要出现在 `smj status`/`smj plan` 的默认输出里？ | **不出现**，只在 `smj thermal` 下可见 | M3-T7 的回归用例 |
 
 > D10 与 D11 是**本计划对方案的两处技术收紧**，都写在任务里；若用户不同意，按备选走，人日与机时相应增加。

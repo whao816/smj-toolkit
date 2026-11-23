@@ -144,8 +144,8 @@ def evaluate_thermal(
     else:
         checks.append(_check(
             "ph_lead_cell_match", passed=lead_cell_match,
-            detail="冻结铅 FC 的面内胞与本次器件配置一致" if lead_cell_match
-                   else "冻结铅 FC 的面内胞与本次器件配置**不一致**"))
+            detail="冻结 lead FC 的面内胞与本次器件配置一致" if lead_cell_match
+                   else "冻结 lead FC 的面内胞与本次器件配置**不一致**"))
 
     passed = None
     detail = "能量网格步长 %.3f meV，粗化一半后重算" % float(thermal["energy_step_meV"])

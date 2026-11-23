@@ -1,4 +1,4 @@
-"""有限位移力常数:位移集、中心差分组装、声学求和规则、铅力常数拼接。
+"""有限位移力常数:位移集、中心差分组装、声学求和规则、lead 力常数拼接。
 
 几条刻意的取舍(方案 §5.1、§5.4、D11):
 
@@ -7,8 +7,8 @@
 * **不在这里做 ASR 对角补齐**。Mosso 等人把对角块用 ``K_ii = -Σ_{j≠i} K_ij``
   补齐,这会让 ``acoustic_sum_residual`` 变成恒为零的空检查。本模块的做法是
   **先**用实测 K 算出残差(作为独立的力常数质量指标),**再**投影。
-* 铅 FC 是**冻结入库**的(``lead_fc.npy`` + 带 sha256 的 ``lead_fc.json``),
-  不与器件一起重算 —— 器件区的化学环境与体相铅不同,混在一起算会两头不靠。
+* lead FC 是**冻结入库**的(``lead_fc.npy`` + 带 sha256 的 ``lead_fc.json``),
+  不与器件一起重算 —— 器件区的化学环境与体相 lead 不同,混在一起算会两头不靠。
 """
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def assemble_fc(disps: list[dict], forces_by_disp, n_atoms: int) -> np.ndarray:
 
     ``K[3i+a, 3j+b] = -(F_i^a(+δ) - F_i^a(-δ)) / (2δ)``,其中 ``i`` 枚举
     ``disps`` 里的器件原子(升序),``j`` 枚举全部原子。只有器件原子的行有值;
-    铅行由 :func:`assemble_full_fc` 从冻结的铅力常数填。
+    lead 行由 :func:`assemble_full_fc` 从冻结的 lead 力常数填。
     """
     n_atoms = int(n_atoms)
     atoms = _device_atoms(disps)
@@ -176,7 +176,7 @@ def apply_asr(dynamical_ev2, masses) -> tuple[np.ndarray, float]:
 
 @dataclass(frozen=True)
 class LeadFC:
-    """冻结的体相铅力常数(2D 周期板,``layers`` 个原子层 × ``in_plane`` 胞)。"""
+    """冻结的体相 lead 力常数(2D 周期板,``layers`` 个原子层 × ``in_plane`` 胞)。"""
 
     element: str
     a_lattice_A: float
@@ -210,7 +210,7 @@ def save_lead_fc(directory, force_constants, *, element: str, a_lattice_A: float
     array = np.ascontiguousarray(np.asarray(force_constants, dtype=float))
     n = int(n_atoms_per_layer) * int(layers)
     if array.shape != (3 * n, 3 * n):
-        raise ValueError("铅力常数形状应为 (%d, %d),得到 %r"
+        raise ValueError("lead 力常数形状应为 (%d, %d),得到 %r"
                          % (3 * n, 3 * n, array.shape))
     npy = root / "lead_fc.npy"
     np.save(npy, array)
@@ -239,32 +239,32 @@ def save_lead_fc(directory, force_constants, *, element: str, a_lattice_A: float
 
 
 def load_lead_fc(path) -> LeadFC:
-    """读冻结铅力常数并校验 sha256;任何不符都 raise,不做"尽力而为"。"""
+    """读冻结 lead 力常数并校验 sha256;任何不符都 raise,不做"尽力而为"。"""
     root = Path(path)
     if root.is_dir():
         root = root / "lead_fc.json"
     if not root.exists():
-        raise FileNotFoundError("找不到铅力常数元数据: %s" % root)
+        raise FileNotFoundError("找不到 lead 力常数元数据: %s" % root)
     payload = json.loads(root.read_text(encoding="utf-8"))
     for key in ("element", "a_lattice_A", "n_atoms_per_layer", "layers",
                 "in_plane", "fc_cutoff_A", "force_constants_file", "sha256"):
         if key not in payload:
-            raise ValueError("铅力常数元数据缺少字段 %r: %s" % (key, root))
+            raise ValueError("lead 力常数元数据缺少字段 %r: %s" % (key, root))
     npy = root.parent / payload["force_constants_file"]
     if not npy.exists():
-        raise FileNotFoundError("找不到铅力常数数组: %s" % npy)
+        raise FileNotFoundError("找不到 lead 力常数数组: %s" % npy)
     actual = _sha256_file(npy)
     if actual != payload["sha256"]:
         raise ValueError(
-            "铅力常数 sha256 不符: 元数据 %s,实测 %s (%s)"
+            "lead 力常数 sha256 不符: 元数据 %s,实测 %s (%s)"
             % (payload["sha256"][:16], actual[:16], npy))
     array = np.load(npy)
     n = int(payload["n_atoms_per_layer"]) * int(payload["layers"])
     if array.shape != (3 * n, 3 * n):
-        raise ValueError("铅力常数形状应为 (%d, %d),得到 %r"
+        raise ValueError("lead 力常数形状应为 (%d, %d),得到 %r"
                          % (3 * n, 3 * n, array.shape))
     if not np.all(np.isfinite(array)):
-        raise ValueError("铅力常数含非有限数值: %s" % npy)
+        raise ValueError("lead 力常数含非有限数值: %s" % npy)
     return LeadFC(
         element=str(payload["element"]),
         a_lattice_A=float(payload["a_lattice_A"]),
@@ -279,7 +279,7 @@ def load_lead_fc(path) -> LeadFC:
 
 @dataclass(frozen=True)
 class FullFCMeta:
-    """把器件行/铅行映射到完整 ``(3N, 3N)`` 矩阵所需的索引。"""
+    """把器件行/lead 行映射到完整 ``(3N, 3N)`` 矩阵所需的索引。"""
 
     n_atoms: int
     device_indices: tuple[int, ...]
@@ -298,7 +298,7 @@ class FullFCMeta:
             overlap = seen & set(values)
             if overlap:
                 raise ValueError(
-                    "器件区与铅区下标重叠: %s" % sorted(overlap)[:5])
+                    "器件区与 lead 区下标重叠: %s" % sorted(overlap)[:5])
             seen |= set(values)
 
 
@@ -307,7 +307,7 @@ def _place_lead_block(fc: np.ndarray, lead: LeadFC, indices) -> None:
     expected = lead.n_atoms
     if len(indices) != expected:
         raise ValueError(
-            "铅区原子数 %d 与铅力常数原子数 %d 不符"
+            "lead 区原子数 %d 与 lead 力常数原子数 %d 不符"
             % (len(indices), expected))
     block = lead.force_constants
     for a_pos, atom_a in enumerate(indices):
@@ -319,7 +319,7 @@ def _place_lead_block(fc: np.ndarray, lead: LeadFC, indices) -> None:
 def assemble_full_fc(k_dev: np.ndarray, lead: LeadFC, meta: FullFCMeta) -> np.ndarray:
     """拼出完整 ``(3N, 3N)`` 力常数矩阵,单位 eV/Å²。
 
-    铅区四块来自冻结铅力常数;器件行随后被器件侧实测值**整体覆盖**
+    lead 区四块来自冻结 lead 力常数;器件行随后被器件侧实测值**整体覆盖**
     (交界处优先信实测)。覆盖造成的差异用 :func:`lead_device_conflicts` 单独统计。
     """
     n = int(meta.n_atoms)
@@ -338,9 +338,9 @@ def assemble_full_fc(k_dev: np.ndarray, lead: LeadFC, meta: FullFCMeta) -> np.nd
 
 def lead_device_conflicts(k_dev: np.ndarray, lead: LeadFC, meta: FullFCMeta,
                           *, tol: float = 1.0e-3) -> int:
-    """统计器件行覆盖铅力常数时``|Δ| > tol`` 的元素个数(只查铅列)。
+    """统计器件行覆盖 lead 力常数时``|Δ| > tol`` 的元素个数(只查 lead 列)。
 
-    不为零说明器件交界处的力常数与体相铅确有差异 —— 这是**预期**的,
+    不为零说明器件交界处的力常数与体相 lead 确有差异 —— 这是**预期**的,
     不是错误;报告里应把它当作"界面与体相不一致"的量化,而不是吞掉。
     """
     reference = assemble_full_fc(
