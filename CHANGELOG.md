@@ -2,7 +2,18 @@
 
 本项目遵循语义化版本（0.x 阶段：次版本可含不兼容变更；rc 视为发布候选）。
 
-## 未发布
+## 0.2.2rc2 — 2026-11-23
+
+相对 0.2.2rc1（`04739ba`，24 个提交）：① 自由基/开壳层支线 S1–S8——Hirshfeld 自旋分区、
+自旋分辨 Seebeck 与分通道判据、破缺对称局部证据与端到端集成回归、开壳层协议自检、
+`smj spin` 汇总子命令；② 11-21/11-22 三轮复审修复（判定链指纹、run_spec 执行面哈希、
+原子写、CLI 契约、打包与 P2 八项）；③ light/tight 与 vdW 开关整链验证记录、DFT 方法
+说明 v1.2 入库。默认全量 620 passed / 2 deselected（`-m integration` 2 passed）。
+
+产物（2026-11-23 构建）：`smj_toolkit-0.2.2rc2-py3-none-any.whl`（465405 字节，
+sha256 `F6B6B0026C4DB2B618679AB8F77A85E7DF8135740949351759C19F09AA3813E2`）、
+`smj_toolkit-0.2.2rc2.tar.gz`（856433 字节，
+sha256 `4E8788EA753169C769F96DE9A8BB4D122A4D4B4462C32E03EF39E59F1B1E0AB8`）。
 
 ### 验证与方法文档：light/tight、vdW 开关与方法说明 v1.2（2026-11-22）
 
