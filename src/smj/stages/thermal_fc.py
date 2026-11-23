@@ -25,7 +25,12 @@ from ..junction.tcontrol import make_control
 from ..phonon.fc import assemble_fc, make_displacements
 from ..provenance import sha256_file
 from ._helpers import est_record, submit_command
-from ._thermal_common import render_thermal_sub, upstream_file, write_script
+from ._thermal_common import (
+    THERMAL_OCCUPATION_WIDTH_EV,
+    render_thermal_sub,
+    upstream_file,
+    write_script,
+)
 from .base import Collected, Prepared, Stage, register
 
 _HERE = Path(__file__).resolve().parent.parent / "phonon"
@@ -73,6 +78,7 @@ class ThermalFcStage(Stage):
         control = make_control(
             geometry, stage_dir / "control.in", "thermal_force", species,
             xc="pbe",
+            occupation_width=THERMAL_OCCUPATION_WIDTH_EV,
             k_grid=tuple(fc_cfg.k_grid),
             sc_accuracy_forces=str(fc_cfg.sc_accuracy_forces),
             # 与 thermal_relax 同一套金属板混参(见该阶段注释):324 个位移作业

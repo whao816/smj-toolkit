@@ -23,7 +23,12 @@ from ..phonon.forces import ForceBlockError, read_forces
 from ..provenance import sha256_file
 from ._aims_log import describe, relax_status
 from ._helpers import est_record, submit_command
-from ._thermal_common import render_thermal_sub, upstream_file, write_script
+from ._thermal_common import (
+    THERMAL_OCCUPATION_WIDTH_EV,
+    render_thermal_sub,
+    upstream_file,
+    write_script,
+)
 from .base import Collected, Prepared, Stage, register
 
 
@@ -53,6 +58,7 @@ class ThermalRelaxStage(Stage):
         control = make_control(
             geometry, stage_dir / "control.in", "thermal_relax", species,
             xc="pbe",
+            occupation_width=THERMAL_OCCUPATION_WIDTH_EV,
             force_threshold=str(fc.relax_force_threshold),
             k_grid=tuple(fc.k_grid),
             sc_accuracy_forces=str(fc.sc_accuracy_forces),

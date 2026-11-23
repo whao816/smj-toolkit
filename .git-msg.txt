@@ -1,18 +1,11 @@
-fix(phonon): 周期板电极的 ABC 堆垛被逐层 snap 破坏
+fix(phonon): 热导链用 0.1 eV 占据展宽(金属板,不是带隙团簇)
 
-build_device 原来按**每一层**独立计算「把离 S 最近的那个格点平移到 S 正下方」,
-于是四层全部对齐到同一个原子柱上(AA 堆垛),相邻层 Au-Au 只有
-delta_z = 2.355 A,而正确值是 a/sqrt(2) = 2.885 A。
+电子链的 0.01 eV 展宽对小分子团簇没问题,但热导器件是 Au(111) 二维板:
+0.01 eV 相对 300 K 的物理展宽(0.026 eV)就是「没展宽」,费米面附近的占据在
+自洽里反复跳变。job 26375/26376 都要 200 多圈才到 1e-4。
 
-后果是热导器件的初始结构里存在 0.53 A 过短的 Au-Au 接触:relax 一开始就报
-Maximum force component 5.06 eV/A,BFGS 每步只把力降 20%,一小时才走完第一步。
-job 26375 因此作废。
+新增 _thermal_common.THERMAL_OCCUPATION_WIDTH_EV = 0.1,thermal_relax 与
+thermal_fc 显式传给 make_control。力常数用的是 ±0.01 Å 两个位移之间的**力差**,
+只要两侧展宽一致,展宽本身不引入系统偏差。
 
-修法:平移量每个电极只算一次,用**表面层**的格点确定;层与层之间的 ABC 堆垛
-只保留在 offset 里。修后相邻层 Au-Au = 2.884 A,与 a/sqrt(2) 一致。
-
-新增回归 test_adjacent_layers_keep_abc_stacking:钉住最近邻距离,并断言相邻层
-不存在同一 xy 柱上的原子对——只测最近邻距离还不够,AA 堆垛换个晶格常数也能
-碰巧满足。
-
-780 条测试全绿。
+电子链的 control.in 仍然写 0.01,冻结基线不受影响。

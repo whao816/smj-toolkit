@@ -13,6 +13,15 @@ from pathlib import Path
 from ..errors import StageBlocked
 from ..junction.tcontrol import TEMPLATE_DIR, read_template
 
+#: 热导链的 Gaussian 占据展宽 [eV]。
+#:
+#: 电子链算的是有限团簇(有 HOMO-LUMO 隙),用 0.01 eV 没问题;热导器件是
+#: Au(111) 二维板,是金属。0.01 eV 的展宽等于没有展宽,费米面附近的占据
+#: 在自洽迭代里反复跳变,job 26375/26376 都是 200 多圈才能收敛到 1e-4。
+#: 0.1 eV 是金属板的常规值(300 K 物理展宽是 0.026 eV):力常数要的是
+#: ±0.01 Å 两个位移之间的**力差**,展宽只要在两者间保持一致就不引入偏差。
+THERMAL_OCCUPATION_WIDTH_EV = 0.1
+
 
 def upstream_file(ctx, stage: str, filename: str, prev: str, *,
                   override=None) -> Path:
