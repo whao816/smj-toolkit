@@ -6,7 +6,8 @@ DoD 已满足；本文以 `vX.Y.Z` 代指目标版本。
 ## 0. 前置
 
 - 工作树干净（`git status`）。
-- Python ≥ 3.10 环境可跑测试：`python -m pytest -q`（当前基线 607 passed）。
+- Python ≥ 3.10 环境可跑测试：`python -m pytest -q`（当前基线 620 passed / 2 deselected；
+  另有 2 条依赖 `runs/` 资产的集成回归用 `python -m pytest -m integration -q`）。
 - 能访问 FHI-aims / aitranss 的验证环境（集群），或至少能完成 `smj verify` + `init` + `plan` 冒烟。
 - 若从沙箱内操作：git-over-ssh 与 GitHub 凭证不可用，**push / tag 推送须在用户自己的终端执行**。
 

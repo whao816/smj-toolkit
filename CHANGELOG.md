@@ -4,6 +4,33 @@
 
 ## 未发布
 
+### 验证与方法文档：light/tight、vdW 开关与方法说明 v1.2（2026-11-22）
+
+本轮只入库验证记录与方法文档，不改代码、不跑新计算；测试基线不变（620 passed /
+2 deselected，`-m integration` 2 passed）。数据目录 `runs/` 不入库，仓内保留的是
+记录、数字与图。
+
+- **light/tight 整链对照**（[docs/validation-light-vs-tight-2026-11-22.md](docs/validation-light-vs-tight-2026-11-22.md)；
+  数据 `runs/light-tight-2026-11-22/`）：AZ-dithiol 与 2CN 各两条完整臂（301 点、300 K），
+  同分子、同协议、同能量窗，只换 species 档位；两档几何各自优化，差异含几何响应。
+  AZ：L0 0.373290→0.486402（+30.3%）、S +53.35→+65.64 µV/K、ZT 0.11194→0.20060
+  （+79.2%）；2CN：L0 0.001313→0.001361（+3.7%），但 S −33.53→−3.53 µV/K、
+  ZT 0.02769→0.00046（−98.3%）。结论：light 档对 2CN 的 S/ZT 不具备定量可靠性；
+  两个体系、一个能量窗不构成基组收敛。同目录另有两条 az-thiolate 臂停在 tip/SCF
+  阶段（SCF 500 步不收敛、无 `results.json`），文档已说明不能当作“已跑”。
+- **vdW 开关对照**（[docs/validation-vdw-onoff-2026-11-22.md](docs/validation-vdw-onoff-2026-11-22.md)；
+  数据 `runs/vdw-2026-11-22/`）：同一生产协议只切 `vdw_correction_hirshfeld`（TS）。
+  AZ 的 ZT 0.11194→0.23279（+108.0%），2CN 的 ZT 0.02769→0.02360（−14.8%）；
+  两臂 S–Au 接触只差 0.002–0.007 Å——TS 是后自洽修正、不改 KS 哈密顿量，量到的是
+  弛豫几何的响应，方向/幅度体系相关，不能外推成“vdW 抬高/降低 ZT”。
+- **方法说明 v1.2 入库**（[docs/AutoSMJ_DFT方法说明_v1.2.md](docs/AutoSMJ_DFT方法说明_v1.2.md)，
+  含 `.docx`）：主链设置（FHI-aims 221103 / PBE / light / TS-vdW / scalar ZORA；
+  Aitranss NEGF σ=0.05/0.10 Ha、300 K）与“程序实跑过的算例”分账，§9.6/§9.7 收录上述
+  两组对照，§10 列出未验证边界。v1.0/v1.1 移入 `docs/archive/` 保留版本历史。
+- **文档/图**：`docs/figures/light-vs-tight-TE.png`、`docs/figures/vdw-onoff-TE.png`；
+  `docs/README.md` 索引补入三份文档（旧版方法说明列在 archive），`RELEASING.md`
+  测试基线 607→620 并注明 `-m integration` 的用法。
+
 ### 修复：2026-11-22 全仓代码复审（批 1–4）
 
 用户要求按复审建议顺序修复。四批都补了回归测试；默认全量 620 passed / 2 deselected。
