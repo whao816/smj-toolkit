@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 PROVENANCE.json）",
-  "repo_commit": "2a74b2f4175b2f2f95fa28e28420c26d58601df9",
+  "repo_commit": "3a1afc5bfe1fe7ab08a7dbb49acfcb7dd4e30b9a",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",
@@ -50,8 +50,8 @@
       "bytes": 7469
     },
     "geometry.py": {
-      "sha256": "2bef5b4d7f1f9869458f12e4bb7f8ebc62b5a8aba55cb7809a754f252c97a921",
-      "bytes": 10168
+      "sha256": "cbe3ea57322edf17cd2f61a04cbb9de333c017d05efa23e6f0df5c20ce92f516",
+      "bytes": 11119
     },
     "independent_check.py": {
       "sha256": "8307da56896ae27fe293232da7999d82ccf06a31bd9eb1998d900e46f035638f",
@@ -110,8 +110,8 @@
       "bytes": 14953
     },
     "tcontrol.py": {
-      "sha256": "ef78865156d055a23bffdf225430621c41ecb26eee5dd5528634c3254a58b6dc",
-      "bytes": 11544
+      "sha256": "15fa60933d7ce7a268a339df438382327a9fe4cfaae195ace6cde13184992a3b",
+      "bytes": 13143
     },
     "templates/control_orbital.in": {
       "sha256": "d090d1aaa25ac31b7004318b837cbab178b7bcefc080afc05340942e44146b5a",
@@ -124,6 +124,14 @@
     "templates/control_scf.in": {
       "sha256": "eec28229ec299f1ee4d95d7a8ddb42b651d22601ac04dff1d33af881dd1aa819",
       "bytes": 1250
+    },
+    "templates/control_thermal_force.in": {
+      "sha256": "e2da69946fae6a2bd964ed6ba4bd8717292ed3ca89de88d4a7498b3e9cb0f6af",
+      "bytes": 1720
+    },
+    "templates/control_thermal_relax.in": {
+      "sha256": "42362fd22282642d711713db3079318a14900914c55a17e79a8c74ad294c45cd",
+      "bytes": 1319
     },
     "templates/gaussian_opt_freq.gjf": {
       "sha256": "af1147200db1e04931e6ef188ee3a1423adb940ddad35295f5b8b873da2d532e",

@@ -66,18 +66,36 @@ def write_xyz(path: str | Path, atoms: Iterable[Atom], comment: str = "") -> Non
 
 
 def write_aims_geometry(path: str | Path, atoms: Iterable[Atom],
-                        constrained: Iterable[int] = ()) -> None:
+                        constrained: Iterable[int] = (),
+                        lattice=None) -> None:
     """写 FHI-aims geometry.in。
 
     `constrained` = 需要冻结的原子序号(**1-based**, 与 left_anchor/right_anchor 同一计数),
     对应 atom 行之后追加一行 `constrain_relaxation .true.`(FHI-aims 语法)。
-    缺省空集合 = 输出与旧版逐字节一致(W0-1 兼容约束: 既有 25 条 smj 记录的锚点回归靠它)。
+
+    `lattice` = 三条晶格矢量 ``((a1x,a1y,a1z),(a2x,...),(a3x,...))`` 或 ``None``。
+    非 None 时在文件**最前**写三行 ``lattice_vector``,原子坐标仍按笛卡尔给出。
+    二维板(声子热导的周期器件)传 ``((a1x,a1y,0),(a2x,a2y,0),(0,0,c))``。
+
+    缺省 ``lattice=None`` 且 ``constrained`` 为空 = 输出与旧版**逐字节一致**
+    (W0-1 兼容约束: 既有 25 条 smj 记录的锚点回归靠它)。
     """
     atoms = list(atoms)
     fixed = {int(i) for i in constrained}
     if fixed and (min(fixed) < 1 or max(fixed) > len(atoms)):
         raise ValueError('constrained 原子序号越界(1..%d): %r' % (len(atoms), sorted(fixed)))
     text: list[str] = []
+    if lattice is not None:
+        vectors = list(lattice)
+        if len(vectors) != 3:
+            raise ValueError('lattice 必须是 3 条矢量,得到 %d 条' % (len(vectors),))
+        for vec in vectors:
+            comps = [float(c) for c in vec]
+            if len(comps) != 3:
+                raise ValueError('lattice 每条矢量须 3 个分量: %r' % (vec,))
+            if not all(math.isfinite(c) for c in comps):
+                raise ValueError('lattice 含非有限分量: %r' % (vec,))
+            text.append("lattice_vector " + " ".join("%.10f" % c for c in comps))
     for idx, a in enumerate(atoms, start=1):
         text.append(f"atom  {a.x:16.8f}  {a.y:16.8f}  {a.z:16.8f}  {a.element}")
         if idx in fixed:

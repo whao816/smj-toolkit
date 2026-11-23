@@ -1,0 +1,39 @@
+################################################################################
+# FHI-aims forces for finite-difference force constants (phonon thermal conductance)
+################################################################################
+  xc                 {xc}{vdw_line}
+  spin               {spin}
+  fixed_spin_moment  {fixed_spin_moment}
+  relativistic       atomic_zora scalar
+  charge             {charge}
+
+  occupation_type    gaussian {occupation_width}
+  mixer              pulay
+  n_max_pulay        {n_max_pulay}
+  charge_mix_param   {charge_mix_param}
+  sc_accuracy_rho    1E-5
+  sc_accuracy_eev    1E-3
+  sc_accuracy_etot   1E-6
+  sc_accuracy_forces {sc_accuracy_forces}
+  sc_iter_limit      {sc_iter_limit}
+
+  # The keyword that prints the per-atom force block is compute_forces.
+  # There is NO calculate_forces keyword in FHI-aims -- writing the wrong
+  # name is silently ignored and you get zero forces (plan appendix A-3).
+  # inal_forces_cleaned removes the residual net force of the whole cell,
+  # which matters at the 1e-4 eV/Ang level of a finite-difference displacement.
+  compute_forces .true.
+  final_forces_cleaned .true.
+
+  # 2D-periodic slab: in-plane sampling only (kz must stay 1 with ~20 Ang vacuum).
+  k_grid {kx} {ky} {kz}
+
+  # Deliberately absent, unlike control_scf.in: output aitranss, output mulliken
+  # and 
+estart aims.restart. This stage needs forces only, and restart snapshots
+  # are ~291 MB per SCF -- times 324 displacements that is not affordable.
+
+################################################################################
+# Species blocks appended below
+################################################################################
+{species_blocks}
