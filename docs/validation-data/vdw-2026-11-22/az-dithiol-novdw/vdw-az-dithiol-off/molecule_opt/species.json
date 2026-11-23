@@ -1,0 +1,33 @@
+{
+  "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+  "declared_label": "light",
+  "actual_tier": "light",
+  "dir_tier": "",
+  "elements": [
+    {
+      "element": "C",
+      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\06_C_default",
+      "sha256": "85ed35a0dfea25c743a252a7f2a1518f7b25a418210d5c9f8eb3f7608718a605",
+      "tier": "light",
+      "basis_functions": 3,
+      "max_angular": "d"
+    },
+    {
+      "element": "H",
+      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\01_H_default",
+      "sha256": "6983cd11ddb5140cd6e7873adc346994f01cbd250e4c17471ad3bab6b6733b13",
+      "tier": "light",
+      "basis_functions": 2,
+      "max_angular": "p"
+    },
+    {
+      "element": "S",
+      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\16_S_default",
+      "sha256": "cefb6850549c9463209f0a06a7c8cfb58c746d6c4319012180c85712049b1fe5",
+      "tier": "light",
+      "basis_functions": 4,
+      "max_angular": "f"
+    }
+  ],
+  "warnings": []
+}

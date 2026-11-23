@@ -1,0 +1,24 @@
+{
+  "engine": "aims",
+  "xc": "pbe",
+  "basis": "light",
+  "spin": "none",
+  "charge": 0.0,
+  "force_threshold": "0.01",
+  "spin_moment": null,
+  "scf": {
+    "sc_accuracy_rho": "1E-5",
+    "sc_accuracy_eev": "1E-3",
+    "sc_accuracy_etot": "1E-6",
+    "sc_accuracy_forces": "5E-3",
+    "sc_iter_limit": 1000,
+    "occupation_type": "gaussian 0.01",
+    "mixer": "pulay"
+  },
+  "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+  "atom_count": 20,
+  "ntasks": 8,
+  "partition": "main",
+  "aims_gpus": "cpu",
+  "vdw": "hirshfeld"
+}

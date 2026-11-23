@@ -39,6 +39,11 @@ python scripts/build_wheel.py --check --sdist
 
 - 产物：`dist/smj_toolkit-<ver>-py3-none-any.whl`、`dist/smj_toolkit-<ver>.tar.gz`。
 - `--check` 会按 RECORD 校验 sha256 与大小；sdist 使用固定时间戳（可复现）。
+- 方法说明 md/docx 由仓内脚本重建（docx 的 core props 与 zip 时间戳已固定）：
+  `python scripts/build_method_doc_docx.py && python scripts/build_method_doc_md.py`，
+  再用 `python scripts/check_method_doc.py` 确认重建字节与入库文件一致。
+- 验证数据入库副本由 `python scripts/export_validation_data.py` 从 `runs/` 导出；
+  改动 `runs/` 后重跑导出，并用 `--check` 校验 MANIFEST 与源数据逐字节一致。
 
 ## 4. 安装冒烟
 

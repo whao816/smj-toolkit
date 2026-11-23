@@ -21,6 +21,9 @@
 四臂互相独立：`runs/light-tight-2026-11-22/<arm>/lt-<arm>/`。注意：每档的分子与 tip 几何都在该档下重新优化，
 因此下面的输运差异包含几何响应，不是“同一几何只换基组”的单点对照。
 
+另有两条 `az-thiolate-*` 臂在 tip/SCF 阶段 SCF 不收敛，已移入
+`runs/light-tight-2026-11-22/_abandoned/`，不属于四臂对照数据（原因见下）。
+
 > **为什么 AZ 用中性二硫醇而不是 az-thiolate(−2)**：最初沿用 compare-2026-11-15 的
 > 游离二价阴离子构造（18 原子，charge −2）再叠加中性 Au tip。该构造在 tip 阶段的 SCF
 > 在 500 次迭代内没有收敛（Δρ 在 0.1–0.8 之间振荡，日志反复出现 “VBM is higher than
@@ -62,6 +65,9 @@
   这不是 tight 已收敛的证据，只说明该体系对基组档位高度敏感。
 - 边界：只做了两个体系、一个能量窗、300 K、每臂一次；未做 k 点、电极层数、泛函（PBE0/HSE）与 vdW 开关的收敛对照；
   两档的价电子数相同（Au 仍 31 e），但几何各自优化，差异同时包含基组与几何响应，不能据此宣称 tight 收敛。
-- 复现：`pwsh .tmp/lt_report.py` 读取各臂 results.json / TE.dat / aims.out 生成本报告。
+- 复现：`python scripts/report_light_tight.py` 读取各臂 results.json / TE.dat / aims.out 生成本报告与图。
 
 *生成时间：自动脚本；数据目录 `runs/light-tight-2026-11-22/`。*
+
+入库副本：`docs/validation-data/light-tight-2026-11-22/`（精简导出，含 state/run_spec/几何/TE.dat/results.json，
+见其 README；`aims.out` 不入库）。

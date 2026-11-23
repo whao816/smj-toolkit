@@ -1,0 +1,44 @@
+{
+  "source": "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\2cn-novdw\\vdw-2cn-off\\aitranss_te\\TE.dat",
+  "temperature_K": 300.0,
+  "points": 301,
+  "L0": 0.00141836316834561,
+  "L1": 1.2878236968352234e-05,
+  "L2": 5.071326706601532e-06,
+  "log10_G_over_G0_like": -2.8482125548972306,
+  "S_uV_per_K": -30.26549019264582,
+  "k_e_pW_per_K": 1.2795712779623318,
+  "ZT_electronic": 0.0236012272933857,
+  "fermi_nearest": {
+    "E_Hartree": -0.1796,
+    "E_minus_Ef_eV": 0.00031166,
+    "T": 0.001346016193
+  },
+  "thermal_window": {
+    "e_min_ev": -1.09902825,
+    "e_max_ev": 0.53365479,
+    "kbt_ev": 0.025851997199999997,
+    "lower_kbt": -42.51231506399823,
+    "upper_kbt": 20.642691002612366,
+    "coverage": 0.99999999891609
+  },
+  "fermi_quadrature": {
+    "kbt_ev": 0.025851997199999997,
+    "window_kbt": 4.0,
+    "weight_integral": 0.9999999988006327,
+    "exact_coverage": 0.99999999891609,
+    "ratio": 0.9999999998845427,
+    "first_moment_kbt": -2.358333375125278e-08,
+    "points_in_window": 38,
+    "min_step_in_window_ev": 0.005442269999999992
+  },
+  "max_transmission": {
+    "E_Hartree": -0.1706,
+    "E_minus_Ef_eV": 0.24521412,
+    "T": 0.9962422706
+  },
+  "input_energy_order": "ascending",
+  "reordered": false,
+  "negative_transmission_points": 0,
+  "warnings": []
+}

@@ -1,0 +1,1355 @@
+{
+  "schema": "smj.validation-data.v1",
+  "sets": {
+    "light-tight-2026-11-22": {
+      "arms": [
+        "2cn-light",
+        "2cn-tight",
+        "az-dithiol-light",
+        "az-dithiol-tight"
+      ],
+      "source": "runs/light-tight-2026-11-22"
+    },
+    "vdw-2026-11-22": {
+      "arms": [
+        "2cn-novdw",
+        "az-dithiol-novdw"
+      ],
+      "source": "runs/vdw-2026-11-22"
+    }
+  },
+  "files": [
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_scf/control.in",
+      "bytes": 13586,
+      "sha256": "3d84900e945870dbfa74ca2cb4fb10f4d4bf08cd5ed4cb5149a8ae97b49e0cbb",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_scf/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_scf/geometry.in",
+      "bytes": 8010,
+      "sha256": "cde3f8d9a384238991e283098f07e372f0261eb267dfeb008fb844cf1b763a5b",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_scf/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_scf/input_summary.json",
+      "bytes": 395,
+      "sha256": "e6f1b6f1f6c9edbcd7e1455ba83f17d9089726c1526994572ed6713a7dfde5df",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_scf/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/control.in",
+      "bytes": 13790,
+      "sha256": "7d51c1b53c6b09e419395c8521144d9d58fe69597ed5d0edc3d42e3d85daa3cf",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/geometry.in",
+      "bytes": 3474,
+      "sha256": "c79af1f6ee2afc44e722e316398b3c0ae354bc1d7dddad7b0283c38e056c3542",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/geometry.in.next_step",
+      "bytes": 3707,
+      "sha256": "87667bf1d4b04dc2d8001d974f39c0617b2fb0ba5734ed8ef5f4ffcdbc0a5d94",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/input_summary.json",
+      "bytes": 580,
+      "sha256": "3d263ca9272539280db4b8f3aadab9a38f2e74bca2bed8ec210bac5307b8280b",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/review_tips.xyz",
+      "bytes": 3180,
+      "sha256": "06ec08a1fda3ba67af62bd2142bc18e350a0e25623497b48a8c54faa6e85f580",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aims_tip_relax/review_tips.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aitranss_te/TE.dat",
+      "bytes": 16394,
+      "sha256": "683cbf5b4aa24f1513054dab197f4197a63578fdf9a58844fe2fd92f57e33718",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aitranss_te/TE.dat"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aitranss_te/input_summary.json",
+      "bytes": 568,
+      "sha256": "811e065c095f7faae3f68c40409b5b9d41ae47293bd61eaf40cea9cd6e30533e",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aitranss_te/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aitranss_te/self.energy.in",
+      "bytes": 11950,
+      "sha256": "1703872d86fbea35081aee9afbbadcc151b682791179319104fde5f167c08992",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aitranss_te/self.energy.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/aitranss_te/tcontrol",
+      "bytes": 534,
+      "sha256": "aea8b0e12674c0d4fd1dd726d274fba3e57b811da2b79b9786b4721d03fb3eb7",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/aitranss_te/tcontrol"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/connection_check.json",
+      "bytes": 1056,
+      "sha256": "ddc928d052e0acdbbaf4adc89f2338128ea978b9d896c0ed78393d43c7dccdc7",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/connection_check.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/connection_check_audit.json",
+      "bytes": 13033,
+      "sha256": "a1088a749d43ef13ca4f76449af45f05f26ff843a63ba22dc32b272748932b6e",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/connection_check_audit.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/electrode_metadata.json",
+      "bytes": 2761,
+      "sha256": "fdf84faf24dc43516ca0a6491455b1142239bd431b103efc4cf5b5305f46cfed",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/electrode_metadata.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/geometry.in",
+      "bytes": 8010,
+      "sha256": "cde3f8d9a384238991e283098f07e372f0261eb267dfeb008fb844cf1b763a5b",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/review_junction.xyz",
+      "bytes": 7077,
+      "sha256": "09c7fd186fbde590da8c50c15db750e289c1332284bd1531e8e863ca5ee1f984",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrode_build/review_junction.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrodes/fcc111.cluster.natoms37.x1.aims",
+      "bytes": 2534,
+      "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/electrodes/fcc111.cluster.natoms37.x1.aims"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/junction_analyze/results.json",
+      "bytes": 1354,
+      "sha256": "b411a4b94a75ce528f41d97c2448b8928d8259ee12abaf5274ae178c58a6ac66",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/junction_analyze/results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/control.in",
+      "bytes": 11227,
+      "sha256": "18617f05ee74af22c66a18a461e87e6c67a5a018199835ea44bf277a82157b00",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/geometry.in",
+      "bytes": 3348,
+      "sha256": "0ce581f3370489e05d1d033a470e97ac73b0e1539e6877da8ce33346be719cf8",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/geometry.in.next_step",
+      "bytes": 3593,
+      "sha256": "05d4ed536c24256debd9bd827f3d280c831284d3cb1df3f532ba02b706319b25",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/input_summary.json",
+      "bytes": 567,
+      "sha256": "9274a0cdb573bd4fdea29a9c3580a6ca3638389bfb5b7756ea9ff1f1bb73e5cd",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/opt.xyz",
+      "bytes": 2944,
+      "sha256": "918f63713fb6597febc5464599e9baaa9ebe182ff4cbbf6ca56585332b909e11",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/opt.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/species.json",
+      "bytes": 1383,
+      "sha256": "3dec00bc2973645834353dc28d9a940ae18077506be3914a4d2955be0067cd70",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/molecule_opt/species.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/run_spec.json",
+      "bytes": 7160,
+      "sha256": "f6b9816f0fbbc207aecbb63f37730582d5685ccf0dfdc0c8ffd57219949c9b47",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/run_spec.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0001_molecule_opt_input.xyz",
+      "bytes": 2717,
+      "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0001_molecule_opt_input.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0002_molecule_opt_optimized.results.json",
+      "bytes": 2877,
+      "sha256": "a3510f92579f75b7fbbfdb66e206f0ad6bcb64cbf63dd7360b97aa0a8c3c85d9",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0002_molecule_opt_optimized.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0002_molecule_opt_optimized.xyz",
+      "bytes": 2944,
+      "sha256": "918f63713fb6597febc5464599e9baaa9ebe182ff4cbbf6ca56585332b909e11",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0002_molecule_opt_optimized.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0003_aims_tip_relax_molecule_tips.in",
+      "bytes": 3707,
+      "sha256": "87667bf1d4b04dc2d8001d974f39c0617b2fb0ba5734ed8ef5f4ffcdbc0a5d94",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0003_aims_tip_relax_molecule_tips.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0003_aims_tip_relax_molecule_tips.results.json",
+      "bytes": 438,
+      "sha256": "aa214ab877332a97b8e50438e571917c8b8bb85ef57385d0321061d4240a01c7",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0003_aims_tip_relax_molecule_tips.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0004_electrode_build_junction.in",
+      "bytes": 8010,
+      "sha256": "cde3f8d9a384238991e283098f07e372f0261eb267dfeb008fb844cf1b763a5b",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0004_electrode_build_junction.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0004_electrode_build_junction.results.json",
+      "bytes": 1534,
+      "sha256": "b205bb994b4fe7ebf415f8c03f9ebf8095e55c2851881ff9e3ca3d803991a9a0",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/0004_electrode_build_junction.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/manifest.json",
+      "bytes": 2988,
+      "sha256": "e73f2a741ea13ccd87a59dadab8f2366bfb3c93c5fba5261e9c6ca62dab41548",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/saved_structures/manifest.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/lt-2cn-light/state.json",
+      "bytes": 27587,
+      "sha256": "94180f434b4aec99a97ecd7deb219b1c23100eb59662538601ad876ee945f45a",
+      "source": "runs/light-tight-2026-11-22/2cn-light/lt-2cn-light/state.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/molecule.xyz",
+      "bytes": 2717,
+      "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f",
+      "source": "runs/light-tight-2026-11-22/2cn-light/molecule.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-light/smj.yaml",
+      "bytes": 1876,
+      "sha256": "2a64dffa58155547456540e45a554e7fce2cf2bb21943d034b8167381becc451",
+      "source": "runs/light-tight-2026-11-22/2cn-light/smj.yaml"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_scf/control.in",
+      "bytes": 15720,
+      "sha256": "0f40a73adbbecc5cae3955ec5ece0291ee084975e54a0ab51158985013f6b44a",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_scf/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_scf/geometry.in",
+      "bytes": 8010,
+      "sha256": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_scf/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_scf/input_summary.json",
+      "bytes": 393,
+      "sha256": "3140e0341c4fe6e29b6c289a927ec7754ea973ba2a3510825ea2d2b3e097b36d",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_scf/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/control.in",
+      "bytes": 15924,
+      "sha256": "10c1694fc1d77c512c502449ee5bd01ad9b7e47c9b7e5fca9444ebaf7b2ab04a",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/geometry.in",
+      "bytes": 3474,
+      "sha256": "ae17380b9d7b0883d7c9f66d8a2d3f5acd2dcfe280a8975a7c5f3933b5eadc25",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/geometry.in.next_step",
+      "bytes": 3707,
+      "sha256": "cfe0f8a332d25097680bb9ef1642b00a81dee5939fe4e79ce1608b9b4f270510",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/input_summary.json",
+      "bytes": 578,
+      "sha256": "30475e9bbe247b000246b08e7275a61def1a188fcf8cadabf82bf4ceea98196a",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/review_tips.xyz",
+      "bytes": 3180,
+      "sha256": "e034ca136f5741137ee76b264af02f9eaaa7e2180665483ba0225227e78a2c15",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aims_tip_relax/review_tips.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aitranss_te/TE.dat",
+      "bytes": 16394,
+      "sha256": "a4d3029a87188b8704498e328a22aab0fc151219de6c12905b942dbb4a29db9a",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aitranss_te/TE.dat"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aitranss_te/input_summary.json",
+      "bytes": 568,
+      "sha256": "de0bd47ee7640853823e0e0a0ada8fa6c9e8f5d4970ca12d8f95df25072246a6",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aitranss_te/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aitranss_te/self.energy.in",
+      "bytes": 11950,
+      "sha256": "b023a777eadafc0849bfcc1d4b760c46863d951deefc254ba42fe65210e7e3f7",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aitranss_te/self.energy.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aitranss_te/tcontrol",
+      "bytes": 534,
+      "sha256": "62e29d0940afed612e54fb01becb7753440c895bb6f45e3db54f91ef0769a387",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/aitranss_te/tcontrol"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/connection_check.json",
+      "bytes": 1058,
+      "sha256": "4b55c06ae6adfb60a7dc84eb82e522d0ddfde1436c698c55a2d544af20cf27ce",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/connection_check.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/connection_check_audit.json",
+      "bytes": 13026,
+      "sha256": "87527c030fc788d579a1ec60cc574b6cf5eb44a3f7acac546d61bc5962616fe1",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/connection_check_audit.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/electrode_metadata.json",
+      "bytes": 2761,
+      "sha256": "6d293f5ab23b01f5ae7f25d43fa42cb427b07ee4fbb7bead16e7e9e8f9766371",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/electrode_metadata.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/geometry.in",
+      "bytes": 8010,
+      "sha256": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/review_junction.xyz",
+      "bytes": 7077,
+      "sha256": "0d0a54a3ca96ec218de9671cc1abfb96e87f91404b9642deed616db003ef7ab4",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrode_build/review_junction.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrodes/fcc111.cluster.natoms37.x1.aims",
+      "bytes": 2534,
+      "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/electrodes/fcc111.cluster.natoms37.x1.aims"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/junction_analyze/results.json",
+      "bytes": 1355,
+      "sha256": "ab21fbe56e9cb69b72d4ae1a92b1cb1a6e506604c39493a48a04d25d8ca30994",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/junction_analyze/results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/control.in",
+      "bytes": 13202,
+      "sha256": "53928a3c17ff56685edf27e9fc20167ef768198fd0aec35e0cac7945c36660ac",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/geometry.in",
+      "bytes": 3348,
+      "sha256": "0ce581f3370489e05d1d033a470e97ac73b0e1539e6877da8ce33346be719cf8",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/geometry.in.next_step",
+      "bytes": 3593,
+      "sha256": "ead629302623cbe375e2ceaa8f905a097ef604168c5f7e21f1373ccea354c595",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/input_summary.json",
+      "bytes": 565,
+      "sha256": "3105f6414da973ebb05397f6e45fa10a69cd83aabc215e987e2c62e51ccd9f53",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/opt.xyz",
+      "bytes": 2944,
+      "sha256": "60fa7e5a4fd674cd80e2c20ad0cec6827d8bb97fef98a836dd3f838623205f3e",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/opt.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/species.json",
+      "bytes": 1373,
+      "sha256": "515432386386ad2cfb778dfcc66984eacd76169a37ffcaec8f9dfab929975ea4",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/molecule_opt/species.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/run_spec.json",
+      "bytes": 7154,
+      "sha256": "3564e947ee24153f822ede6d178195dc0276d8f58ac4d17439149f163f1754df",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/run_spec.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0001_molecule_opt_input.xyz",
+      "bytes": 2717,
+      "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0001_molecule_opt_input.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0002_molecule_opt_optimized.results.json",
+      "bytes": 2865,
+      "sha256": "324c086308a86b7e46419e94e911b16c8422b36c6cdc19f9f976e917c4a0e830",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0002_molecule_opt_optimized.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0002_molecule_opt_optimized.xyz",
+      "bytes": 2944,
+      "sha256": "60fa7e5a4fd674cd80e2c20ad0cec6827d8bb97fef98a836dd3f838623205f3e",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0002_molecule_opt_optimized.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0003_aims_tip_relax_molecule_tips.in",
+      "bytes": 3707,
+      "sha256": "cfe0f8a332d25097680bb9ef1642b00a81dee5939fe4e79ce1608b9b4f270510",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0003_aims_tip_relax_molecule_tips.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0003_aims_tip_relax_molecule_tips.results.json",
+      "bytes": 437,
+      "sha256": "a2630f723fcd803d99309e8c8e1061be209d09639a95b2cf31fc27590f45f390",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0003_aims_tip_relax_molecule_tips.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0004_electrode_build_junction.in",
+      "bytes": 8010,
+      "sha256": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0004_electrode_build_junction.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0004_electrode_build_junction.results.json",
+      "bytes": 1534,
+      "sha256": "ea4e57a3e31e15ad3b9e3207b2753852c44f9cd2dbe7d439a1811245bfec7aca",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/0004_electrode_build_junction.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/manifest.json",
+      "bytes": 2987,
+      "sha256": "c66bea8650e6522287552a74949063ae9431ecadc37ea93b1b0eb4e312b269c3",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/saved_structures/manifest.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/state.json",
+      "bytes": 27579,
+      "sha256": "d525e42e8319228d9241a2842e982508d40f95344cb11bf3ff736f881cd5e032",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/lt-2cn-tight/state.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/molecule.xyz",
+      "bytes": 2717,
+      "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/molecule.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/2cn-tight/smj.yaml",
+      "bytes": 1872,
+      "sha256": "eb8e0130140ed3ae546683612086376bbc3d2108474d5104035f9261c7926581",
+      "source": "runs/light-tight-2026-11-22/2cn-tight/smj.yaml"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_scf/control.in",
+      "bytes": 11075,
+      "sha256": "4c04cbf59b38c70169a086edd36d265451e41131d21234b235ea4c9ae05f2ba9",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_scf/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_scf/geometry.in",
+      "bytes": 5778,
+      "sha256": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_scf/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_scf/input_summary.json",
+      "bytes": 386,
+      "sha256": "4b76954964e6d21c8effa6f9af34e564878bb16336473fead65da7c7712938b7",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_scf/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/control.in",
+      "bytes": 11279,
+      "sha256": "0c9b1a152e759af9bc79de38728e1904668c9772b06e0dfba8463ed5a53e27b4",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/geometry.in",
+      "bytes": 1242,
+      "sha256": "41f3f6fcb3afe59718269cb1ded3942e7aea6c5e0578b74d33533186573a7306",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/geometry.in.next_step",
+      "bytes": 1691,
+      "sha256": "ab9afeaf0f1049c58454f55dc78c2f12edf7c45d7320d7349b3dc9e87d898317",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/input_summary.json",
+      "bytes": 1095,
+      "sha256": "c0abdb5baa7ed545c6efd55b6d400fa464f8ea5427992c0f352f28984f8fa57e",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/review_tips.xyz",
+      "bytes": 1236,
+      "sha256": "7a350740baa4e0a491cce7f3cb8bd95f8c12172b315fb933bd3a11bb2e00f24b",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aims_tip_relax/review_tips.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aitranss_te/TE.dat",
+      "bytes": 16394,
+      "sha256": "4e64223ecf70bb1ceec4e9980e91b3e72906c10e2d5c0a2769e39057dcecf1b5",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aitranss_te/TE.dat"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aitranss_te/input_summary.json",
+      "bytes": 564,
+      "sha256": "f4f002a714d9ce06a43a1a7899b5bc3965e60d17ec2f9f2f76ce8fc8f0bab69d",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aitranss_te/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aitranss_te/self.energy.in",
+      "bytes": 8602,
+      "sha256": "aba7e0866fa354ea2523b4a4807f01d590f57af30885a6b34960669e9fcddc36",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aitranss_te/self.energy.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aitranss_te/tcontrol",
+      "bytes": 530,
+      "sha256": "266c97bfe580cb5cd3d68ae1d64880dc4622c4c19364d15e379552b90ad49664",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/aitranss_te/tcontrol"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/connection_check.json",
+      "bytes": 1052,
+      "sha256": "cac2a3b3d03ff4508625963fce553912496dc3fccf51db5d2117af965fedde48",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/connection_check.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/connection_check_audit.json",
+      "bytes": 12907,
+      "sha256": "552ea03d2d70b810d7ce2feb6008735559400a2a0f36ac6d4b34686a88e11a12",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/connection_check_audit.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/electrode_metadata.json",
+      "bytes": 2738,
+      "sha256": "2a947c331ce0d96722a5043742e4f4e42fdf13679ee5edf5753b7efaab0eb914",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/electrode_metadata.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/geometry.in",
+      "bytes": 5778,
+      "sha256": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/review_junction.xyz",
+      "bytes": 5131,
+      "sha256": "9e42fe74c05209ae65b179e341516f6daf4b313424b580b7c3268d372f45777a",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrode_build/review_junction.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrodes/fcc111.cluster.natoms37.x1.aims",
+      "bytes": 2534,
+      "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/electrodes/fcc111.cluster.natoms37.x1.aims"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/junction_analyze/results.json",
+      "bytes": 1359,
+      "sha256": "091f749304d37ee030cb2991662b2d59e7104271d742933189c194b4b7d925e8",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/junction_analyze/results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/control.in",
+      "bytes": 8716,
+      "sha256": "a8ed10ce78fbce0a9452ddefa0b9cbde516da513719c4a836ba40ae0bad87375",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/geometry.in",
+      "bytes": 1240,
+      "sha256": "b234025e694b77587c252161e5bacf564a9008cd0dad43002a6aba461b80f078",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/geometry.in.next_step",
+      "bytes": 1689,
+      "sha256": "6daf874b6cb4ed79f69a2662d4e4f009e3160fa95202900a09ba901990e48466",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/input_summary.json",
+      "bytes": 559,
+      "sha256": "5d3eb31860a22f5c8334e0b3348323fcb3873fc33a4022fb9170d479ed941626",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/opt.xyz",
+      "bytes": 1108,
+      "sha256": "9dc7acffb0c18bee97bd1a1e711613baa65f2db9df36bbd3d6f07e8425f5f9f8",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/opt.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/species.json",
+      "bytes": 1056,
+      "sha256": "c4db3abd3fe6412d207f4ce8f4f76ae734ec1d8daf4c77e5b8ed95c9c6af88f3",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/molecule_opt/species.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/run_spec.json",
+      "bytes": 7184,
+      "sha256": "9dea480d7b47b3ccb7e68b60176d308890207b7e402bf81b1ea478ba8b53eb31",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/run_spec.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0001_molecule_opt_input.xyz",
+      "bytes": 1160,
+      "sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0001_molecule_opt_input.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0002_molecule_opt_optimized.results.json",
+      "bytes": 2511,
+      "sha256": "107a79474bafe8fecd03d4eb7040f43c7d8c21eaa32f5bfed0be2a39827409b4",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0002_molecule_opt_optimized.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0002_molecule_opt_optimized.xyz",
+      "bytes": 1108,
+      "sha256": "9dc7acffb0c18bee97bd1a1e711613baa65f2db9df36bbd3d6f07e8425f5f9f8",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0002_molecule_opt_optimized.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0003_aims_tip_relax_molecule_tips.in",
+      "bytes": 1691,
+      "sha256": "ab9afeaf0f1049c58454f55dc78c2f12edf7c45d7320d7349b3dc9e87d898317",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0003_aims_tip_relax_molecule_tips.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0003_aims_tip_relax_molecule_tips.results.json",
+      "bytes": 439,
+      "sha256": "c86a2d5f0cb08921dc6a537bfbf6ca6eb1125fb971e2b356c1768a7de2708968",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0003_aims_tip_relax_molecule_tips.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0004_electrode_build_junction.in",
+      "bytes": 5778,
+      "sha256": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0004_electrode_build_junction.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0004_electrode_build_junction.results.json",
+      "bytes": 1515,
+      "sha256": "fb684697b4b8d3bc9ff77adadd7a9630b010205684707a083a9f86e48f428a9c",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/0004_electrode_build_junction.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/manifest.json",
+      "bytes": 2998,
+      "sha256": "59ac42ab527db5138a9a1f26e7c15bde13ce92510a32e7e36eb46e1e00c3f10b",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/saved_structures/manifest.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/state.json",
+      "bytes": 27591,
+      "sha256": "d0af0cc1f84bae3748e7744f968ca627c07f1aa8ab3bcc4b10e4dd43825e3346",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/lt-az-dithiol-light/state.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/molecule.xyz",
+      "bytes": 1160,
+      "sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/molecule.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-light/smj.yaml",
+      "bytes": 1956,
+      "sha256": "1cea9e58f3d437fe1cde8ee223544d0b61dd656a41f3280b7d19290982062fc3",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-light/smj.yaml"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_scf/control.in",
+      "bytes": 12656,
+      "sha256": "517fe5b26ca3a803bcd4588fc42333d9972455976ee2f723dd42b8e9ed736bc1",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_scf/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_scf/geometry.in",
+      "bytes": 5778,
+      "sha256": "3ccc2aa5938b409081e535759c72f579f06335d699419320ecd9191d5bf77072",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_scf/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_scf/input_summary.json",
+      "bytes": 392,
+      "sha256": "0f2b3634a9a6977dde4f121a66f917506c9373a1d6d5ee5eb6d67288d09719dc",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_scf/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/control.in",
+      "bytes": 12860,
+      "sha256": "8647f363a9f5e3a1aae1bc1cf2c94711937eb4d03a839fa2b3bfc9fc1a376cdc",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/geometry.in",
+      "bytes": 1242,
+      "sha256": "49ac355f7c9b55d2c4629d25fa6097dbf60bb11d5e8ef690f7388f681e9200c9",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/geometry.in.next_step",
+      "bytes": 1691,
+      "sha256": "f853398f108e6f28c0c6c5bb71f1733edbd11dee32cb7dad46fcf3d35c06915f",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/input_summary.json",
+      "bytes": 1101,
+      "sha256": "13be8c0b7ba1bf5357d702acf66f7d8000108357485d125b8e12e1ef4ce10bda",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/review_tips.xyz",
+      "bytes": 1236,
+      "sha256": "e53392bc5e7890a4b07a8cd896e987be79cb4001df7467d97749803102ed392f",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aims_tip_relax/review_tips.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aitranss_te/TE.dat",
+      "bytes": 16394,
+      "sha256": "4818c8a468264f1c080c39651ffa9e36ca6e4a8f97f6645fe59184bb3a58666a",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aitranss_te/TE.dat"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aitranss_te/input_summary.json",
+      "bytes": 564,
+      "sha256": "b54fd4ff15e2d69ebdb7970188ef9c7a51d6ac0542766d8c82fc108066976181",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aitranss_te/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aitranss_te/self.energy.in",
+      "bytes": 8602,
+      "sha256": "082a0e947fe7af40a58810f445298bcbc04ab78ad5a283c189177b66bab780b1",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aitranss_te/self.energy.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aitranss_te/tcontrol",
+      "bytes": 530,
+      "sha256": "48d1d520322ae7966bfc752d5496bb12a96692c28b9fdbc9969fe47b06dc9b9a",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/aitranss_te/tcontrol"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/connection_check.json",
+      "bytes": 1048,
+      "sha256": "81bd8f84904e69f8e68ce4414f06ddc458c3eebf36ef1391929de1c77da53091",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/connection_check.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/connection_check_audit.json",
+      "bytes": 13044,
+      "sha256": "48becca9985c7f468d8eeae0d556c6461001610918125d093190d8e476a96793",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/connection_check_audit.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/electrode_metadata.json",
+      "bytes": 2738,
+      "sha256": "0c80e6d705757440e542690bdea0eebacb1b26cbec61ac2d280ab59df3076410",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/electrode_metadata.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/geometry.in",
+      "bytes": 5778,
+      "sha256": "3ccc2aa5938b409081e535759c72f579f06335d699419320ecd9191d5bf77072",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/review_junction.xyz",
+      "bytes": 5131,
+      "sha256": "4813e247d0b672a40a07e6be129cdc22f6bbcad3e08c3b5947b18bb3563fbbcd",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrode_build/review_junction.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrodes/fcc111.cluster.natoms37.x1.aims",
+      "bytes": 2534,
+      "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/electrodes/fcc111.cluster.natoms37.x1.aims"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/junction_analyze/results.json",
+      "bytes": 1361,
+      "sha256": "eaa7c4badd0ff683f03d753a092a99cfcb5d9b618543b5d702b1fbfe9f72e157",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/junction_analyze/results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/control.in",
+      "bytes": 10138,
+      "sha256": "3c788be7ffb60c6b37cf91f2f78bde2f86dd9760a76767aaa86a98cdc0b6d4be",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/control.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/geometry.in",
+      "bytes": 1240,
+      "sha256": "b234025e694b77587c252161e5bacf564a9008cd0dad43002a6aba461b80f078",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/geometry.in.next_step",
+      "bytes": 1689,
+      "sha256": "14efa46951952b265ae9828bb8b80564162fd8d289aa9dc4b387128086de9202",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/input_summary.json",
+      "bytes": 565,
+      "sha256": "051019d882afd39fd96bdb27bb22d37fefae93a3b3dd34f0f08f2883b6f93b6f",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/opt.xyz",
+      "bytes": 1108,
+      "sha256": "92189c51b5ca8a845a0dcad1416fb5961b1b00771c20ec58d8a2e0db7365c575",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/opt.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/species.json",
+      "bytes": 1080,
+      "sha256": "605e6996198c837761e9e78b8dad634f792538ba82ef7a802275ad4486315bd7",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/molecule_opt/species.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/run_spec.json",
+      "bytes": 7202,
+      "sha256": "8ed8415ba239552cc0b81a70d6b7e9002739cadf57975b7f0efd2fd5808ec437",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/run_spec.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0001_molecule_opt_input.xyz",
+      "bytes": 1160,
+      "sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0001_molecule_opt_input.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0002_molecule_opt_optimized.results.json",
+      "bytes": 2535,
+      "sha256": "06b4baaf0c7f0f95d2e62297a02f3bd24ba3bcf80d1cb44b7003cc752676666f",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0002_molecule_opt_optimized.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0002_molecule_opt_optimized.xyz",
+      "bytes": 1108,
+      "sha256": "92189c51b5ca8a845a0dcad1416fb5961b1b00771c20ec58d8a2e0db7365c575",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0002_molecule_opt_optimized.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0003_aims_tip_relax_molecule_tips.in",
+      "bytes": 1691,
+      "sha256": "f853398f108e6f28c0c6c5bb71f1733edbd11dee32cb7dad46fcf3d35c06915f",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0003_aims_tip_relax_molecule_tips.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0003_aims_tip_relax_molecule_tips.results.json",
+      "bytes": 436,
+      "sha256": "d75d8785814cafbf27bb6a893a3af8b9cee5923a1cb982a70d51b6e9ddccd2cd",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0003_aims_tip_relax_molecule_tips.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0004_electrode_build_junction.in",
+      "bytes": 5778,
+      "sha256": "3ccc2aa5938b409081e535759c72f579f06335d699419320ecd9191d5bf77072",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0004_electrode_build_junction.in"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0004_electrode_build_junction.results.json",
+      "bytes": 1515,
+      "sha256": "ea87ba40978cf0220cc653631c348ec652331df74c07b03ceb0a5a28d4e27d2f",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/0004_electrode_build_junction.results.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/manifest.json",
+      "bytes": 2998,
+      "sha256": "87fc16af000fff77675c39553260dc0576bd4070649e076ef4193ffd0be2e10f",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/saved_structures/manifest.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/state.json",
+      "bytes": 27624,
+      "sha256": "cda131b698bfc31164c62f33e938c84dc7382f5ce2828712c82bf27b78847bea",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/lt-az-dithiol-tight/state.json"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/molecule.xyz",
+      "bytes": 1160,
+      "sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/molecule.xyz"
+    },
+    {
+      "path": "docs/validation-data/light-tight-2026-11-22/az-dithiol-tight/smj.yaml",
+      "bytes": 1968,
+      "sha256": "aa11eed90ba0c788f290f3bd8dbc015160341400c9908822a28daf1d31d4c791",
+      "source": "runs/light-tight-2026-11-22/az-dithiol-tight/smj.yaml"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/molecule.xyz",
+      "bytes": 2717,
+      "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/molecule.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/smj.yaml",
+      "bytes": 1969,
+      "sha256": "754e7eacbe26c2342469e12d153360c451231eb658a16a601e727e39d9ad0fc7",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/smj.yaml"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_scf/control.in",
+      "bytes": 13559,
+      "sha256": "8a0cd287a861b4c3f5abc8df9ef1eec26acec589962b70877b2a217e9930888c",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_scf/control.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_scf/geometry.in",
+      "bytes": 8010,
+      "sha256": "58e4a8344173793fd35ec347e9724c8358eaea33f41a46632fc15127acaf9e1e",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_scf/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_scf/input_summary.json",
+      "bytes": 386,
+      "sha256": "f7953dea995938ed56fa62db7f37b84687ccee0d714d117f95f3808ea40b8fc4",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_scf/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/control.in",
+      "bytes": 13763,
+      "sha256": "23db5d601bdf748670fb1ab5580f23201834005f1986dc9fb02564f6bdb0a169",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/control.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/geometry.in",
+      "bytes": 3474,
+      "sha256": "c08f3f794a65254244849e87114799528917951727ee9ab2af9065f837bc2b60",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/geometry.in.next_step",
+      "bytes": 3707,
+      "sha256": "fa8725bae798a1b7631925bccf5927cddb7bdcd05214b8ed0cb7477c8749b833",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/input_summary.json",
+      "bytes": 571,
+      "sha256": "79dfc09a3fbe45583daf04f2c2d22355ff61bce81ca24188989df8a3695daf2b",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/review_tips.xyz",
+      "bytes": 3180,
+      "sha256": "c8a1ed7be39ae38cb300f8ebfb4aafe536d02efee134836bed9fb1e47e152392",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aims_tip_relax/review_tips.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aitranss_te/TE.dat",
+      "bytes": 16394,
+      "sha256": "29737310796a24dbe79dedb98b2e9ee7c2206c06b4646b8ee430d11822f9aa78",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aitranss_te/TE.dat"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aitranss_te/input_summary.json",
+      "bytes": 568,
+      "sha256": "9b8d0b23429c223cdcaa1611b0794ad8d9b306e034481df11571ce244bcce428",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aitranss_te/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aitranss_te/self.energy.in",
+      "bytes": 11950,
+      "sha256": "7d1d1c1375857778d69fc780e14ee379b477f5d0d3b381e0ed4c15cf187d6997",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aitranss_te/self.energy.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aitranss_te/tcontrol",
+      "bytes": 534,
+      "sha256": "1ea1041dd7b9e8dddbef513e2b12b8685c0015ec6d5397df39a25bd4deeb851c",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/aitranss_te/tcontrol"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/connection_check.json",
+      "bytes": 1058,
+      "sha256": "da9e52be3bf4c5b980315968c894f49f3a03f9745eb26aa8a1449c548500c8f7",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/connection_check.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/connection_check_audit.json",
+      "bytes": 13024,
+      "sha256": "38ab6f030c4fa2a0dfc6781faaad817788ddb21941746df3bcdbdc144e2880f2",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/connection_check_audit.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/electrode_metadata.json",
+      "bytes": 2743,
+      "sha256": "3204767a70243542d2e18589a0f66ef9daf71cbd97d7bf547d9e0ddc89d1f677",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/electrode_metadata.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/geometry.in",
+      "bytes": 8010,
+      "sha256": "58e4a8344173793fd35ec347e9724c8358eaea33f41a46632fc15127acaf9e1e",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/review_junction.xyz",
+      "bytes": 7077,
+      "sha256": "c0187f3e9416058360276b17a1d762eb9effa55d8be16ffe047cfbf25ecbf1b7",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrode_build/review_junction.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrodes/fcc111.cluster.natoms37.x1.aims",
+      "bytes": 2534,
+      "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/electrodes/fcc111.cluster.natoms37.x1.aims"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/junction_analyze/results.json",
+      "bytes": 1338,
+      "sha256": "9c272650a0bc0c9809dfa52e89d62decf4ee7937c4d189d3f6a19d54087e03fd",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/junction_analyze/results.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/control.in",
+      "bytes": 11200,
+      "sha256": "ff2aa9d94b54a1518468908265589d46d8bd260c2bb2e216a5d91342f8a87378",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/control.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/geometry.in",
+      "bytes": 3348,
+      "sha256": "0ce581f3370489e05d1d033a470e97ac73b0e1539e6877da8ce33346be719cf8",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/geometry.in.next_step",
+      "bytes": 3593,
+      "sha256": "f52117d941d85fab32a1392bb82b69d7966c854a402e91aa7cf3a0c6cc44a92d",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/input_summary.json",
+      "bytes": 558,
+      "sha256": "231261623c3b2ad85a329a25318c8730c6b0456e63556524254aff105c565fe5",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/opt.xyz",
+      "bytes": 2944,
+      "sha256": "1b42dabe82d7c25f45cce6a642a630c5118358dd49afc5c17d0f1658d1460731",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/opt.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/species.json",
+      "bytes": 1383,
+      "sha256": "3dec00bc2973645834353dc28d9a940ae18077506be3914a4d2955be0067cd70",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/molecule_opt/species.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/run_spec.json",
+      "bytes": 7133,
+      "sha256": "38b3f06d96da87c6b53a8ef50bcd73a213ff333a16105bc74da4720522370347",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/run_spec.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0001_molecule_opt_input.xyz",
+      "bytes": 2717,
+      "sha256": "dbd601c0316743e5dacc63c5fa66d766d4cef4828cabbc43f4942889866c5c4f",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0001_molecule_opt_input.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0002_molecule_opt_optimized.results.json",
+      "bytes": 2877,
+      "sha256": "9307bbf8715b83cefb2c40bd2047083448ce20e66e5fda65888a26050e9c9fca",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0002_molecule_opt_optimized.results.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0002_molecule_opt_optimized.xyz",
+      "bytes": 2944,
+      "sha256": "1b42dabe82d7c25f45cce6a642a630c5118358dd49afc5c17d0f1658d1460731",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0002_molecule_opt_optimized.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0003_aims_tip_relax_molecule_tips.in",
+      "bytes": 3707,
+      "sha256": "fa8725bae798a1b7631925bccf5927cddb7bdcd05214b8ed0cb7477c8749b833",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0003_aims_tip_relax_molecule_tips.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0003_aims_tip_relax_molecule_tips.results.json",
+      "bytes": 439,
+      "sha256": "195b41b3e832c5e841004955764dceeef35af21cfdc3146e6e7e303b0cd20439",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0003_aims_tip_relax_molecule_tips.results.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0004_electrode_build_junction.in",
+      "bytes": 8010,
+      "sha256": "58e4a8344173793fd35ec347e9724c8358eaea33f41a46632fc15127acaf9e1e",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0004_electrode_build_junction.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0004_electrode_build_junction.results.json",
+      "bytes": 1534,
+      "sha256": "85daac628338bb2c6c1a3a0b8a623603010cb98e77a76300e50348adf3835aca",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/0004_electrode_build_junction.results.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/manifest.json",
+      "bytes": 2979,
+      "sha256": "aeb41a8f8dd9768c58b1a580597461ba35eaa309110135976d26011e88a5d8b7",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/saved_structures/manifest.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/state.json",
+      "bytes": 27362,
+      "sha256": "2bc74745d95a8b204d550d9758a01d0898c06a4144e401f14a970e6ace79c047",
+      "source": "runs/vdw-2026-11-22/2cn-novdw/vdw-2cn-off/state.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/molecule.xyz",
+      "bytes": 1160,
+      "sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/molecule.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/smj.yaml",
+      "bytes": 2049,
+      "sha256": "13a0d042edb7de48a03c08eba5c97af133334ac92bee79f17147d19fabb585d7",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/smj.yaml"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_scf/control.in",
+      "bytes": 11048,
+      "sha256": "b33a6f84edbe1337f29586f12609d9724f9a40a81e909e296fb9096e02c752e9",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_scf/control.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_scf/geometry.in",
+      "bytes": 5778,
+      "sha256": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_scf/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_scf/input_summary.json",
+      "bytes": 377,
+      "sha256": "817cf8edfe0ca5ccc4620e255ab693e31c7d5cafa1043f4fba60c9daaa058058",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_scf/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/control.in",
+      "bytes": 11252,
+      "sha256": "621be0f619d51649dfc020f13f75f1c56148fecc1f4f69c5eb37a49cbfd21ba1",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/control.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/geometry.in",
+      "bytes": 1242,
+      "sha256": "b05d92c90cf0b2825206f60c5ac9310736898fc8cbf00f543edf1e32ed8fde94",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/geometry.in.next_step",
+      "bytes": 1691,
+      "sha256": "dbb6591f6613992aaf09cee68d58fb0d6d9c5133a86b9ae3b1a927950b4697e5",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/input_summary.json",
+      "bytes": 1077,
+      "sha256": "c54c3f81a65af5cd39e7f0917f20e85fdebce7da3c58e60a60deca93283def9d",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/review_tips.xyz",
+      "bytes": 1236,
+      "sha256": "1dd368e745301befadc0a79a2a226e1899da167aedae367d47435bfaf9f3169e",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aims_tip_relax/review_tips.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aitranss_te/TE.dat",
+      "bytes": 16394,
+      "sha256": "8f5cfad157bb328e7707d4eaef544b48dce3c06e2e0905e8c6216bd761cca56d",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aitranss_te/TE.dat"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aitranss_te/input_summary.json",
+      "bytes": 564,
+      "sha256": "94cf36d9b56c1899e8f5ca0cc6e359b58693f864b5b27912d9f75a2f2bef3078",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aitranss_te/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aitranss_te/self.energy.in",
+      "bytes": 8602,
+      "sha256": "71cbe0469afa8cfa7ca9f3f4839153f64d8742d2849be5f27ecb95e2dd76e81f",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aitranss_te/self.energy.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aitranss_te/tcontrol",
+      "bytes": 530,
+      "sha256": "7f9d4ada6fe5dd56a21c2451db87c1ca8306f0b60e265eeacb029ef8990c0db9",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/aitranss_te/tcontrol"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/connection_check.json",
+      "bytes": 1050,
+      "sha256": "d7d8f93d9bfc5947400974455456a2161297c0747f2085f4a4b995061292cc63",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/connection_check.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/connection_check_audit.json",
+      "bytes": 12915,
+      "sha256": "a573fc8de212babed508ac685fc3598edc1799e66e49b6fdf7560e6c9aa4e63e",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/connection_check_audit.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/electrode_metadata.json",
+      "bytes": 2720,
+      "sha256": "0b8aab0bf6a8a4a474d668330f8eb5ae4ebdeabce462bf57ee2e04c1ade360f2",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/electrode_metadata.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/geometry.in",
+      "bytes": 5778,
+      "sha256": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/review_junction.xyz",
+      "bytes": 5131,
+      "sha256": "4654aa8ab7fa7329a26cb6c7f427351c8c44926eb1e2b6bc45a9a3ade0fcc228",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrode_build/review_junction.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrodes/fcc111.cluster.natoms37.x1.aims",
+      "bytes": 2534,
+      "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/electrodes/fcc111.cluster.natoms37.x1.aims"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/junction_analyze/results.json",
+      "bytes": 1353,
+      "sha256": "d4fe3f609a97dd4adbf3aff49524d6187433f2dd5f8ef6bb3b5e518e7ef38460",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/junction_analyze/results.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/control.in",
+      "bytes": 8689,
+      "sha256": "1ad7464740ddf6eef8be4305c4b68e70349e30a65b899d4fd785dcf91aa2fd18",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/control.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/geometry.in",
+      "bytes": 1240,
+      "sha256": "b234025e694b77587c252161e5bacf564a9008cd0dad43002a6aba461b80f078",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/geometry.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/geometry.in.next_step",
+      "bytes": 1689,
+      "sha256": "16a935b2cc03ac2885479e0b9b74e82ee2d50d35aa8fe6b0da345c3c5210f64e",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/geometry.in.next_step"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/input_summary.json",
+      "bytes": 550,
+      "sha256": "b83cd8b315b198cb1c5178571be1ba915ebae7f6881edf11d201f4fa3f2a3a0a",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/input_summary.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/opt.xyz",
+      "bytes": 1108,
+      "sha256": "ccbd957c06ddd9f5a8dc4c8c4f70ee49a0350dc5f755b2021928df7b605cb152",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/opt.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/species.json",
+      "bytes": 1056,
+      "sha256": "c4db3abd3fe6412d207f4ce8f4f76ae734ec1d8daf4c77e5b8ed95c9c6af88f3",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/molecule_opt/species.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/run_spec.json",
+      "bytes": 7157,
+      "sha256": "dc1df47652388d73e87e164c7fcfbde0f8949dcd88340c2024e490505155497b",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/run_spec.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0001_molecule_opt_input.xyz",
+      "bytes": 1160,
+      "sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0001_molecule_opt_input.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0002_molecule_opt_optimized.results.json",
+      "bytes": 2510,
+      "sha256": "4a369d9450d2bba8218ab00dd9704d9b62a2e698eada1a82d27d00d20438cce7",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0002_molecule_opt_optimized.results.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0002_molecule_opt_optimized.xyz",
+      "bytes": 1108,
+      "sha256": "ccbd957c06ddd9f5a8dc4c8c4f70ee49a0350dc5f755b2021928df7b605cb152",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0002_molecule_opt_optimized.xyz"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0003_aims_tip_relax_molecule_tips.in",
+      "bytes": 1691,
+      "sha256": "dbb6591f6613992aaf09cee68d58fb0d6d9c5133a86b9ae3b1a927950b4697e5",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0003_aims_tip_relax_molecule_tips.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0003_aims_tip_relax_molecule_tips.results.json",
+      "bytes": 436,
+      "sha256": "51e23d138e9c5b1019b1e242b58764f65d32eb92ce946edf3b52653c70f6cc62",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0003_aims_tip_relax_molecule_tips.results.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0004_electrode_build_junction.in",
+      "bytes": 5778,
+      "sha256": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0004_electrode_build_junction.in"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0004_electrode_build_junction.results.json",
+      "bytes": 1515,
+      "sha256": "0a9af1d286da6ff5de0ba9cba02976630995433c2bb724cd04e780f92ad66728",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/0004_electrode_build_junction.results.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/manifest.json",
+      "bytes": 2989,
+      "sha256": "2bab94d8e6b7c01c03398eba213682112371084ea8bc1a38db55e70923af058c",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/saved_structures/manifest.json"
+    },
+    {
+      "path": "docs/validation-data/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/state.json",
+      "bytes": 27369,
+      "sha256": "48d94bf0ef4a1faf4a1e2f5cc2d64170e54cee0c29aec203ef58f559e153e27d",
+      "source": "runs/vdw-2026-11-22/az-dithiol-novdw/vdw-az-dithiol-off/state.json"
+    }
+  ]
+}

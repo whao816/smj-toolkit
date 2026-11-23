@@ -56,6 +56,9 @@ vdW-off 两臂在 `runs/vdw-2026-11-22/` 下新建。注意：两档的分子与
   因此两体系的方向/幅度不同，不能外推成“vdW 一定使 ZT 升高/降低”。
 - 边界：两个体系、一个能量窗、300 K、每臂一次；没有做 vdW 参数（TS vs MBD）、电极层数、
   泛函或 k 点的收敛对照；两档几何各自优化，差异来自几何响应而非固定几何的哈密顿量改变。
-- 复现：`pwsh .tmp/vdw_report.py` 读取各臂 results.json / TE.dat / aims.out 生成本报告。
+- 复现：`python scripts/report_vdw_onoff.py` 读取各臂 results.json / TE.dat / aims.out 生成本报告与图。
 
 *生成时间：自动脚本；数据目录 `runs/light-tight-2026-11-22/`（on）与 `runs/vdw-2026-11-22/`（off）。*
+
+入库副本：`docs/validation-data/vdw-2026-11-22/`（精简导出，含 state/run_spec/几何/TE.dat/results.json，
+见其 README；`aims.out` 不入库）。

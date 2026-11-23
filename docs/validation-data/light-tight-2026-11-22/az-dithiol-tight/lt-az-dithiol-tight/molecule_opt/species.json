@@ -1,0 +1,33 @@
+{
+  "species_dir": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight",
+  "declared_label": "tight",
+  "actual_tier": "tight",
+  "dir_tier": "",
+  "elements": [
+    {
+      "element": "C",
+      "path": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight\\06_C_default",
+      "sha256": "4524b3b228ac4302cd87f1adfbef16f32e4e089c186ff78eb91e33ca6891a5ee",
+      "tier": "tight",
+      "basis_functions": 8,
+      "max_angular": "g"
+    },
+    {
+      "element": "H",
+      "path": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight\\01_H_default",
+      "sha256": "ee20715d1e6a283632d0f49ad140c8366d58593346c9e9c698309a1de8102675",
+      "tier": "tight",
+      "basis_functions": 6,
+      "max_angular": "d"
+    },
+    {
+      "element": "S",
+      "path": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight\\16_S_default",
+      "sha256": "038136409fd3b7b96af4c6070d2712ab415752e16f5cb55891dde04d3d1ab7ab",
+      "tier": "tight",
+      "basis_functions": 6,
+      "max_angular": "g"
+    }
+  ],
+  "warnings": []
+}

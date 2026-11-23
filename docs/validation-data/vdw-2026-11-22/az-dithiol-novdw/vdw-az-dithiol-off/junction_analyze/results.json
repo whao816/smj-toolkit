@@ -1,0 +1,44 @@
+{
+  "source": "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aitranss_te\\TE.dat",
+  "temperature_K": 300.0,
+  "points": 301,
+  "L0": 0.4485040748251669,
+  "L1": -0.00956325741375717,
+  "L2": 0.0010798592729631149,
+  "log10_G_over_G0_like": -0.34823360687619764,
+  "S_uV_per_K": 71.07521759963988,
+  "k_e_pW_per_K": 226.2304560159964,
+  "ZT_electronic": 0.23279192891686168,
+  "fermi_nearest": {
+    "E_Hartree": -0.188,
+    "E_minus_Ef_eV": 0.00078727,
+    "T": 0.3996194445
+  },
+  "thermal_window": {
+    "e_min_ev": -0.86997702,
+    "e_max_ev": 0.76270602,
+    "kbt_ev": 0.025851997199999997,
+    "lower_kbt": -33.652217013237184,
+    "upper_kbt": 29.502789053373412,
+    "coverage": 0.9999999999998437
+  },
+  "fermi_quadrature": {
+    "kbt_ev": 0.025851997199999997,
+    "window_kbt": 4.0,
+    "weight_integral": 1.0000000000575888,
+    "exact_coverage": 0.9999999999998437,
+    "ratio": 1.0000000000577451,
+    "first_moment_kbt": -1.3533555160558295e-10,
+    "points_in_window": 38,
+    "min_step_in_window_ev": 0.005442269999999992
+  },
+  "max_transmission": {
+    "E_Hartree": -0.1916,
+    "E_minus_Ef_eV": -0.09717372,
+    "T": 0.9844385068
+  },
+  "input_energy_order": "ascending",
+  "reordered": false,
+  "negative_transmission_points": 0,
+  "warnings": []
+}

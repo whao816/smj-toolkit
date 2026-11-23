@@ -12,6 +12,7 @@
 - [AutoSMJ 自动化流程中的 DFT 方法（v1.2）](AutoSMJ_DFT方法说明_v1.2.md) —— 主链 DFT 设置（FHI-aims 221103 / PBE / light / TS-vdW / scalar ZORA；Aitranss NEGF σ=0.05/0.10 Ha、300 K）与程序实跑过的算例（59 条历史 run + 2026-11-22 新臂）；§10 列出未验证边界
 - [light vs tight 整链输运对照（2026-11-22）](validation-light-vs-tight-2026-11-22.md) —— AZ-dithiol/2CN 四臂整链：tight 相对 light 的 L0/S/ZT 差异；2CN 的 S/ZT 对档位高度敏感（light 档不可定量）
 - [vdW 开关整链输运对照（2026-11-22）](validation-vdw-onoff-2026-11-22.md) —— 只切 TS-vdW 的两臂整链差异；差异来自弛豫几何，方向/幅度体系相关，不可外推
+- [验证数据入库副本](validation-data/README.md) —— 上述两组对照六臂的精简导出（state/run_spec/几何/TE.dat/results.json + MANIFEST sha256；`runs/` 的入库快照，`aims.out` 不入库）
 - [旧 run 重评记录（2026-11-16）](runs-reverdict-2026-11-16.md) —— 当前判据口径下全部既有 run 的 manifest/report 重算、新旧判定对照与 fail-safe 说明
 - [外部评审报告的逐条复核（2026-11-20）](review-recheck-2026-11-20.md) —— 对 `0f7b3c4` 评审报告 7 条问题 / 3 条后续 / 验证范围声明的核实：成立与不成立、证据与复现、原报告说轻或说重之处，以及复核新增发现
 - [复核问题修复计划（2026-11-20）](fix-plan-2026-11-20.md) —— 依据复核报告落地的 13 项修复（R1–R13）：分层（上游同步 / 本包 wrapper）、阶段与依赖、逐项验收标准、测试清单、兼容性与需要拍板的 5 个决策点

@@ -1,0 +1,21 @@
+{
+  "natoms": 128,
+  "nsaos": 4742,
+  "lsurc": 82,
+  "lsurx": 83,
+  "lsury": 86,
+  "rsurc": 118,
+  "rsurx": 119,
+  "rsury": 122,
+  "nlayers": 3,
+  "ener": "-0.2200000000",
+  "estep": "0.0002000000",
+  "eend": "-0.1600000000",
+  "valence_electrons": 2456,
+  "efermi": "-0.179424526853",
+  "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+  "partition": "main",
+  "surface_indices_note": "首猜, 需人工复核 6 表面原子索引(24 章 §5)",
+  "spin_polarized": false,
+  "charge": 0.0
+}

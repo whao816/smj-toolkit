@@ -2,6 +2,23 @@
 
 本项目遵循语义化版本（0.x 阶段：次版本可含不兼容变更；rc 视为发布候选）。
 
+## 未发布
+
+### 可复现性：方法说明与验证数据入库（2026-11-23）
+
+- 方法说明 md/docx 的生成脚本从 `.tmp/`（被 gitignore）迁入 `scripts/`：
+  `build_method_doc_docx.py`（docx 内容源，固定 core props 与 zip 时间戳）、
+  `build_method_doc_md.py`（docx→md）、`check_method_doc.py`（重建并逐字节校验）。
+  docx 可复现构建：两次构建 sha256 相同（`B21C3381…D2DB24A`，62702 B）。
+- 2026-11-22 两组验证的六臂数据从本机 `runs/` 导出为入库副本 `docs/validation-data/`
+  （222 文件，1091736 B；含 state/run_spec/几何/TE.dat/results.json 与 `MANIFEST.json`，
+  白名单导入，不含 `aims.out`）。导出/校验脚本：`scripts/export_validation_data.py [--check]`。
+- 报告与图的生成脚本同样入库：`scripts/report_light_tight.py`、`scripts/report_vdw_onoff.py`
+  （原先只在 `.tmp/`），重跑得到相同报告与图。
+- `runs/light-tight-2026-11-22/` 的两条 SCF 不收敛弃用臂移入 `_abandoned/` 并加 README，
+  避免被误读为已完成的对照臂；四臂对照数据不变。
+- 本轮不改生产代码、不跑新计算；默认测试仍为 620 passed / 2 deselected。
+
 ## 0.2.2rc2 — 2026-11-23
 
 相对 0.2.2rc1（`04739ba`，24 个提交）：① 自由基/开壳层支线 S1–S8——Hirshfeld 自旋分区、

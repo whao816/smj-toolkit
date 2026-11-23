@@ -1,0 +1,677 @@
+{
+  "schema": "smj.state.v1",
+  "run": "vdw-az-dithiol-off",
+  "created_at": "2026-11-22T21:18:46+08:00",
+  "updated_at": "2026-11-22T22:01:22+08:00",
+  "stages": {
+    "molecule_opt": {
+      "status": "collected",
+      "job_id": "26359",
+      "remote_dir": "/home/haow/smj-runs/vdw-az-dithiol-off/vdw-az-dithiol-off/molecule_opt",
+      "prepared_at": "2026-11-22T21:18:46+08:00",
+      "submitted_at": "2026-11-22T21:18:56+08:00",
+      "finished_at": "2026-11-22T21:19:28+08:00",
+      "collected_at": "2026-11-22T21:19:37+08:00",
+      "elapsed_s": 32.1,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "opt.xyz",
+        "aims.out",
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "sub_aims.sh",
+        "input_summary.json"
+      ],
+      "resources": {
+        "walltime": "00:17:00",
+        "time_limit": "00:31:00",
+        "mem": "12G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 20,
+        "core_h": 1.08,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "molecule_opt": {
+          "engine": "aims",
+          "normal_termination": true,
+          "atom_count": 20,
+          "converged": true,
+          "force_threshold_ev_per_A": 0.01,
+          "max_force_ev_per_A": 0.00960571,
+          "relax_steps": 3,
+          "geometry_check": {
+            "ok": true,
+            "atom_count": 20,
+            "problems": [],
+            "warnings": [],
+            "min_distance_A": 1.0879,
+            "bond_count": [
+              21,
+              21
+            ],
+            "lost_bonds": [],
+            "new_bonds": [],
+            "isolated_atoms": [],
+            "rmsd_A": 0.0145,
+            "bond_check_skipped": false
+          },
+          "frontier_orbitals": {
+            "homo_ev": -5.07006,
+            "lumo_ev": -2.83356,
+            "gap_ev": 2.2365,
+            "n_states": 98,
+            "fractional_occupation": false
+          },
+          "electron_count": 100,
+          "scf": {
+            "occupation_type": "gaussian 0.01",
+            "mixer": "pulay",
+            "n_max_pulay": "10",
+            "charge_mix_param": "0.2",
+            "sc_accuracy_rho": "1E-5",
+            "sc_accuracy_eev": "1E-3",
+            "sc_accuracy_etot": "1E-6",
+            "sc_accuracy_forces": "5E-3",
+            "sc_iter_limit": "1000",
+            "converged_steps": 4,
+            "relax_steps": 3
+          },
+          "species": {
+            "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+            "declared_label": "light",
+            "actual_tier": "light",
+            "dir_tier": "",
+            "elements": [
+              {
+                "element": "C",
+                "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\06_C_default",
+                "sha256": "85ed35a0dfea25c743a252a7f2a1518f7b25a418210d5c9f8eb3f7608718a605",
+                "tier": "light",
+                "basis_functions": 3,
+                "max_angular": "d"
+              },
+              {
+                "element": "H",
+                "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\01_H_default",
+                "sha256": "6983cd11ddb5140cd6e7873adc346994f01cbd250e4c17471ad3bab6b6733b13",
+                "tier": "light",
+                "basis_functions": 2,
+                "max_angular": "p"
+              },
+              {
+                "element": "S",
+                "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\16_S_default",
+                "sha256": "cefb6850549c9463209f0a06a7c8cfb58c746d6c4319012180c85712049b1fe5",
+                "tier": "light",
+                "basis_functions": 4,
+                "max_angular": "f"
+              }
+            ],
+            "warnings": []
+          }
+        },
+        "software": {
+          "program": "FHI-aims",
+          "source": "aims.out",
+          "version": "221103",
+          "aims_uuid": "B65AB90F-DB46-4A38-AE23-5A85F98B1CA5",
+          "commit": "GITDIR-NOTFOUND"
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "b234025e694b77587c252161e5bacf564a9008cd0dad43002a6aba461b80f078",
+        "control.in": "1ad7464740ddf6eef8be4305c4b68e70349e30a65b899d4fd785dcf91aa2fd18",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "b83cd8b315b198cb1c5178571be1ba915ebae7f6881edf11d201f4fa3f2a3a0a",
+        "species.json": "c4db3abd3fe6412d207f4ce8f4f76ae734ec1d8daf4c77e5b8ed95c9c6af88f3"
+      },
+      "outputs_sha256": {
+        "opt.xyz": "ccbd957c06ddd9f5a8dc4c8c4f70ee49a0350dc5f755b2021928df7b605cb152",
+        "aims.out": "e2b45efbd6285dec1f7232aa9bb82ddb6642e2dabbb21c5ad26afcf3cb71f6ad",
+        "geometry.in": "b234025e694b77587c252161e5bacf564a9008cd0dad43002a6aba461b80f078",
+        "geometry.in.next_step": "16a935b2cc03ac2885479e0b9b74e82ee2d50d35aa8fe6b0da345c3c5210f64e",
+        "control.in": "1ad7464740ddf6eef8be4305c4b68e70349e30a65b899d4fd785dcf91aa2fd18",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "b83cd8b315b198cb1c5178571be1ba915ebae7f6881edf11d201f4fa3f2a3a0a"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "68df21da7c6b342ff5a38c378151933677b54ba2f23e8ac3681eddc8e2dea977",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\molecule_opt\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\molecule_opt\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\molecule_opt\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\molecule_opt\\input_summary.json",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\molecule_opt\\species.json"
+      ],
+      "notes": [
+        "20 原子，FHI-aims pbe/light，spin=none，charge=0，ntasks=8，partition=main",
+        "aims 引擎：无虚频检查（FHI-aims 未提供一键 freq）；几何来自 relax_geometry bfgs，最大力阈值 0.01 eV/Å（FHI-aims 判据是最大力分量，单位不是 Hartree/Bohr）；collect 会核对 \"Present geometry is converged\" 并做几何合理性检查",
+        "电子数 100（charge=0，multiplicity=1）：奇偶校验通过",
+        "SCF 精度显式写进 control.in（与 control_scf.in 同源）：rho 1E-5、eev 1E-3 eV、etot 1E-6 eV、forces 5E-3 eV/Å，最多 1000 次迭代；旧版依赖 FHI-aims 默认（forces 为 not_checked）",
+        "闭壳层：spin none，不写 fixed_spin_moment / initial_moment",
+        "prepare 只写输入与作业脚本，未提交任何远端命令",
+        "species 实际档位 light（3 个元素，逐文件 sha256 已记录）；配置标签 molecule.opt_basis=light 只是标签",
+        "结构已归档: saved_structures/0001_molecule_opt_input.xyz"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "control.in",
+        "sub_aims.sh",
+        "input_summary.json",
+        "aims.out",
+        "geometry.in.next_step",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "aims_tip_relax": {
+      "status": "collected",
+      "job_id": "26361",
+      "remote_dir": "/home/haow/smj-runs/vdw-az-dithiol-off/vdw-az-dithiol-off/aims_tip_relax",
+      "prepared_at": "2026-11-22T21:19:37+08:00",
+      "submitted_at": "2026-11-22T21:19:47+08:00",
+      "finished_at": "2026-11-22T21:21:53+08:00",
+      "collected_at": "2026-11-22T21:22:02+08:00",
+      "elapsed_s": 125.7,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in.next_step"
+      ],
+      "resources": {
+        "walltime": "00:18:00",
+        "time_limit": "00:34:00",
+        "mem": "13G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 22,
+        "core_h": 1.17,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_tip_relax": {
+          "source": "geometry.in.next_step",
+          "atom_count": 20,
+          "relaxed_au_s_A": {
+            "left": 2.244432535528694,
+            "right": 2.244008020083028
+          },
+          "left_anchor": 17,
+          "right_anchor": 18,
+          "contact_pinned": false,
+          "tip_element": "Au",
+          "anchor_element": "S",
+          "relax_converged": true,
+          "relax_steps": 9,
+          "relax_last_marker": "converged",
+          "relax_log_bytes": 3742522
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "b05d92c90cf0b2825206f60c5ac9310736898fc8cbf00f543edf1e32ed8fde94",
+        "control.in": "621be0f619d51649dfc020f13f75f1c56148fecc1f4f69c5eb37a49cbfd21ba1",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "c54c3f81a65af5cd39e7f0917f20e85fdebce7da3c58e60a60deca93283def9d"
+      },
+      "outputs_sha256": {
+        "geometry.in.next_step": "dbb6591f6613992aaf09cee68d58fb0d6d9c5133a86b9ae3b1a927950b4697e5"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "68df21da7c6b342ff5a38c378151933677b54ba2f23e8ac3681eddc8e2dea977",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_tip_relax\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_tip_relax\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_tip_relax\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_tip_relax\\input_summary.json"
+      ],
+      "notes": [
+        "22 原子（分子 20 + 2 Au tip），锚定原子 17/18（S）",
+        "tip 全原子弛豫（pin_contact=False，direction=axis），Au–S 初始放置距离 2.35 Å，species 目录 D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+        "prepare 只写输入与作业脚本，未提交任何远端命令",
+        "去质子：移除 2 个 S–H 氢（原几何存档 opt_neutral.xyz）",
+        "结构检查点已写出: D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_tip_relax\\review_tips.xyz（20 原子；smj review 会提示是否已确认）"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "aims.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "electrode_build": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-22T21:22:03+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-22T21:22:03+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in",
+        "electrode_metadata.json"
+      ],
+      "resources": {
+        "basis": "electrode_build 为纯本地阶段，无集群资源",
+        "local": true
+      },
+      "results": {
+        "electrode_build": {
+          "final_atom_count": 92,
+          "original_atom_count": 20,
+          "au_per_electrode": 37,
+          "left_tip_index": 19,
+          "right_tip_index": 20,
+          "surface_fingerprint": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+          "electrode_source": "library",
+          "electrode_element": "Au",
+          "electrode_a_lattice": null,
+          "library_cluster": {
+            "file": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "relpath": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+            "natoms": 37,
+            "nlayers_suggested": 3,
+            "fetched_from": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims"
+          },
+          "backplane_indices": {
+            "left": [
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54
+            ],
+            "right": [
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90
+            ]
+          },
+          "surface_indices": {
+            "left": [
+              46,
+              47,
+              50
+            ],
+            "right": [
+              82,
+              83,
+              86
+            ]
+          }
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in.next_step": "dbb6591f6613992aaf09cee68d58fb0d6d9c5133a86b9ae3b1a927950b4697e5"
+      },
+      "outputs_sha256": {
+        "geometry.in": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+        "electrode_metadata.json": "452be06e9129ed8b81930d154be7aa5615f7ad45aa0032cab9375afc49f5e558"
+      },
+      "parent_stage": "aims_tip_relax",
+      "parent_fingerprint": "dbb6591f6613992aaf09cee68d58fb0d6d9c5133a86b9ae3b1a927950b4697e5",
+      "protocol_sha256": "68df21da7c6b342ff5a38c378151933677b54ba2f23e8ac3681eddc8e2dea977",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_tip_relax\\geometry.in.next_step"
+      ],
+      "notes": [
+        "库团簇: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims（37 原子，Au，建议 nlayers=3，sha256 8e676297c47c…）",
+        "au_per_electrode 仅对 source: builtin 生效；library 模式按库团簇整簇贴装（该键已忽略）",
+        "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
+        "Au 每侧目标 37 个（库团簇整簇贴装），最终 92 原子",
+        "表面原子（1-based）left=[46, 47, 50] right=[82, 83, 86]，背层 left=[40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54] right=[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90]，指纹 40264e0fd168…",
+        "结构检查点已写出: D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\electrode_build\\review_junction.xyz（92 原子；进入 SCF 前建议人工看一眼）"
+      ],
+      "commands": [],
+      "local_only": false,
+      "output_hash_missing": []
+    },
+    "aims_scf": {
+      "status": "collected",
+      "job_id": "26362",
+      "remote_dir": "/home/haow/smj-runs/vdw-az-dithiol-off/vdw-az-dithiol-off/aims_scf",
+      "prepared_at": "2026-11-22T21:22:04+08:00",
+      "submitted_at": "2026-11-22T21:22:11+08:00",
+      "finished_at": "2026-11-22T21:57:49+08:00",
+      "collected_at": "2026-11-22T21:58:00+08:00",
+      "elapsed_s": 2137.6,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "aims.out",
+        "control.in",
+        "geometry.in",
+        "basis-indices.out",
+        "omat.aims",
+        "mos.aims"
+      ],
+      "resources": {
+        "walltime": "00:31:00",
+        "time_limit": "00:58:00",
+        "mem": "8G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 92,
+        "core_h": 2.03,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点 132 原子 4320 s / 13.3 GiB；墙钟 x N^3.0、内存 x N^2.0 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_scf": {
+          "atom_count": 92,
+          "normal_termination": true,
+          "scf_converged": true,
+          "has_basis_indices": true,
+          "has_omat": true,
+          "has_mos": true,
+          "has_alpha": false,
+          "has_beta": false,
+          "spin_unpolarized": true,
+          "basis_indices_bytes": 135381,
+          "basis_functions": 4364,
+          "omat_bytes": 60,
+          "omat_nsaos": 4364,
+          "wavefunction_files": [
+            "mos.aims"
+          ],
+          "wavefunction_bytes": 112,
+          "log_bytes": 1432335,
+          "software": {
+            "program": "FHI-aims",
+            "source": "aims.out",
+            "version": "221103",
+            "aims_uuid": "2ED54286-B010-4422-AB36-8D1F31832424",
+            "commit": "GITDIR-NOTFOUND"
+          },
+          "extra_outputs": []
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+        "control.in": "b33a6f84edbe1337f29586f12609d9724f9a40a81e909e296fb9096e02c752e9",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "817cf8edfe0ca5ccc4620e255ab693e31c7d5cafa1043f4fba60c9daaa058058"
+      },
+      "outputs_sha256": {
+        "aims.out": "1da1ac383e0ba1c6ea5021552bd4b55761ab5cf9896b4edf3db2d24e57737baa",
+        "control.in": "b33a6f84edbe1337f29586f12609d9724f9a40a81e909e296fb9096e02c752e9",
+        "geometry.in": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+        "basis-indices.out": "94c15a49300be93ecb504627404521e632cf82456a82f751e73c62f16f833b9d",
+        "omat.aims": "8132484c670041781fa2a6e52ae91611599bb9140b012ea4cd2f2ba1bd1f71ed",
+        "mos.aims": "17834db9aacfb1faec23da0dce498cb2ff61d34b6e387504981334c5df4217d6"
+      },
+      "parent_stage": "electrode_build",
+      "parent_fingerprint": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+      "protocol_sha256": "68df21da7c6b342ff5a38c378151933677b54ba2f23e8ac3681eddc8e2dea977",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_scf\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_scf\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_scf\\input_summary.json"
+      ],
+      "notes": [
+        "92 原子，ntasks=8，partition=main",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "control.in",
+        "aims.out",
+        "basis-indices.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [
+        "mos.aims",
+        "omat.aims"
+      ],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "aitranss_te": {
+      "status": "collected",
+      "job_id": "26364",
+      "remote_dir": "/home/haow/smj-runs/vdw-az-dithiol-off/vdw-az-dithiol-off/aims_scf",
+      "prepared_at": "2026-11-22T21:58:00+08:00",
+      "submitted_at": "2026-11-22T21:58:07+08:00",
+      "finished_at": "2026-11-22T22:01:14+08:00",
+      "collected_at": "2026-11-22T22:01:21+08:00",
+      "elapsed_s": 186.8,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "TE.dat",
+        "te.out"
+      ],
+      "resources": {
+        "walltime": "00:30:00",
+        "time_limit": "00:57:00",
+        "mem": "6G",
+        "ntasks": 1,
+        "cpus": 1,
+        "cores": 1,
+        "atoms": 92,
+        "core_h": 0.5,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点 132 原子 2552 s / 8.0 GiB；墙钟 x N^3.0、内存 x N^1.5 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aitranss_te": {
+          "points": 301,
+          "te_bytes": 16394,
+          "max_transmission": 0.9844385068,
+          "transmission_channels": 1,
+          "single_channel_allowed": false,
+          "energy_order": "ascending",
+          "has_te_out": true,
+          "require_te_out": true,
+          "software": {
+            "program": "aitranss",
+            "source": "te.out",
+            "version": "071813",
+            "compiled": "2026/09/23 at 15:38:33 on host gpu1"
+          }
+        }
+      },
+      "inputs_sha256": {
+        "tcontrol": "c1d238e36dcef79ece3575081e091cdc019ca41afff42b9014010fa2507c9815",
+        "self.energy.in": "71cbe0469afa8cfa7ca9f3f4839153f64d8742d2849be5f27ecb95e2dd76e81f",
+        "sub_te.sh": "947f2ded861fde3f4e4188f8a1f50b901fa8dd46abd65ff876d8be55cd9f6786",
+        "input_summary.json": "94cf36d9b56c1899e8f5ca0cc6e359b58693f864b5b27912d9f75a2f2bef3078",
+        "geometry.in": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+        "electrode_metadata.json": "0b8aab0bf6a8a4a474d668330f8eb5ae4ebdeabce462bf57ee2e04c1ade360f2"
+      },
+      "outputs_sha256": {
+        "TE.dat": "8f5cfad157bb328e7707d4eaef544b48dce3c06e2e0905e8c6216bd761cca56d",
+        "te.out": "114e0204f242afe9156ff220a3cf0800c1af1dad3298671ce0ee46f5fb2cbfb8"
+      },
+      "parent_stage": "electrode_build",
+      "parent_fingerprint": "40264e0fd168a3ef6550fc69117f707d0db55208ddf2195f906e1fa04cddea67",
+      "protocol_sha256": "68df21da7c6b342ff5a38c378151933677b54ba2f23e8ac3681eddc8e2dea977",
+      "script": "sub_te.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aitranss_te\\tcontrol",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aitranss_te\\self.energy.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aitranss_te\\sub_te.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aitranss_te\\input_summary.json",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\electrode_build\\electrode_metadata.json"
+      ],
+      "notes": [
+        "能量窗（Ha 绝对）ener=-0.2200000000 / estep=0.0002000000 / eend=-0.1600000000，nlayers=3",
+        "表面索引 l=[46, 47, 50] r=[82, 83, 86]（来自 electrode_metadata.json）",
+        "self.energy.in：每侧 37 个电极 Au（含 tip，tip 记 empty）",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_te.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "tcontrol",
+        "TE.dat",
+        "te.out",
+        "self.energy.in",
+        "sub_te.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "junction_analyze": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-22T22:01:22+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-22T22:01:22+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "results.json"
+      ],
+      "resources": {
+        "local": true,
+        "points": 301,
+        "temperature_K": 300.0
+      },
+      "results": {
+        "junction": {
+          "source": "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aitranss_te\\TE.dat",
+          "temperature_K": 300.0,
+          "points": 301,
+          "L0": 0.4485040748251669,
+          "L1": -0.00956325741375717,
+          "L2": 0.0010798592729631149,
+          "log10_G_over_G0_like": -0.34823360687619764,
+          "S_uV_per_K": 71.07521759963988,
+          "k_e_pW_per_K": 226.2304560159964,
+          "ZT_electronic": 0.23279192891686168,
+          "fermi_nearest": {
+            "E_Hartree": -0.188,
+            "E_minus_Ef_eV": 0.00078727,
+            "T": 0.3996194445
+          },
+          "thermal_window": {
+            "e_min_ev": -0.86997702,
+            "e_max_ev": 0.76270602,
+            "kbt_ev": 0.025851997199999997,
+            "lower_kbt": -33.652217013237184,
+            "upper_kbt": 29.502789053373412,
+            "coverage": 0.9999999999998437
+          },
+          "fermi_quadrature": {
+            "kbt_ev": 0.025851997199999997,
+            "window_kbt": 4.0,
+            "weight_integral": 1.0000000000575888,
+            "exact_coverage": 0.9999999999998437,
+            "ratio": 1.0000000000577451,
+            "first_moment_kbt": -1.3533555160558295e-10,
+            "points_in_window": 38,
+            "min_step_in_window_ev": 0.005442269999999992
+          },
+          "max_transmission": {
+            "E_Hartree": -0.1916,
+            "E_minus_Ef_eV": -0.09717372,
+            "T": 0.9844385068
+          },
+          "input_energy_order": "ascending",
+          "reordered": false,
+          "negative_transmission_points": 0,
+          "warnings": []
+        }
+      },
+      "inputs_sha256": {
+        "TE.dat": "8f5cfad157bb328e7707d4eaef544b48dce3c06e2e0905e8c6216bd761cca56d"
+      },
+      "outputs_sha256": {
+        "results.json": "d4fe3f609a97dd4adbf3aff49524d6187433f2dd5f8ef6bb3b5e518e7ef38460"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "68df21da7c6b342ff5a38c378151933677b54ba2f23e8ac3681eddc8e2dea977",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aitranss_te\\TE.dat"
+      ],
+      "notes": [
+        "T = 300.0 K，301 个能量点；log10(G/G0)_like=-0.348234",
+        "本地阶段：只做 Landauer 积分，无集群提交",
+        "统一版式图（style 2026.11）: T_E.png + T_E.pdf"
+      ],
+      "commands": [],
+      "local_only": false,
+      "output_hash_missing": []
+    }
+  },
+  "results": {},
+  "warnings": []
+}

@@ -1,0 +1,554 @@
+{
+  "geometry": "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\electrode_build\\geometry.in",
+  "fingerprint": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+  "atom_count": 92,
+  "axis": [
+    -0.988557802552525,
+    -0.14785923625641123,
+    -0.0298515873312267
+  ],
+  "sides": {
+    "left": {
+      "side": "left",
+      "checks": [
+        {
+          "name": "indices_shape",
+          "ok": true,
+          "detail": "left 表面索引 [46, 47, 50]: 须恰好 3 个且在 1..92",
+          "value": [
+            46,
+            47,
+            50
+          ]
+        },
+        {
+          "name": "indices_are_au",
+          "ok": true,
+          "detail": "left 表面索引元素: ['Au', 'Au', 'Au']",
+          "value": [
+            "Au",
+            "Au",
+            "Au"
+          ]
+        },
+        {
+          "name": "sides_disjoint",
+          "ok": true,
+          "detail": "left 与对侧表面索引不相交",
+          "value": []
+        },
+        {
+          "name": "same_surface_layer",
+          "ok": true,
+          "detail": "left 三个原子与最远投影层的最大偏差 0.000000 A(容差 0.001); 该层共 15 个 Au",
+          "value": {
+            "layer_size": 15,
+            "layer_indices": [
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54
+            ],
+            "max_gap_A": 5.32208588310823e-09
+          }
+        },
+        {
+          "name": "non_collinear",
+          "ok": true,
+          "detail": "left 三角形面积 3.6009 A^2(下限 0.5)",
+          "value": {
+            "area_A2": 3.6008720780569003,
+            "edges_A": [
+              2.8837229180797115,
+              2.883722912249435,
+              2.883722916667303
+            ]
+          }
+        },
+        {
+          "name": "plane_normal_along_axis",
+          "ok": true,
+          "detail": "left 三角形法向与输运轴夹角 0.000 度(上限 1)",
+          "value": {
+            "angle_deg": 0.0,
+            "normal": [
+              0.45412546438661494,
+              0.7145096886727768,
+              -0.532208575079708
+            ]
+          }
+        },
+        {
+          "name": "plane_is_boundary",
+          "ok": true,
+          "detail": "left 平面外侧电极原子 [] / 平面外分子原子 []; tip 在内侧=True",
+          "value": {
+            "beyond": [],
+            "molecule_outside": [],
+            "tip_inside": true
+          }
+        },
+        {
+          "name": "deterministic_indices",
+          "ok": true,
+          "detail": "left det-v1 重算 [46, 47, 50] vs metadata [46, 47, 50](不一致=索引不是几何的确定性函数)",
+          "value": [
+            46,
+            47,
+            50
+          ]
+        }
+      ],
+      "metrics": {
+        "indices": [
+          46,
+          47,
+          50
+        ],
+        "elements": [
+          "Au",
+          "Au",
+          "Au"
+        ],
+        "tip_index": 19,
+        "linker_index": 17,
+        "away": [
+          0.45412546438661494,
+          0.7145096886727768,
+          -0.532208575079708
+        ],
+        "layer_size": 15,
+        "layer_indices": [
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54
+        ],
+        "cluster_atoms": 37,
+        "edges_A": [
+          2.8837229180797115,
+          2.883722912249435,
+          2.883722916667303
+        ],
+        "area_A2": 3.6008720780569003,
+        "normal_angle_deg": 0.0,
+        "tip_to_plane_A": -9.418199609797956,
+        "equivalent_triple": [
+          46,
+          47,
+          50
+        ],
+        "equiv_same_set": true,
+        "equiv_error": null,
+        "equiv_same_layer": true,
+        "index_rule": "det-v1"
+      },
+      "plane": {
+        "point": [
+          9.46348939,
+          8.80603875,
+          -4.78868018
+        ],
+        "normal": [
+          0.45412546438661494,
+          0.7145096886727768,
+          -0.532208575079708
+        ]
+      },
+      "ok": true
+    },
+    "right": {
+      "side": "right",
+      "checks": [
+        {
+          "name": "indices_shape",
+          "ok": true,
+          "detail": "right 表面索引 [82, 83, 86]: 须恰好 3 个且在 1..92",
+          "value": [
+            82,
+            83,
+            86
+          ]
+        },
+        {
+          "name": "indices_are_au",
+          "ok": true,
+          "detail": "right 表面索引元素: ['Au', 'Au', 'Au']",
+          "value": [
+            "Au",
+            "Au",
+            "Au"
+          ]
+        },
+        {
+          "name": "sides_disjoint",
+          "ok": true,
+          "detail": "right 与对侧表面索引不相交",
+          "value": []
+        },
+        {
+          "name": "same_surface_layer",
+          "ok": true,
+          "detail": "right 三个原子与最远投影层的最大偏差 0.000000 A(容差 0.001); 该层共 15 个 Au",
+          "value": {
+            "layer_size": 15,
+            "layer_indices": [
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90
+            ],
+            "max_gap_A": 1.5042409984289407e-08
+          }
+        },
+        {
+          "name": "non_collinear",
+          "ok": true,
+          "detail": "right 三角形面积 3.6009 A^2(下限 0.5)",
+          "value": {
+            "area_A2": 3.6008720875016804,
+            "edges_A": [
+              2.883722924992626,
+              2.8837229175974852,
+              2.883722915751976
+            ]
+          }
+        },
+        {
+          "name": "plane_normal_along_axis",
+          "ok": true,
+          "detail": "right 三角形法向与输运轴夹角 0.000 度(上限 1)",
+          "value": {
+            "angle_deg": 0.0,
+            "normal": [
+              -0.44889402944555123,
+              -0.4825027195062682,
+              -0.7521205195958903
+            ]
+          }
+        },
+        {
+          "name": "plane_is_boundary",
+          "ok": true,
+          "detail": "right 平面外侧电极原子 [] / 平面外分子原子 []; tip 在内侧=True",
+          "value": {
+            "beyond": [],
+            "molecule_outside": [],
+            "tip_inside": true
+          }
+        },
+        {
+          "name": "deterministic_indices",
+          "ok": true,
+          "detail": "right det-v1 重算 [82, 83, 86] vs metadata [82, 83, 86](不一致=索引不是几何的确定性函数)",
+          "value": [
+            82,
+            83,
+            86
+          ]
+        }
+      ],
+      "metrics": {
+        "indices": [
+          82,
+          83,
+          86
+        ],
+        "elements": [
+          "Au",
+          "Au",
+          "Au"
+        ],
+        "tip_index": 20,
+        "linker_index": 18,
+        "away": [
+          -0.44889402944555123,
+          -0.4825027195062682,
+          -0.7521205195958903
+        ],
+        "layer_size": 15,
+        "layer_indices": [
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90
+        ],
+        "cluster_atoms": 37,
+        "edges_A": [
+          2.883722924992626,
+          2.8837229175974852,
+          2.883722915751976
+        ],
+        "area_A2": 3.6008720875016804,
+        "normal_angle_deg": 0.0,
+        "tip_to_plane_A": -9.41819960779196,
+        "equivalent_triple": [
+          82,
+          83,
+          86
+        ],
+        "equiv_same_set": true,
+        "equiv_error": null,
+        "equiv_same_layer": true,
+        "index_rule": "det-v1"
+      },
+      "plane": {
+        "point": [
+          -9.07215696,
+          -3.93756112,
+          -9.48197766
+        ],
+        "normal": [
+          -0.44889402944555123,
+          -0.4825027195062682,
+          -0.7521205195958903
+        ]
+      },
+      "ok": true
+    }
+  },
+  "tcontrol": null,
+  "checks": [
+    {
+      "name": "indices_shape",
+      "ok": true,
+      "detail": "left 表面索引 [46, 47, 50]: 须恰好 3 个且在 1..92",
+      "value": [
+        46,
+        47,
+        50
+      ]
+    },
+    {
+      "name": "indices_are_au",
+      "ok": true,
+      "detail": "left 表面索引元素: ['Au', 'Au', 'Au']",
+      "value": [
+        "Au",
+        "Au",
+        "Au"
+      ]
+    },
+    {
+      "name": "sides_disjoint",
+      "ok": true,
+      "detail": "left 与对侧表面索引不相交",
+      "value": []
+    },
+    {
+      "name": "same_surface_layer",
+      "ok": true,
+      "detail": "left 三个原子与最远投影层的最大偏差 0.000000 A(容差 0.001); 该层共 15 个 Au",
+      "value": {
+        "layer_size": 15,
+        "layer_indices": [
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54
+        ],
+        "max_gap_A": 5.32208588310823e-09
+      }
+    },
+    {
+      "name": "non_collinear",
+      "ok": true,
+      "detail": "left 三角形面积 3.6009 A^2(下限 0.5)",
+      "value": {
+        "area_A2": 3.6008720780569003,
+        "edges_A": [
+          2.8837229180797115,
+          2.883722912249435,
+          2.883722916667303
+        ]
+      }
+    },
+    {
+      "name": "plane_normal_along_axis",
+      "ok": true,
+      "detail": "left 三角形法向与输运轴夹角 0.000 度(上限 1)",
+      "value": {
+        "angle_deg": 0.0,
+        "normal": [
+          0.45412546438661494,
+          0.7145096886727768,
+          -0.532208575079708
+        ]
+      }
+    },
+    {
+      "name": "plane_is_boundary",
+      "ok": true,
+      "detail": "left 平面外侧电极原子 [] / 平面外分子原子 []; tip 在内侧=True",
+      "value": {
+        "beyond": [],
+        "molecule_outside": [],
+        "tip_inside": true
+      }
+    },
+    {
+      "name": "deterministic_indices",
+      "ok": true,
+      "detail": "left det-v1 重算 [46, 47, 50] vs metadata [46, 47, 50](不一致=索引不是几何的确定性函数)",
+      "value": [
+        46,
+        47,
+        50
+      ]
+    },
+    {
+      "name": "indices_shape",
+      "ok": true,
+      "detail": "right 表面索引 [82, 83, 86]: 须恰好 3 个且在 1..92",
+      "value": [
+        82,
+        83,
+        86
+      ]
+    },
+    {
+      "name": "indices_are_au",
+      "ok": true,
+      "detail": "right 表面索引元素: ['Au', 'Au', 'Au']",
+      "value": [
+        "Au",
+        "Au",
+        "Au"
+      ]
+    },
+    {
+      "name": "sides_disjoint",
+      "ok": true,
+      "detail": "right 与对侧表面索引不相交",
+      "value": []
+    },
+    {
+      "name": "same_surface_layer",
+      "ok": true,
+      "detail": "right 三个原子与最远投影层的最大偏差 0.000000 A(容差 0.001); 该层共 15 个 Au",
+      "value": {
+        "layer_size": 15,
+        "layer_indices": [
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90
+        ],
+        "max_gap_A": 1.5042409984289407e-08
+      }
+    },
+    {
+      "name": "non_collinear",
+      "ok": true,
+      "detail": "right 三角形面积 3.6009 A^2(下限 0.5)",
+      "value": {
+        "area_A2": 3.6008720875016804,
+        "edges_A": [
+          2.883722924992626,
+          2.8837229175974852,
+          2.883722915751976
+        ]
+      }
+    },
+    {
+      "name": "plane_normal_along_axis",
+      "ok": true,
+      "detail": "right 三角形法向与输运轴夹角 0.000 度(上限 1)",
+      "value": {
+        "angle_deg": 0.0,
+        "normal": [
+          -0.44889402944555123,
+          -0.4825027195062682,
+          -0.7521205195958903
+        ]
+      }
+    },
+    {
+      "name": "plane_is_boundary",
+      "ok": true,
+      "detail": "right 平面外侧电极原子 [] / 平面外分子原子 []; tip 在内侧=True",
+      "value": {
+        "beyond": [],
+        "molecule_outside": [],
+        "tip_inside": true
+      }
+    },
+    {
+      "name": "deterministic_indices",
+      "ok": true,
+      "detail": "right det-v1 重算 [82, 83, 86] vs metadata [82, 83, 86](不一致=索引不是几何的确定性函数)",
+      "value": [
+        82,
+        83,
+        86
+      ]
+    }
+  ],
+  "ok": true
+}

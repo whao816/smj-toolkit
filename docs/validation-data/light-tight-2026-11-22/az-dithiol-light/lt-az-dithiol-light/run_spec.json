@@ -1,0 +1,224 @@
+{
+  "schema": "smj.run_spec.v1",
+  "created_at": "2026-11-22T12:45:46+08:00",
+  "reconstructed": false,
+  "rebound": false,
+  "run_id": "lt-az-dithiol-light",
+  "run_dir": "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light",
+  "config_sha256": "e79bf57048ce39b1301d4d6882b12eedafed7ee01b7053763278f9388dde80dd",
+  "protocol_sha256": "ee98a9c90ffea67541b4817a29775098d53271a1e20889cd22d266fad136549b",
+  "protocol_schema": 2,
+  "execution_sha256": "4136a57fd0ac4f430c2a7831c08f5818747877c618e1afa6d62541b9b5102569",
+  "execution": {
+    "species_defaults": {
+      "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+      "exists": true,
+      "files": 5,
+      "listing_sha256": "bce0f7551c3208d7836505bbb0080ed8734144c8b27950231fec42a9ecc5ffcf",
+      "content_sha256": "cc156ac6f5460a71bda3f771c471ff4914aacb44ed735a232be7e835ca99f7c5",
+      "truncated": false
+    },
+    "templates": {
+      "path": null,
+      "exists": false,
+      "files": 0,
+      "listing_sha256": null,
+      "content_sha256": null,
+      "truncated": false
+    },
+    "executables": {
+      "aims_bin": {
+        "path": "\\data\\apps\\fhi-aims.221103-cuda12.8-oneapi2025.3\\bin\\aims.221103.scalapack.mpi.x",
+        "exists": false,
+        "sha256": null
+      },
+      "aitranss_bin": {
+        "path": "\\data\\apps\\fhi-aims.221103-cuda12.8-oneapi2025.3\\bin\\aitranss.071813.openmp.ifx2025.3.x",
+        "exists": false,
+        "sha256": null
+      }
+    },
+    "cluster_env": {
+      "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+      "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x"
+    }
+  },
+  "config": {
+    "run": {
+      "name": "lt-az-dithiol-light",
+      "dir": ".",
+      "mode": "slurm-ssh",
+      "clean": false,
+      "keep_going": false
+    },
+    "molecule": {
+      "xyz": "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\molecule.xyz",
+      "charge": 0,
+      "multiplicity": 1,
+      "initial_moments": null,
+      "fixed_spin_moment": true,
+      "broken_symmetry": false,
+      "method": "b3lyp",
+      "basis": "6-31g(d)",
+      "family": null,
+      "opt_engine": "aims",
+      "opt_functional": "pbe",
+      "opt_basis": "light",
+      "opt_force_threshold": "0.01",
+      "stable_check": false
+    },
+    "electrode": {
+      "au_per_electrode": null,
+      "left_anchor": "S",
+      "right_anchor": "S",
+      "au_tip_distance": 2.35,
+      "anchor_au_s_target": null,
+      "pin_contact": false,
+      "tip_direction": "axis",
+      "strip_thiol_h": true,
+      "vdw": true,
+      "nlayers": null,
+      "source": "library",
+      "library_dir": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library",
+      "library_cluster": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+      "element": "Au",
+      "a_lattice": null,
+      "relax": false,
+      "relax_force_threshold": "0.01",
+      "relax_freeze": "backplane"
+    },
+    "transport": {
+      "temperature": 300.0,
+      "energy_window": [
+        -0.22,
+        0.0002,
+        -0.16
+      ],
+      "energy_window_unit": "Hartree",
+      "ener": null,
+      "estep": null,
+      "eend": null,
+      "require_te_out": true,
+      "allow_single_channel": false,
+      "extra_outputs": [],
+      "occupation_width": 0.01,
+      "charge_mix_param": 0.2,
+      "n_max_pulay": 10,
+      "resolved_window": [
+        -0.22,
+        0.0002,
+        -0.16
+      ],
+      "resolved_window_unit": "Hartree"
+    },
+    "cluster": {
+      "host": "gpu-outside",
+      "user": "haow",
+      "port": 22,
+      "key": null,
+      "remote_root": "/home/haow/smj-runs/lt-az-dithiol-light",
+      "partition": "main",
+      "ntasks": 8,
+      "gres": "gpu:1",
+      "account": null,
+      "qos": null,
+      "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+      "time_limit": "06:00:00",
+      "mem": "24G",
+      "poll_seconds": 30.0,
+      "timeout_hours": 8.0,
+      "env": {
+        "aims_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+        "aims_ld_module": "fhi-aims/221103-cuda12.8-oneapi2025.3",
+        "aitranss_bin": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+        "mkl_lib": "/opt/intel/oneapi/2025.3/lib",
+        "nproc": "8",
+        "te_gres": "gpu:0",
+        "te_mem": "8G",
+        "te_walltime": "02:00:00"
+      }
+    },
+    "paths": {
+      "templates": null,
+      "species_defaults": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species"
+    },
+    "review": {
+      "connection_check": true,
+      "connection_check_deviation": 0.15,
+      "auto_connection_check": true,
+      "accept_deviation": null
+    }
+  },
+  "electrode_library": {
+    "path": "D:\\data\\apps\\src\\fhi-aims.221103\\src\\aitranss\\electrodes.library\\fcc111.au.clusters.37_atoms\\fcc111.cluster.natoms37.x1.aims",
+    "exists": false,
+    "sha256": null
+  },
+  "software": {
+    "smj": "0.2.2rc1",
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "git": {
+      "root": "D:\\dsh_projects\\AutoSMJ",
+      "commit": "48560b02014766482f52c0e400ec3950522c0077",
+      "dirty": true
+    },
+    "executables": {
+      "AIMS_BIN": {
+        "path": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aims.221103.scalapack.mpi.x",
+        "exists": null,
+        "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+      },
+      "AITRANSS_BIN": {
+        "path": "/data/apps/fhi-aims.221103-cuda12.8-oneapi2025.3/bin/aitranss.071813.openmp.ifx2025.3.x",
+        "exists": null,
+        "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+      },
+      "MKL_LIB": {
+        "path": "/opt/intel/oneapi/2025.3/lib",
+        "exists": null,
+        "note": "slurm-ssh 远端 POSIX 路径；本机未检查"
+      }
+    },
+    "cluster_env_keys": [
+      "AIMS_BIN",
+      "AIMS_LD_MODULE",
+      "AITRANSS_BIN",
+      "MKL_LIB",
+      "NPROC",
+      "TE_GRES",
+      "TE_MEM",
+      "TE_WALLTIME"
+    ],
+    "observed": {
+      "molecule_opt": {
+        "observed_at": "2026-11-22T12:46:44+08:00",
+        "program": "FHI-aims",
+        "source": "aims.out",
+        "version": "221103",
+        "aims_uuid": "58AA49B9-F64E-4B26-A04C-829A998024B8",
+        "commit": "GITDIR-NOTFOUND"
+      },
+      "aims_scf": {
+        "observed_at": "2026-11-22T13:41:33+08:00",
+        "program": "FHI-aims",
+        "source": "aims.out",
+        "version": "221103",
+        "aims_uuid": "D38BC216-ED5E-410D-A3AB-2CF0F5DED871",
+        "commit": "GITDIR-NOTFOUND"
+      },
+      "aitranss_te": {
+        "observed_at": "2026-11-22T13:47:37+08:00",
+        "program": "aitranss",
+        "source": "te.out",
+        "version": "071813",
+        "compiled": "2026/09/23 at 15:38:33 on host gpu1"
+      }
+    }
+  },
+  "molecule": {
+    "path": "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\molecule.xyz",
+    "exists": true,
+    "sha256": "4ac5cd1011b595fa42022dd9973de0434a8d2bb73b8f34bf50df61220679ce7e"
+  }
+}

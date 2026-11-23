@@ -1,0 +1,677 @@
+{
+  "schema": "smj.state.v1",
+  "run": "lt-az-dithiol-light",
+  "created_at": "2026-11-22T12:45:46+08:00",
+  "updated_at": "2026-11-22T13:47:38+08:00",
+  "stages": {
+    "molecule_opt": {
+      "status": "collected",
+      "job_id": "26345",
+      "remote_dir": "/home/haow/smj-runs/lt-az-dithiol-light/lt-az-dithiol-light/molecule_opt",
+      "prepared_at": "2026-11-22T12:45:46+08:00",
+      "submitted_at": "2026-11-22T12:46:04+08:00",
+      "finished_at": "2026-11-22T12:46:36+08:00",
+      "collected_at": "2026-11-22T12:46:44+08:00",
+      "elapsed_s": 31.9,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "opt.xyz",
+        "aims.out",
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "sub_aims.sh",
+        "input_summary.json"
+      ],
+      "resources": {
+        "walltime": "00:17:00",
+        "time_limit": "00:31:00",
+        "mem": "12G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 20,
+        "core_h": 1.08,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "molecule_opt": {
+          "engine": "aims",
+          "normal_termination": true,
+          "atom_count": 20,
+          "converged": true,
+          "force_threshold_ev_per_A": 0.01,
+          "max_force_ev_per_A": 0.00686845,
+          "relax_steps": 5,
+          "geometry_check": {
+            "ok": true,
+            "atom_count": 20,
+            "problems": [],
+            "warnings": [],
+            "min_distance_A": 1.0877,
+            "bond_count": [
+              21,
+              21
+            ],
+            "lost_bonds": [],
+            "new_bonds": [],
+            "isolated_atoms": [],
+            "rmsd_A": 0.0157,
+            "bond_check_skipped": false
+          },
+          "frontier_orbitals": {
+            "homo_ev": -5.06662,
+            "lumo_ev": -2.83361,
+            "gap_ev": 2.23301,
+            "n_states": 98,
+            "fractional_occupation": false
+          },
+          "electron_count": 100,
+          "scf": {
+            "occupation_type": "gaussian 0.01",
+            "mixer": "pulay",
+            "n_max_pulay": "10",
+            "charge_mix_param": "0.2",
+            "sc_accuracy_rho": "1E-5",
+            "sc_accuracy_eev": "1E-3",
+            "sc_accuracy_etot": "1E-6",
+            "sc_accuracy_forces": "5E-3",
+            "sc_iter_limit": "1000",
+            "converged_steps": 6,
+            "relax_steps": 5
+          },
+          "species": {
+            "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+            "declared_label": "light",
+            "actual_tier": "light",
+            "dir_tier": "",
+            "elements": [
+              {
+                "element": "C",
+                "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\06_C_default",
+                "sha256": "85ed35a0dfea25c743a252a7f2a1518f7b25a418210d5c9f8eb3f7608718a605",
+                "tier": "light",
+                "basis_functions": 3,
+                "max_angular": "d"
+              },
+              {
+                "element": "H",
+                "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\01_H_default",
+                "sha256": "6983cd11ddb5140cd6e7873adc346994f01cbd250e4c17471ad3bab6b6733b13",
+                "tier": "light",
+                "basis_functions": 2,
+                "max_angular": "p"
+              },
+              {
+                "element": "S",
+                "path": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species\\16_S_default",
+                "sha256": "cefb6850549c9463209f0a06a7c8cfb58c746d6c4319012180c85712049b1fe5",
+                "tier": "light",
+                "basis_functions": 4,
+                "max_angular": "f"
+              }
+            ],
+            "warnings": []
+          }
+        },
+        "software": {
+          "program": "FHI-aims",
+          "source": "aims.out",
+          "version": "221103",
+          "aims_uuid": "58AA49B9-F64E-4B26-A04C-829A998024B8",
+          "commit": "GITDIR-NOTFOUND"
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "b234025e694b77587c252161e5bacf564a9008cd0dad43002a6aba461b80f078",
+        "control.in": "a8ed10ce78fbce0a9452ddefa0b9cbde516da513719c4a836ba40ae0bad87375",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "5d3eb31860a22f5c8334e0b3348323fcb3873fc33a4022fb9170d479ed941626",
+        "species.json": "c4db3abd3fe6412d207f4ce8f4f76ae734ec1d8daf4c77e5b8ed95c9c6af88f3"
+      },
+      "outputs_sha256": {
+        "opt.xyz": "9dc7acffb0c18bee97bd1a1e711613baa65f2db9df36bbd3d6f07e8425f5f9f8",
+        "aims.out": "f272f2c528b4fc73519f4c02812327f0e49f7d8c00599353abd038dae8deb26b",
+        "geometry.in": "b234025e694b77587c252161e5bacf564a9008cd0dad43002a6aba461b80f078",
+        "geometry.in.next_step": "6daf874b6cb4ed79f69a2662d4e4f009e3160fa95202900a09ba901990e48466",
+        "control.in": "a8ed10ce78fbce0a9452ddefa0b9cbde516da513719c4a836ba40ae0bad87375",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "5d3eb31860a22f5c8334e0b3348323fcb3873fc33a4022fb9170d479ed941626"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "ee98a9c90ffea67541b4817a29775098d53271a1e20889cd22d266fad136549b",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\molecule_opt\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\molecule_opt\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\molecule_opt\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\molecule_opt\\input_summary.json",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\molecule_opt\\species.json"
+      ],
+      "notes": [
+        "20 原子，FHI-aims pbe/light，spin=none，charge=0，ntasks=8，partition=main",
+        "aims 引擎：无虚频检查（FHI-aims 未提供一键 freq）；几何来自 relax_geometry bfgs，最大力阈值 0.01 eV/Å（FHI-aims 判据是最大力分量，单位不是 Hartree/Bohr）；collect 会核对 \"Present geometry is converged\" 并做几何合理性检查",
+        "电子数 100（charge=0，multiplicity=1）：奇偶校验通过",
+        "SCF 精度显式写进 control.in（与 control_scf.in 同源）：rho 1E-5、eev 1E-3 eV、etot 1E-6 eV、forces 5E-3 eV/Å，最多 1000 次迭代；旧版依赖 FHI-aims 默认（forces 为 not_checked）",
+        "闭壳层：spin none，不写 fixed_spin_moment / initial_moment",
+        "prepare 只写输入与作业脚本，未提交任何远端命令",
+        "species 实际档位 light（3 个元素，逐文件 sha256 已记录）；配置标签 molecule.opt_basis=light 只是标签",
+        "结构已归档: saved_structures/0001_molecule_opt_input.xyz"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "control.in",
+        "sub_aims.sh",
+        "input_summary.json",
+        "aims.out",
+        "geometry.in.next_step",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "aims_tip_relax": {
+      "status": "collected",
+      "job_id": "26348",
+      "remote_dir": "/home/haow/smj-runs/lt-az-dithiol-light/lt-az-dithiol-light/aims_tip_relax",
+      "prepared_at": "2026-11-22T12:46:44+08:00",
+      "submitted_at": "2026-11-22T12:46:54+08:00",
+      "finished_at": "2026-11-22T12:51:02+08:00",
+      "collected_at": "2026-11-22T12:51:14+08:00",
+      "elapsed_s": 248.7,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in.next_step"
+      ],
+      "resources": {
+        "walltime": "00:18:00",
+        "time_limit": "00:34:00",
+        "mem": "13G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 22,
+        "core_h": 1.17,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_tip_relax": {
+          "source": "geometry.in.next_step",
+          "atom_count": 20,
+          "relaxed_au_s_A": {
+            "left": 2.2509268878979922,
+            "right": 2.2565418373155657
+          },
+          "left_anchor": 17,
+          "right_anchor": 18,
+          "contact_pinned": false,
+          "tip_element": "Au",
+          "anchor_element": "S",
+          "relax_converged": true,
+          "relax_steps": 7,
+          "relax_last_marker": "converged",
+          "relax_log_bytes": 10382434
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "41f3f6fcb3afe59718269cb1ded3942e7aea6c5e0578b74d33533186573a7306",
+        "control.in": "0c9b1a152e759af9bc79de38728e1904668c9772b06e0dfba8463ed5a53e27b4",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "c0abdb5baa7ed545c6efd55b6d400fa464f8ea5427992c0f352f28984f8fa57e"
+      },
+      "outputs_sha256": {
+        "geometry.in.next_step": "ab9afeaf0f1049c58454f55dc78c2f12edf7c45d7320d7349b3dc9e87d898317"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "ee98a9c90ffea67541b4817a29775098d53271a1e20889cd22d266fad136549b",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_tip_relax\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_tip_relax\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_tip_relax\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_tip_relax\\input_summary.json"
+      ],
+      "notes": [
+        "22 原子（分子 20 + 2 Au tip），锚定原子 17/18（S）",
+        "tip 全原子弛豫（pin_contact=False，direction=axis），Au–S 初始放置距离 2.35 Å，species 目录 D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+        "prepare 只写输入与作业脚本，未提交任何远端命令",
+        "去质子：移除 2 个 S–H 氢（原几何存档 opt_neutral.xyz）",
+        "结构检查点已写出: D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_tip_relax\\review_tips.xyz（20 原子；smj review 会提示是否已确认）"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "aims.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "electrode_build": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-22T12:51:15+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-22T12:51:15+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in",
+        "electrode_metadata.json"
+      ],
+      "resources": {
+        "basis": "electrode_build 为纯本地阶段，无集群资源",
+        "local": true
+      },
+      "results": {
+        "electrode_build": {
+          "final_atom_count": 92,
+          "original_atom_count": 20,
+          "au_per_electrode": 37,
+          "left_tip_index": 19,
+          "right_tip_index": 20,
+          "surface_fingerprint": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+          "electrode_source": "library",
+          "electrode_element": "Au",
+          "electrode_a_lattice": null,
+          "library_cluster": {
+            "file": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "relpath": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+            "natoms": 37,
+            "nlayers_suggested": 3,
+            "fetched_from": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims"
+          },
+          "backplane_indices": {
+            "left": [
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54
+            ],
+            "right": [
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90
+            ]
+          },
+          "surface_indices": {
+            "left": [
+              46,
+              47,
+              50
+            ],
+            "right": [
+              82,
+              83,
+              86
+            ]
+          }
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in.next_step": "ab9afeaf0f1049c58454f55dc78c2f12edf7c45d7320d7349b3dc9e87d898317"
+      },
+      "outputs_sha256": {
+        "geometry.in": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+        "electrode_metadata.json": "6fcfd0e4db4d4e4a7ebecb4a609779de03ecdaf8ebc0588d08abba594fd65f7a"
+      },
+      "parent_stage": "aims_tip_relax",
+      "parent_fingerprint": "ab9afeaf0f1049c58454f55dc78c2f12edf7c45d7320d7349b3dc9e87d898317",
+      "protocol_sha256": "ee98a9c90ffea67541b4817a29775098d53271a1e20889cd22d266fad136549b",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_tip_relax\\geometry.in.next_step"
+      ],
+      "notes": [
+        "库团簇: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims（37 原子，Au，建议 nlayers=3，sha256 8e676297c47c…）",
+        "au_per_electrode 仅对 source: builtin 生效；library 模式按库团簇整簇贴装（该键已忽略）",
+        "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
+        "Au 每侧目标 37 个（库团簇整簇贴装），最终 92 原子",
+        "表面原子（1-based）left=[46, 47, 50] right=[82, 83, 86]，背层 left=[40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54] right=[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90]，指纹 df22429c9292…",
+        "结构检查点已写出: D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\electrode_build\\review_junction.xyz（92 原子；进入 SCF 前建议人工看一眼）"
+      ],
+      "commands": [],
+      "local_only": false,
+      "output_hash_missing": []
+    },
+    "aims_scf": {
+      "status": "collected",
+      "job_id": "26350",
+      "remote_dir": "/home/haow/smj-runs/lt-az-dithiol-light/lt-az-dithiol-light/aims_scf",
+      "prepared_at": "2026-11-22T12:51:17+08:00",
+      "submitted_at": "2026-11-22T12:51:24+08:00",
+      "finished_at": "2026-11-22T13:41:12+08:00",
+      "collected_at": "2026-11-22T13:41:33+08:00",
+      "elapsed_s": 1.0,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "aims.out",
+        "control.in",
+        "geometry.in",
+        "basis-indices.out",
+        "omat.aims",
+        "mos.aims"
+      ],
+      "resources": {
+        "walltime": "00:31:00",
+        "time_limit": "00:58:00",
+        "mem": "8G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 92,
+        "core_h": 2.03,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点 132 原子 4320 s / 13.3 GiB；墙钟 x N^3.0、内存 x N^2.0 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_scf": {
+          "atom_count": 92,
+          "normal_termination": true,
+          "scf_converged": true,
+          "has_basis_indices": true,
+          "has_omat": true,
+          "has_mos": true,
+          "has_alpha": false,
+          "has_beta": false,
+          "spin_unpolarized": true,
+          "basis_indices_bytes": 135381,
+          "basis_functions": 4364,
+          "omat_bytes": 60,
+          "omat_nsaos": 4364,
+          "wavefunction_files": [
+            "mos.aims"
+          ],
+          "wavefunction_bytes": 112,
+          "log_bytes": 1512390,
+          "software": {
+            "program": "FHI-aims",
+            "source": "aims.out",
+            "version": "221103",
+            "aims_uuid": "D38BC216-ED5E-410D-A3AB-2CF0F5DED871",
+            "commit": "GITDIR-NOTFOUND"
+          },
+          "extra_outputs": []
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+        "control.in": "4c04cbf59b38c70169a086edd36d265451e41131d21234b235ea4c9ae05f2ba9",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "4b76954964e6d21c8effa6f9af34e564878bb16336473fead65da7c7712938b7"
+      },
+      "outputs_sha256": {
+        "aims.out": "0cce5548f0bef39c8c2f0c696b18eab52c029cfd4ad6d9fdd1f34de390f91edb",
+        "control.in": "4c04cbf59b38c70169a086edd36d265451e41131d21234b235ea4c9ae05f2ba9",
+        "geometry.in": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+        "basis-indices.out": "94c15a49300be93ecb504627404521e632cf82456a82f751e73c62f16f833b9d",
+        "omat.aims": "8132484c670041781fa2a6e52ae91611599bb9140b012ea4cd2f2ba1bd1f71ed",
+        "mos.aims": "feb1e7e3518e174cbc21fa40f9f9443dcd9a224bb24d82c1792ae80dfb85ab8b"
+      },
+      "parent_stage": "electrode_build",
+      "parent_fingerprint": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+      "protocol_sha256": "ee98a9c90ffea67541b4817a29775098d53271a1e20889cd22d266fad136549b",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_scf\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_scf\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_scf\\input_summary.json"
+      ],
+      "notes": [
+        "92 原子，ntasks=8，partition=main",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "control.in",
+        "aims.out",
+        "basis-indices.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [
+        "mos.aims",
+        "omat.aims"
+      ],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "aitranss_te": {
+      "status": "collected",
+      "job_id": "26353",
+      "remote_dir": "/home/haow/smj-runs/lt-az-dithiol-light/lt-az-dithiol-light/aims_scf",
+      "prepared_at": "2026-11-22T13:42:15+08:00",
+      "submitted_at": "2026-11-22T13:42:21+08:00",
+      "finished_at": "2026-11-22T13:47:30+08:00",
+      "collected_at": "2026-11-22T13:47:37+08:00",
+      "elapsed_s": 309.2,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "TE.dat",
+        "te.out"
+      ],
+      "resources": {
+        "walltime": "00:30:00",
+        "time_limit": "00:57:00",
+        "mem": "6G",
+        "ntasks": 1,
+        "cpus": 1,
+        "cores": 1,
+        "atoms": 92,
+        "core_h": 0.5,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点 132 原子 2552 s / 8.0 GiB；墙钟 x N^3.0、内存 x N^1.5 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aitranss_te": {
+          "points": 301,
+          "te_bytes": 16394,
+          "max_transmission": 1.240608082,
+          "transmission_channels": 1,
+          "single_channel_allowed": false,
+          "energy_order": "ascending",
+          "has_te_out": true,
+          "require_te_out": true,
+          "software": {
+            "program": "aitranss",
+            "source": "te.out",
+            "version": "071813",
+            "compiled": "2026/09/23 at 15:38:33 on host gpu1"
+          }
+        }
+      },
+      "inputs_sha256": {
+        "tcontrol": "0dd92ea8bd592e040595e6d9c861b090d9b641c689bcd3c02fb52806cd019bed",
+        "self.energy.in": "aba7e0866fa354ea2523b4a4807f01d590f57af30885a6b34960669e9fcddc36",
+        "sub_te.sh": "947f2ded861fde3f4e4188f8a1f50b901fa8dd46abd65ff876d8be55cd9f6786",
+        "input_summary.json": "f4f002a714d9ce06a43a1a7899b5bc3965e60d17ec2f9f2f76ce8fc8f0bab69d",
+        "geometry.in": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+        "electrode_metadata.json": "2a947c331ce0d96722a5043742e4f4e42fdf13679ee5edf5753b7efaab0eb914"
+      },
+      "outputs_sha256": {
+        "TE.dat": "4e64223ecf70bb1ceec4e9980e91b3e72906c10e2d5c0a2769e39057dcecf1b5",
+        "te.out": "18203846d2a1347f04bdae447772059f55b23f4cfbc59a7cdb5aae0809d16d8b"
+      },
+      "parent_stage": "electrode_build",
+      "parent_fingerprint": "df22429c9292463b5f8e9fe8ed48c4ee88074a46c275c84cfb9f8f424f758343",
+      "protocol_sha256": "ee98a9c90ffea67541b4817a29775098d53271a1e20889cd22d266fad136549b",
+      "script": "sub_te.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aitranss_te\\tcontrol",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aitranss_te\\self.energy.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aitranss_te\\sub_te.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aitranss_te\\input_summary.json",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\electrode_build\\electrode_metadata.json"
+      ],
+      "notes": [
+        "能量窗（Ha 绝对）ener=-0.2200000000 / estep=0.0002000000 / eend=-0.1600000000，nlayers=3",
+        "表面索引 l=[46, 47, 50] r=[82, 83, 86]（来自 electrode_metadata.json）",
+        "self.energy.in：每侧 37 个电极 Au（含 tip，tip 记 empty）",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_te.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "tcontrol",
+        "TE.dat",
+        "te.out",
+        "self.energy.in",
+        "sub_te.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "junction_analyze": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-22T13:47:38+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-22T13:47:38+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "results.json"
+      ],
+      "resources": {
+        "local": true,
+        "points": 301,
+        "temperature_K": 300.0
+      },
+      "results": {
+        "junction": {
+          "source": "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aitranss_te\\TE.dat",
+          "temperature_K": 300.0,
+          "points": 301,
+          "L0": 0.37328973888643446,
+          "L1": -0.005974734441025319,
+          "L2": 0.0009499309414183596,
+          "log10_G_over_G0_like": -0.42795394794202624,
+          "S_uV_per_K": 53.35207318983755,
+          "k_e_pW_per_K": 220.64033660797259,
+          "ZT_electronic": 0.11193861826093933,
+          "fermi_nearest": {
+            "E_Hartree": -0.188,
+            "E_minus_Ef_eV": 0.00254389,
+            "T": 0.3429414203
+          },
+          "thermal_window": {
+            "e_min_ev": -0.8682204,
+            "e_max_ev": 0.76446264,
+            "kbt_ev": 0.025851997199999997,
+            "lower_kbt": -33.5842679110301,
+            "upper_kbt": 29.570738155580493,
+            "coverage": 0.9999999999998536
+          },
+          "fermi_quadrature": {
+            "kbt_ev": 0.025851997199999997,
+            "window_kbt": 4.0,
+            "weight_integral": 1.0000000000754732,
+            "exact_coverage": 0.9999999999998536,
+            "ratio": 1.0000000000756197,
+            "first_moment_kbt": 1.0508841332955035e-11,
+            "points_in_window": 38,
+            "min_step_in_window_ev": 0.005442269999999999
+          },
+          "max_transmission": {
+            "E_Hartree": -0.203,
+            "E_minus_Ef_eV": -0.40562687,
+            "T": 1.240608082
+          },
+          "input_energy_order": "ascending",
+          "reordered": false,
+          "negative_transmission_points": 0,
+          "warnings": []
+        }
+      },
+      "inputs_sha256": {
+        "TE.dat": "4e64223ecf70bb1ceec4e9980e91b3e72906c10e2d5c0a2769e39057dcecf1b5"
+      },
+      "outputs_sha256": {
+        "results.json": "091f749304d37ee030cb2991662b2d59e7104271d742933189c194b4b7d925e8"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "ee98a9c90ffea67541b4817a29775098d53271a1e20889cd22d266fad136549b",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\az-dithiol-light\\lt-az-dithiol-light\\aitranss_te\\TE.dat"
+      ],
+      "notes": [
+        "T = 300.0 K，301 个能量点；log10(G/G0)_like=-0.427954",
+        "本地阶段：只做 Landauer 积分，无集群提交",
+        "统一版式图（style 2026.11）: T_E.png + T_E.pdf"
+      ],
+      "commands": [],
+      "local_only": false,
+      "output_hash_missing": []
+    }
+  },
+  "results": {},
+  "warnings": []
+}

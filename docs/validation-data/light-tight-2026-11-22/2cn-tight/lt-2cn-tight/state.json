@@ -1,0 +1,684 @@
+{
+  "schema": "smj.state.v1",
+  "run": "lt-2cn-tight",
+  "created_at": "2026-11-22T12:27:00+08:00",
+  "updated_at": "2026-11-22T19:19:04+08:00",
+  "stages": {
+    "molecule_opt": {
+      "status": "collected",
+      "job_id": "26341",
+      "remote_dir": "/home/haow/smj-runs/lt-2cn-tight/lt-2cn-tight/molecule_opt",
+      "prepared_at": "2026-11-22T12:27:00+08:00",
+      "submitted_at": "2026-11-22T12:27:09+08:00",
+      "finished_at": "2026-11-22T14:30:20+08:00",
+      "collected_at": "2026-11-22T14:30:39+08:00",
+      "elapsed_s": 2950.1,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "opt.xyz",
+        "aims.out",
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "sub_aims.sh",
+        "input_summary.json"
+      ],
+      "resources": {
+        "walltime": "00:38:00",
+        "time_limit": "01:12:00",
+        "mem": "17G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 54,
+        "core_h": 2.5,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "molecule_opt": {
+          "engine": "aims",
+          "normal_termination": true,
+          "atom_count": 54,
+          "converged": true,
+          "force_threshold_ev_per_A": 0.01,
+          "max_force_ev_per_A": 0.00916064,
+          "relax_steps": 99,
+          "geometry_check": {
+            "ok": true,
+            "atom_count": 54,
+            "problems": [],
+            "warnings": [],
+            "min_distance_A": 1.0865,
+            "bond_count": [
+              58,
+              58
+            ],
+            "lost_bonds": [],
+            "new_bonds": [],
+            "isolated_atoms": [],
+            "rmsd_A": 0.5634,
+            "bond_check_skipped": false
+          },
+          "frontier_orbitals": {
+            "homo_ev": -5.02194,
+            "lumo_ev": -3.99765,
+            "gap_ev": 1.02429,
+            "n_states": 255,
+            "fractional_occupation": false
+          },
+          "electron_count": 246,
+          "scf": {
+            "occupation_type": "gaussian 0.01",
+            "mixer": "pulay",
+            "n_max_pulay": "10",
+            "charge_mix_param": "0.2",
+            "sc_accuracy_rho": "1E-5",
+            "sc_accuracy_eev": "1E-3",
+            "sc_accuracy_etot": "1E-6",
+            "sc_accuracy_forces": "5E-3",
+            "sc_iter_limit": "1000",
+            "converged_steps": 100,
+            "relax_steps": 99
+          },
+          "species": {
+            "species_dir": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight",
+            "declared_label": "tight",
+            "actual_tier": "tight",
+            "dir_tier": "",
+            "elements": [
+              {
+                "element": "C",
+                "path": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight\\06_C_default",
+                "sha256": "4524b3b228ac4302cd87f1adfbef16f32e4e089c186ff78eb91e33ca6891a5ee",
+                "tier": "tight",
+                "basis_functions": 8,
+                "max_angular": "g"
+              },
+              {
+                "element": "H",
+                "path": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight\\01_H_default",
+                "sha256": "ee20715d1e6a283632d0f49ad140c8366d58593346c9e9c698309a1de8102675",
+                "tier": "tight",
+                "basis_functions": 6,
+                "max_angular": "d"
+              },
+              {
+                "element": "N",
+                "path": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight\\07_N_default",
+                "sha256": "7f3534970cfaff5ba0a82b4876df2df0fef4f3aef31cac5e4b4c3d81d459d348",
+                "tier": "tight",
+                "basis_functions": 8,
+                "max_angular": "g"
+              },
+              {
+                "element": "S",
+                "path": "D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight\\16_S_default",
+                "sha256": "038136409fd3b7b96af4c6070d2712ab415752e16f5cb55891dde04d3d1ab7ab",
+                "tier": "tight",
+                "basis_functions": 6,
+                "max_angular": "g"
+              }
+            ],
+            "warnings": []
+          }
+        },
+        "software": {
+          "program": "FHI-aims",
+          "source": "aims.out",
+          "version": "221103",
+          "aims_uuid": "B8E060C3-D477-4927-AB55-6F601922238C",
+          "commit": "GITDIR-NOTFOUND"
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "0ce581f3370489e05d1d033a470e97ac73b0e1539e6877da8ce33346be719cf8",
+        "control.in": "53928a3c17ff56685edf27e9fc20167ef768198fd0aec35e0cac7945c36660ac",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "3105f6414da973ebb05397f6e45fa10a69cd83aabc215e987e2c62e51ccd9f53",
+        "species.json": "515432386386ad2cfb778dfcc66984eacd76169a37ffcaec8f9dfab929975ea4"
+      },
+      "outputs_sha256": {
+        "opt.xyz": "60fa7e5a4fd674cd80e2c20ad0cec6827d8bb97fef98a836dd3f838623205f3e",
+        "aims.out": "33d0d10b7062e8ea293f0c3d53d45f317fbb4c4bd831e1b4752b53363509441e",
+        "geometry.in": "0ce581f3370489e05d1d033a470e97ac73b0e1539e6877da8ce33346be719cf8",
+        "geometry.in.next_step": "ead629302623cbe375e2ceaa8f905a097ef604168c5f7e21f1373ccea354c595",
+        "control.in": "53928a3c17ff56685edf27e9fc20167ef768198fd0aec35e0cac7945c36660ac",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "3105f6414da973ebb05397f6e45fa10a69cd83aabc215e987e2c62e51ccd9f53"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "14d14124a984b0da7cc6ecae60a9b731d4c6fd0196e6fccc6fab04c1430a8c4e",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\molecule_opt\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\molecule_opt\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\molecule_opt\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\molecule_opt\\input_summary.json",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\molecule_opt\\species.json"
+      ],
+      "notes": [
+        "54 原子，FHI-aims pbe/tight，spin=none，charge=0，ntasks=8，partition=main",
+        "aims 引擎：无虚频检查（FHI-aims 未提供一键 freq）；几何来自 relax_geometry bfgs，最大力阈值 0.01 eV/Å（FHI-aims 判据是最大力分量，单位不是 Hartree/Bohr）；collect 会核对 \"Present geometry is converged\" 并做几何合理性检查",
+        "电子数 246（charge=0，multiplicity=1）：奇偶校验通过",
+        "SCF 精度显式写进 control.in（与 control_scf.in 同源）：rho 1E-5、eev 1E-3 eV、etot 1E-6 eV、forces 5E-3 eV/Å，最多 1000 次迭代；旧版依赖 FHI-aims 默认（forces 为 not_checked）",
+        "闭壳层：spin none，不写 fixed_spin_moment / initial_moment",
+        "prepare 只写输入与作业脚本，未提交任何远端命令",
+        "species 实际档位 tight（4 个元素，逐文件 sha256 已记录）；配置标签 molecule.opt_basis=tight 只是标签",
+        "结构已归档: saved_structures/0001_molecule_opt_input.xyz"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "control.in",
+        "sub_aims.sh",
+        "input_summary.json",
+        "aims.out",
+        "geometry.in.next_step",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "aims_tip_relax": {
+      "status": "collected",
+      "job_id": "26355",
+      "remote_dir": "/home/haow/smj-runs/lt-2cn-tight/lt-2cn-tight/aims_tip_relax",
+      "prepared_at": "2026-11-22T14:30:39+08:00",
+      "submitted_at": "2026-11-22T14:30:47+08:00",
+      "finished_at": "2026-11-22T16:32:45+08:00",
+      "collected_at": "2026-11-22T16:33:01+08:00",
+      "elapsed_s": 7318.5,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in.next_step"
+      ],
+      "resources": {
+        "walltime": "00:39:00",
+        "time_limit": "01:14:00",
+        "mem": "17G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 56,
+        "core_h": 2.58,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点线性外推：墙钟 180+30·N s，内存 8.0+0.10·N GiB，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_tip_relax": {
+          "source": "geometry.in.next_step",
+          "atom_count": 56,
+          "relaxed_au_s_A": {
+            "left": 2.40359675810279,
+            "right": 2.4059396645403663
+          },
+          "left_anchor": 45,
+          "right_anchor": 46,
+          "contact_pinned": false,
+          "tip_element": "Au",
+          "anchor_element": "S",
+          "relax_converged": true,
+          "relax_steps": 4,
+          "relax_last_marker": "converged",
+          "relax_log_bytes": 20239831
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "ae17380b9d7b0883d7c9f66d8a2d3f5acd2dcfe280a8975a7c5f3933b5eadc25",
+        "control.in": "10c1694fc1d77c512c502449ee5bd01ad9b7e47c9b7e5fca9444ebaf7b2ab04a",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "30475e9bbe247b000246b08e7275a61def1a188fcf8cadabf82bf4ceea98196a"
+      },
+      "outputs_sha256": {
+        "geometry.in.next_step": "cfe0f8a332d25097680bb9ef1642b00a81dee5939fe4e79ce1608b9b4f270510"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "14d14124a984b0da7cc6ecae60a9b731d4c6fd0196e6fccc6fab04c1430a8c4e",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_tip_relax\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_tip_relax\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_tip_relax\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_tip_relax\\input_summary.json"
+      ],
+      "notes": [
+        "56 原子（分子 54 + 2 Au tip），锚定原子 45/46（S）",
+        "tip 全原子弛豫（pin_contact=False，direction=axis），Au–S 初始放置距离 2.35 Å，species 目录 D:\\dsh_projects\\AutoSMJ\\runs\\compare-2026-11-15\\species-tight",
+        "prepare 只写输入与作业脚本，未提交任何远端命令",
+        "结构检查点已写出: D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_tip_relax\\review_tips.xyz（56 原子；smj review 会提示是否已确认）"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "geometry.in.next_step",
+        "control.in",
+        "aims.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "electrode_build": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-22T16:33:02+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-22T16:33:02+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "geometry.in",
+        "electrode_metadata.json"
+      ],
+      "resources": {
+        "basis": "electrode_build 为纯本地阶段，无集群资源",
+        "local": true
+      },
+      "results": {
+        "electrode_build": {
+          "final_atom_count": 128,
+          "original_atom_count": 56,
+          "au_per_electrode": 37,
+          "left_tip_index": 55,
+          "right_tip_index": 56,
+          "surface_fingerprint": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+          "electrode_source": "library",
+          "electrode_element": "Au",
+          "electrode_a_lattice": null,
+          "library_cluster": {
+            "file": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "relpath": "fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims",
+            "sha256": "8e676297c47c98e9b32b29a240a3b19ae91d2b6bb87e3b02c8e3a314177fe8b8",
+            "natoms": 37,
+            "nlayers_suggested": 3,
+            "fetched_from": "gpu-outside:/data/apps/src/fhi-aims.221103/src/aitranss/electrodes.library/fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims"
+          },
+          "backplane_indices": {
+            "left": [
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90
+            ],
+            "right": [
+              112,
+              113,
+              114,
+              115,
+              116,
+              117,
+              118,
+              119,
+              120,
+              121,
+              122,
+              123,
+              124,
+              125,
+              126
+            ]
+          },
+          "surface_indices": {
+            "left": [
+              82,
+              83,
+              86
+            ],
+            "right": [
+              118,
+              119,
+              122
+            ]
+          }
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in.next_step": "cfe0f8a332d25097680bb9ef1642b00a81dee5939fe4e79ce1608b9b4f270510"
+      },
+      "outputs_sha256": {
+        "geometry.in": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+        "electrode_metadata.json": "54ebea50cbea758fa47c3652db8583cd65a3604854995fdd3e94811f7b0f53d8"
+      },
+      "parent_stage": "aims_tip_relax",
+      "parent_fingerprint": "cfe0f8a332d25097680bb9ef1642b00a81dee5939fe4e79ce1608b9b4f270510",
+      "protocol_sha256": "14d14124a984b0da7cc6ecae60a9b731d4c6fd0196e6fccc6fab04c1430a8c4e",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_tip_relax\\geometry.in.next_step"
+      ],
+      "notes": [
+        "库团簇: fcc111.au.clusters.37_atoms/fcc111.cluster.natoms37.x1.aims（37 原子，Au，建议 nlayers=3，sha256 8e676297c47c…）",
+        "au_per_electrode 仅对 source: builtin 生效；library 模式按库团簇整簇贴装（该键已忽略）",
+        "本地阶段：在 aims_tip_relax 的几何上补全两侧 Au(111) 电极，无需集群提交",
+        "Au 每侧目标 37 个（库团簇整簇贴装），最终 128 原子",
+        "表面原子（1-based）left=[82, 83, 86] right=[118, 119, 122]，背层 left=[76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90] right=[112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126]，指纹 2b03b2ab307d…",
+        "结构检查点已写出: D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\electrode_build\\review_junction.xyz（128 原子；进入 SCF 前建议人工看一眼）"
+      ],
+      "commands": [],
+      "local_only": false,
+      "output_hash_missing": []
+    },
+    "aims_scf": {
+      "status": "collected",
+      "job_id": "26357",
+      "remote_dir": "/home/haow/smj-runs/lt-2cn-tight/lt-2cn-tight/aims_scf",
+      "prepared_at": "2026-11-22T16:33:03+08:00",
+      "submitted_at": "2026-11-22T16:33:10+08:00",
+      "finished_at": "2026-11-22T19:08:42+08:00",
+      "collected_at": "2026-11-22T19:08:57+08:00",
+      "elapsed_s": 9331.5,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "aims.out",
+        "control.in",
+        "geometry.in",
+        "basis-indices.out",
+        "omat.aims",
+        "mos.aims"
+      ],
+      "resources": {
+        "walltime": "01:23:00",
+        "time_limit": "02:36:00",
+        "mem": "16G",
+        "ntasks": 4,
+        "cpus": null,
+        "cores": 4,
+        "atoms": 128,
+        "core_h": 5.47,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 4；实测锚点 132 原子 4320 s / 13.3 GiB；墙钟 x N^3.0、内存 x N^2.0 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aims_scf": {
+          "atom_count": 128,
+          "normal_termination": true,
+          "scf_converged": true,
+          "has_basis_indices": true,
+          "has_omat": true,
+          "has_mos": true,
+          "has_alpha": false,
+          "has_beta": false,
+          "spin_unpolarized": true,
+          "basis_indices_bytes": 199613,
+          "basis_functions": 6436,
+          "omat_bytes": 60,
+          "omat_nsaos": 6436,
+          "wavefunction_files": [
+            "mos.aims"
+          ],
+          "wavefunction_bytes": 112,
+          "log_bytes": 1843758,
+          "software": {
+            "program": "FHI-aims",
+            "source": "aims.out",
+            "version": "221103",
+            "aims_uuid": "13294C8C-3D45-44BE-A9F2-F3582C33A53F",
+            "commit": "GITDIR-NOTFOUND"
+          },
+          "extra_outputs": []
+        }
+      },
+      "inputs_sha256": {
+        "geometry.in": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+        "control.in": "0f40a73adbbecc5cae3955ec5ece0291ee084975e54a0ab51158985013f6b44a",
+        "sub_aims.sh": "d8ef950ac02effccdb46307a8261f46b8cd3ec5e25d6bec3b2083b37fd406368",
+        "input_summary.json": "3140e0341c4fe6e29b6c289a927ec7754ea973ba2a3510825ea2d2b3e097b36d"
+      },
+      "outputs_sha256": {
+        "aims.out": "b9869673a24450265a91cd6a45a3dbcdeaa287da214190944e1e1ccd6dbdd133",
+        "control.in": "0f40a73adbbecc5cae3955ec5ece0291ee084975e54a0ab51158985013f6b44a",
+        "geometry.in": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+        "basis-indices.out": "36c6d1b758ce0c8052df8045727c5c430587871b117c0c2a6feaf8a2dce043ea",
+        "omat.aims": "d873932eda0c46876cefef50f0df61f812c3ad9a694a41aa1987cedb1fab79d4",
+        "mos.aims": "e0a83fab67e4c82dbe053fb9db8967c9905ee427874572f32ef5bb5faab4a2a9"
+      },
+      "parent_stage": "electrode_build",
+      "parent_fingerprint": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+      "protocol_sha256": "14d14124a984b0da7cc6ecae60a9b731d4c6fd0196e6fccc6fab04c1430a8c4e",
+      "script": "sub_aims.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_scf\\control.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_scf\\sub_aims.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_scf\\input_summary.json"
+      ],
+      "notes": [
+        "128 原子，ntasks=8，partition=main",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_aims.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "geometry.in",
+        "control.in",
+        "aims.out",
+        "basis-indices.out",
+        "sub_aims.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [
+        "mos.aims",
+        "omat.aims"
+      ],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "aitranss_te": {
+      "status": "collected",
+      "job_id": "26358",
+      "remote_dir": "/home/haow/smj-runs/lt-2cn-tight/lt-2cn-tight/aims_scf",
+      "prepared_at": "2026-11-22T19:08:57+08:00",
+      "submitted_at": "2026-11-22T19:09:03+08:00",
+      "finished_at": "2026-11-22T19:18:55+08:00",
+      "collected_at": "2026-11-22T19:19:03+08:00",
+      "elapsed_s": 591.8,
+      "exit_code": 0,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "TE.dat",
+        "te.out"
+      ],
+      "resources": {
+        "walltime": "00:49:00",
+        "time_limit": "01:33:00",
+        "mem": "10G",
+        "ntasks": 1,
+        "cpus": 1,
+        "cores": 1,
+        "atoms": 128,
+        "core_h": 0.81,
+        "capped": [],
+        "basis": "FHI-aims 内存随 rank 放大，rank 取 1；实测锚点 132 原子 2552 s / 8.0 GiB；墙钟 x N^3.0、内存 x N^1.5 外推，余量 1.25x/1.20x；--time 取预期墙钟 x1.9"
+      },
+      "results": {
+        "aitranss_te": {
+          "points": 301,
+          "te_bytes": 16394,
+          "max_transmission": 0.8913382046,
+          "transmission_channels": 1,
+          "single_channel_allowed": false,
+          "energy_order": "ascending",
+          "has_te_out": true,
+          "require_te_out": true,
+          "software": {
+            "program": "aitranss",
+            "source": "te.out",
+            "version": "071813",
+            "compiled": "2026/09/23 at 15:38:33 on host gpu1"
+          }
+        }
+      },
+      "inputs_sha256": {
+        "tcontrol": "ee833a78d41c4319fcc9881417834a0e749844626476256311e5d5c8e85b25d5",
+        "self.energy.in": "b023a777eadafc0849bfcc1d4b760c46863d951deefc254ba42fe65210e7e3f7",
+        "sub_te.sh": "947f2ded861fde3f4e4188f8a1f50b901fa8dd46abd65ff876d8be55cd9f6786",
+        "input_summary.json": "de0bd47ee7640853823e0e0a0ada8fa6c9e8f5d4970ca12d8f95df25072246a6",
+        "geometry.in": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+        "electrode_metadata.json": "6d293f5ab23b01f5ae7f25d43fa42cb427b07ee4fbb7bead16e7e9e8f9766371"
+      },
+      "outputs_sha256": {
+        "TE.dat": "a4d3029a87188b8704498e328a22aab0fc151219de6c12905b942dbb4a29db9a",
+        "te.out": "09b7be8e27999d1e1878a8443845d26c47e21744ed5b2819b70a10d63ba3f80e"
+      },
+      "parent_stage": "electrode_build",
+      "parent_fingerprint": "2b03b2ab307dd404192b0ad1c6e869795fc9650e2801f17ef9011d34aa393673",
+      "protocol_sha256": "14d14124a984b0da7cc6ecae60a9b731d4c6fd0196e6fccc6fab04c1430a8c4e",
+      "script": "sub_te.sh",
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aitranss_te\\tcontrol",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aitranss_te\\self.energy.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aitranss_te\\sub_te.sh",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aitranss_te\\input_summary.json",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aims_scf\\geometry.in",
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\electrode_build\\electrode_metadata.json"
+      ],
+      "notes": [
+        "能量窗（Ha 绝对）ener=-0.2200000000 / estep=0.0002000000 / eend=-0.1600000000，nlayers=3",
+        "表面索引 l=[82, 83, 86] r=[118, 119, 122]（来自 electrode_metadata.json）",
+        "self.energy.in：每侧 37 个电极 Au（含 tip，tip 记 empty）",
+        "prepare 只写输入与作业脚本，未提交任何远端命令"
+      ],
+      "commands": [
+        "sbatch sub_te.sh"
+      ],
+      "local_only": false,
+      "download_fetched": [
+        "tcontrol",
+        "TE.dat",
+        "te.out",
+        "self.energy.in",
+        "sub_te.sh",
+        ".dsh_done"
+      ],
+      "download_head_fetched": [],
+      "download_missing": [],
+      "output_hash_missing": []
+    },
+    "junction_analyze": {
+      "status": "collected",
+      "job_id": null,
+      "remote_dir": null,
+      "prepared_at": "2026-11-22T19:19:04+08:00",
+      "submitted_at": null,
+      "finished_at": null,
+      "collected_at": "2026-11-22T19:19:04+08:00",
+      "elapsed_s": null,
+      "exit_code": null,
+      "note": null,
+      "error": null,
+      "artifacts": [
+        "results.json"
+      ],
+      "resources": {
+        "local": true,
+        "points": 301,
+        "temperature_K": 300.0
+      },
+      "results": {
+        "junction": {
+          "source": "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aitranss_te\\TE.dat",
+          "temperature_K": 300.0,
+          "points": 301,
+          "L0": 0.001361481904561379,
+          "L1": 1.4405648736609455e-06,
+          "L2": 3.3023726556994454e-06,
+          "log10_G_over_G0_like": -2.8659881264880753,
+          "S_uV_per_K": -3.526953164867914,
+          "k_e_pW_per_K": 0.8525095875355397,
+          "ZT_electronic": 0.0004617726295844955,
+          "fermi_nearest": {
+            "E_Hartree": -0.1816,
+            "E_minus_Ef_eV": -0.00089074,
+            "T": 0.001337983153
+          },
+          "thermal_window": {
+            "e_min_ev": -1.04580789,
+            "e_max_ev": 0.58687515,
+            "kbt_ev": 0.025851997199999997,
+            "lower_kbt": -40.45365941784955,
+            "upper_kbt": 22.70134664876105,
+            "coverage": 0.9999999998616655
+          },
+          "fermi_quadrature": {
+            "kbt_ev": 0.025851997199999997,
+            "window_kbt": 4.0,
+            "weight_integral": 0.9999999999334375,
+            "exact_coverage": 0.9999999998616655,
+            "ratio": 1.000000000071772,
+            "first_moment_kbt": -3.230381132779165e-09,
+            "points_in_window": 38,
+            "min_step_in_window_ev": 0.005442269999999999
+          },
+          "max_transmission": {
+            "E_Hartree": -0.1696,
+            "E_minus_Ef_eV": 0.32564586,
+            "T": 0.8913382046
+          },
+          "input_energy_order": "ascending",
+          "reordered": false,
+          "negative_transmission_points": 0,
+          "warnings": []
+        }
+      },
+      "inputs_sha256": {
+        "TE.dat": "a4d3029a87188b8704498e328a22aab0fc151219de6c12905b942dbb4a29db9a"
+      },
+      "outputs_sha256": {
+        "results.json": "ab21fbe56e9cb69b72d4ae1a92b1cb1a6e506604c39493a48a04d25d8ca30994"
+      },
+      "parent_stage": null,
+      "parent_fingerprint": null,
+      "protocol_sha256": "14d14124a984b0da7cc6ecae60a9b731d4c6fd0196e6fccc6fab04c1430a8c4e",
+      "script": null,
+      "inputs": [
+        "D:\\dsh_projects\\AutoSMJ\\runs\\light-tight-2026-11-22\\2cn-tight\\lt-2cn-tight\\aitranss_te\\TE.dat"
+      ],
+      "notes": [
+        "T = 300.0 K，301 个能量点；log10(G/G0)_like=-2.86599",
+        "本地阶段：只做 Landauer 积分，无集群提交",
+        "统一版式图（style 2026.11）: T_E.png + T_E.pdf"
+      ],
+      "commands": [],
+      "local_only": false,
+      "output_hash_missing": []
+    }
+  },
+  "results": {},
+  "warnings": []
+}

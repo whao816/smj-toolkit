@@ -1,0 +1,17 @@
+{
+  "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\2CN-656-4-thiomethylphenyl\\species",
+  "xc": "pbe",
+  "spin": "none",
+  "charge": 0.0,
+  "fixed_spin_moment": 0.0,
+  "occupation_width": 0.01,
+  "charge_mix_param": 0.2,
+  "n_max_pulay": 10,
+  "sc_iter_limit": 500,
+  "ntasks": 8,
+  "partition": "main",
+  "aims_gpus": "cpu",
+  "vdw": "",
+  "extra_outputs": [],
+  "atom_count": 128
+}

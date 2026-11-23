@@ -1,0 +1,47 @@
+{
+  "left_anchor": 17,
+  "right_anchor": 18,
+  "au_tip_distance_A": 2.35,
+  "placement_distance_A": 2.35,
+  "anchor_au_s_target": null,
+  "contact_pinned": false,
+  "placed_au_s_A": null,
+  "left_direction": "auto",
+  "right_direction": "auto",
+  "species_dir": "D:\\dsh_projects\\AutoSMJ\\demo\\azulene-26-dithiol\\species",
+  "xc": "pbe",
+  "spin": "none",
+  "charge": 0.0,
+  "ntasks": 8,
+  "partition": "main",
+  "aims_gpus": "cpu",
+  "atom_count": 20,
+  "au_tip_count": 2,
+  "tip_element": "Au",
+  "anchor_element": "S",
+  "vdw": "",
+  "strip_thiol_h": {
+    "removed": 2,
+    "removed_h_indices": [
+      19,
+      20
+    ],
+    "sh_cutoff_A": 1.7,
+    "anchor_element": "S",
+    "anchor_indices": [
+      17,
+      18
+    ],
+    "atom_count": 18,
+    "route": "thiolate",
+    "sulfur_indices": [
+      17,
+      18
+    ],
+    "left_anchor_in": 17,
+    "right_anchor_in": 18,
+    "left_anchor": 17,
+    "right_anchor": 18,
+    "opt_neutral_xyz": "D:\\dsh_projects\\AutoSMJ\\runs\\vdw-2026-11-22\\az-dithiol-novdw\\vdw-az-dithiol-off\\aims_tip_relax\\opt_neutral.xyz"
+  }
+}
