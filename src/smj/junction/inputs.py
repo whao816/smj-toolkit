@@ -28,6 +28,7 @@ from pathlib import Path
 from .geometry import (Atom, add_tip_au, read_aims_geometry, read_xyz,
                        strip_thiol_h as _strip_thiol_h, write_aims_geometry, write_xyz)
 from .tcontrol import find_species_file, make_control, make_tcontrol, read_template
+from ..slurm import gres_line as _slurm_gres
 
 #: DEFAULT_ENV 的集群变量**单源清单**: (DEFAULT_ENV 键, 环境变量名, 缺省值)。
 #: 2026-10-24(缺口⑦ 教训): 原先这里是手写字典 —— 会话脚本新增 AIMS_BIN / AIMS_LD_MODULE /
@@ -128,8 +129,8 @@ def make_gaussian_input(xyz_path: str | Path, outdir: str | Path, name: str,
             partition=e['partition'], nproc=e['nproc'],
             mem=e.get('g16_mem') or '16G',
             walltime=e.get('g16_walltime') or '01:00:00',
-            gres_line=('#SBATCH --gres=%s' % str(e['g16_gres']).strip())
-            if str(e.get('g16_gres') or '').strip() else '',
+            gres_line=('#SBATCH %s' % _slurm_gres(e.get('g16_gres')))
+            if _slurm_gres(e.get('g16_gres')) else '',
             g16_setup=g16_setup,
             scratch=e['g16_scratch'] or 'UNCONFIGURED'))
     summary = {'name': name, 'method': method, 'basis': basis, 'charge': charge,
@@ -203,13 +204,15 @@ def _render_aims_sub(e: dict, ntasks: int) -> str:
     不选二进制; 实测该 scalapack 版链 libcublas/libmkl/libimf, 不 load 会 execvp/缺库失败)。
     aims_gres_sched(仅调度): 加 #SBATCH --gres=gpu:N 但不改 rank 数(占空闲 GPU 快速调度, 计算仍 CPU)。"""
     gpus = str(e.get('aims_gpus') or '').strip()
-    gres_sched = str(e.get('aims_gres_sched') or '').strip()
     if gpus:
         nrank = int(gpus)
         gres_line = '#SBATCH --gpus=%s' % gpus
     else:
         nrank = int(ntasks)
-        gres_line = ('#SBATCH --gres=%s' % gres_sched) if gres_sched else ''
+        # 纯 CPU 也必须显式要 0 张卡：节点声明了 Gres=gpu:4，不写这一行
+        # 会按整节点 GRES 分配，把后面的作业全堵住（见 smj.slurm）。
+        gres = _slurm_gres(e.get('aims_gres_sched'))
+        gres_line = ('#SBATCH %s' % gres) if gres else ''
     if str(e.get('aims_module') or '').strip():
         module_load = 'module load %s' % str(e['aims_module']).strip()
         exe_define = 'AIMS_EXE="${FHI_AIMS_BIN:?FHI-aims module did not define FHI_AIMS_BIN}"'
@@ -467,14 +470,14 @@ def make_aitranss_input(scf_dir: str | Path, outdir: str | Path,
                            ener=ener, estep=estep, eend=eend,
                            valence_electrons=valence_electrons)
     sub = out / 'sub_te.sh'
-    gres = str(e.get('te_gres') or '').strip()
+    gres = _slurm_gres(e.get('te_gres'))
     mkl_lib = str(e.get('mkl_lib') or '').strip()
     mkl_setup = ('export LD_LIBRARY_PATH=%s:$LD_LIBRARY_PATH' % mkl_lib) if mkl_lib else ''
     _write(sub,
         read_template('sub_te.sh').format(
             partition=e['partition'],
             mem=e.get('te_mem') or '8G',
-            gres_line=('#SBATCH --gres=%s' % gres) if gres else '',
+            gres_line=('#SBATCH %s' % gres) if gres else '',
             walltime=e.get('te_walltime') or '02:00:00',
             mkl_setup=mkl_setup,
             cpus=e.get('te_cpus') or 16,

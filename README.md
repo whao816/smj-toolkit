@@ -337,6 +337,33 @@ aitranss 可执行文件，缺一项即 error（退出码 1）；`molecule.opt_e
 0.1.1 起提交前会再扫一遍作业脚本：仍含 `UNCONFIGURED` 时 `--submit` / `smj run` 直接
 拒绝（`StageError`，退出 1），不再让它到集群上才失败。
 
+### 4.1 GRES 与节点独占（全项目通用）
+
+**纯 CPU 作业也必须显式写 `--gres=gpu:0`。** 这条不是本仓的偏好，是 Slurm 的行为：
+
+- 节点声明了 GRES（`/etc/slurm/slurm.conf` 里 `NodeName=... Gres=gpu:4`），而分区没有
+  为 GRES 设默认值；Slurm 的默认分配方式是**把节点全部 GRES 给该作业**。
+- 后果：作业本身只用了 8 核，却把 4 张卡一起占住，**同一节点上第二个作业一律
+  PENDING(Resources)** —— 即使 `squeue` 显示 `CPUAlloc=8/CPUTot=64`、内存也空着。
+  判断方法：`sbatch --test-only` 给出的预计开始时间正好等于正在跑那个作业的时限终点。
+- `--gres=none` **无效**（Slurm 不接受该写法）；`--gres=gpu:0` 才是"不要卡"。
+- 实测（2026-11-24，gpu1，64 核 / 4×RTX 4090）：不写 GRES 时 12 h 的作业把后续
+  24 个数组任务全部堵到时限之后；加上 `--gres=gpu:0` 后 8 个数组任务 + 2 个弛豫作业
+  同时跑满 64 核。
+
+规则实现在 `src/smj/slurm.py`（叶子模块，全项目共用，Gaussian / FHI-aims / aitranss /
+热导链的作业脚本都走它）：
+
+| 配置 | 渲染结果 |
+|---|---|
+| 不写（`gres` / `g16_gres` / `te_gres` / `aims_gres_sched` 留空） | `#SBATCH --gres=gpu:0` |
+| 写 `gpu:1` | `#SBATCH --gres=gpu:1` |
+| 写 `off` / `none` / `-` / `no` | **整行不渲染**（给没有 GRES 的集群用） |
+
+注意 `aims_gpus` 是另一回事：它表示**真正的 GPU 计算模式**（1 GPU ↔ 1 rank），
+走 `#SBATCH --gpus=N`，与调度用的 `aims_gres_sched` 互不影响。热导链的 FHI-aims
+是纯 CPU（`mpirun -np N`），只用后者。
+
 ## 5. 三种运行模式与离线演练
 
 | 模式 | 行为 | 适用 |

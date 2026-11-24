@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ..errors import StageBlocked
 from ..junction.tcontrol import TEMPLATE_DIR, read_template
+from ..slurm import gres_line as slurm_gres
 
 #: 热导链的 Gaussian 占据展宽 [eV]。
 #:
@@ -63,17 +64,14 @@ def aims_launcher(env: dict, ntasks: int) -> tuple[str, str, str]:
 
 
 def _gres_line(gres) -> str:
-    """生成 ``#SBATCH --gres`` 行。
+    """生成 ``#SBATCH --gres`` 行 —— 规则本体在 :func:`smj.slurm.gres_line`。
 
-    gpu1 的 ``PartitionName=main`` 没有写 GRES 默认值，但节点带 ``Gres=gpu:4``，
-    未显式声明时 Slurm 会把整节点 4 张卡都算给该作业，于是**任何两个作业都
-    无法同时运行**（实测：``--test-only`` 一律排到当前作业的时限结束）。
-    这里在没有配置 gres 时显式要 ``gpu:0``：热导链的 FHI-aims 是纯 CPU 跑
-    （``input_summary.json`` 的 ``aims_gpus`` 为 ``"cpu"``），不要卡。
+    这里只是把共用的 ``--gres=...`` 片段补上 ``#SBATCH`` 前缀。纯 CPU 时必须
+    显式要 ``gpu:0``：gpu1 节点声明了 ``Gres=gpu:4``，不写这一行作业会按整节点
+    GRES 分配，把后面的作业全堵住（实测依据见 :data:`smj.slurm.DEFAULT_CPU_GRES`）。
     """
-    if gres:
-        return "--gres=%s" % gres
-    return "--gres=gpu:0"
+    fragment = slurm_gres(gres)
+    return ("#SBATCH %s" % fragment) if fragment else ""
 
 
 def render_thermal_sub(template: str, env: dict, *, ntasks: int,
