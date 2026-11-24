@@ -139,15 +139,17 @@ def assemble(case: Path, out: Path, *, cutoff: float = 10.0) -> int:
     layers = int(meta["layers"])
     n_atoms = int(meta["n_atoms"])
     per = in_plane[0] * in_plane[1]
-    disps = json.loads((case / "displacements.json").read_text(encoding="utf-8"))["displacements"]
+    _manifest = json.loads((case / "displacements.json").read_text(encoding="utf-8"))
+    disps = _manifest["displacements"] if isinstance(_manifest, dict) else _manifest
 
     forces = []
     for rec in disps:
         path = case / "fc" / ("%04d" % rec["slot"]) / "forces.json"
         if not path.exists():
             raise SystemExit("数组作业没跑完: %s 不存在" % path)
-        forces.append(read_forces(json.loads(path.read_text(encoding="utf-8"))["text"],
-                                 n_atoms=n_atoms))
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        # extract_forces 写的是 {"n_atoms", "forces", "block_index", "n_blocks"}
+        forces.append(np.asarray(payload["forces"], dtype=float))
     full = assemble_fc(disps, forces, n_atoms)      # (3*n_surface, 3*n_atoms)
     rows_l0 = np.arange(3 * per)
     cols_l0 = np.arange(3 * per)

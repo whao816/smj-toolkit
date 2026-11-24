@@ -15,6 +15,20 @@ from pathlib import Path
 # 依据(实测): mos.aims 仅用于读 nsaos; omat.aims 仅用于三角布局自检(行数=nsaos*(nsaos+1)/2);
 # aims.restart / Mulliken.out 属"仅远端留存"(需要时可另取)。
 SMJ_ARTIFACTS = {
+    # 热导链(D12:独立于电子六阶段)。thermal_fc 只回取 forces_all.json:
+    # 数组作业的收尾步骤已经把 N 份 fc/NNNN/forces.json 拼好,fc/ 整目录
+    # (每个位移点一份 aims.out,300+ 份)留在远端。
+    'thermal_device': {'must': ['geometry.in', 'device_metadata.json',
+                                '.dsh_done'],
+                       'head': {}, 'skip': []},
+    'thermal_relax': {'must': ['geometry.in', 'geometry.in.next_step',
+                               'control.in', 'aims.out', '.dsh_done'],
+                      'head': {}, 'skip': []},
+    'thermal_fc': {'must': ['displacements.json', 'control.in', 'geometry.in',
+                            'forces_all.json', '.dsh_done'],
+                   'head': {}, 'skip': ['fc']},
+    'thermal_analyze': {'must': ['thermal.json', '.dsh_done'],
+                        'head': {}, 'skip': []},
     'gaussian_opt': {'must': ['mol.gjf', 'mol.log', 'sub_g16.sh', '.dsh_done'],
                      'head': {}, 'skip': []},
     'aims_tip_relax': {'must': ['geometry.in', 'geometry.in.next_step', 'control.in',

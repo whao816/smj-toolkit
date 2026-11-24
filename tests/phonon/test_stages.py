@@ -257,3 +257,18 @@ def test_thermal_scripts_request_no_gpu(workdir):
                                dict(env, gres="gpu:1"), ntasks=8)
     assert "#SBATCH --gres=gpu:1" in other
     assert "gpu:0" not in other
+def test_fc_script_calls_extract_forces_with_two_arguments():
+    """extract_forces 的 CLI 是 ``extract_forces.py <aims.out> <forces.json>``。
+
+    模板里曾写成 ``python ../../extract_forces.py aims.out > forces.json``：
+    重定向把用法提示写进了 forces.json、脚本返回 2，数组任务因此全部失败
+    (job 26443,54 个 aims.out 都算完了但一个 done 都没写)。
+    """
+    from smj.stages._thermal_common import render_thermal_sub
+
+    env = {"partition": "main", "aims_mem": "12G", "aims_walltime": "06:00:00",
+           "aims_bin": "aims.x"}
+    text = render_thermal_sub("sub_thermal_fc.sh", env, ntasks=8,
+                              extra={"last": 3, "parallel": 2, "count": 4})
+    assert "extract_forces.py aims.out forces.json" in text
+    assert "extract_forces.py aims.out >" not in text

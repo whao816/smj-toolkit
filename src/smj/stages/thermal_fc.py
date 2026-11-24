@@ -34,7 +34,7 @@ from ._thermal_common import (
 from .base import Collected, Prepared, Stage, register
 
 _HERE = Path(__file__).resolve().parent.parent / "phonon"
-_HELPERS = ("apply_displacement.py", "extract_forces.py")
+_HELPERS = ("apply_displacement.py", "extract_forces.py", "concat_forces.py")
 
 
 @register
@@ -171,7 +171,25 @@ class ThermalFcStage(Stage):
 
     @staticmethod
     def _read_forces(stage_dir: Path, expected: int, n_atoms: int) -> np.ndarray:
-        """按 slot 顺序读 ``fc/NNNN/forces.json``;缺任何一个都拒绝。"""
+        """读全部位移点的力：优先 ``forces_all.json``，退回逐个 ``fc/NNNN``。
+
+        数组作业的收尾步骤会在远端把 N 份 ``forces.json`` 拼成
+        ``forces_all.json``（一个文件就够回取）。逐个回取的老路径保留，
+        是为了兼容手工补跑或拼接步骤失败的工况。
+        """
+        bundle = stage_dir / "forces_all.json"
+        if bundle.is_file():
+            try:
+                payload = json.loads(bundle.read_text(encoding="utf-8"))
+                stacked = np.asarray(payload["forces"], dtype=float)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise StageError(
+                    "thermal_fc 读取 %s 失败: %s" % (bundle, exc)) from exc
+            if stacked.shape != (expected, n_atoms, 3):
+                raise StageError(
+                    "thermal_fc 的 %s 形状是 %r，应为 (%d, %d, 3)"
+                    % (bundle, stacked.shape, expected, n_atoms))
+            return stacked
         found: dict[int, np.ndarray] = {}
         missing: list[int] = []
         for slot in range(expected):

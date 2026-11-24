@@ -35,7 +35,7 @@ python ../../apply_displacement.py --geometry ../../geometry.in \
 {aims_bin}
 _rc=$?
 if [ "$_rc" -eq 0 ]; then
-    python ../../extract_forces.py aims.out > forces.json || _rc=1
+    python ../../extract_forces.py aims.out forces.json || _rc=1
 fi
 printf '%s %s\n' "$_rc" "$(date -Is)" > .done
 
@@ -58,6 +58,12 @@ if [ "$_count" -ge {count} ]; then
             done
         else
             _agg=1
+        fi
+        # 把 {count} 份 forces.json 拼成一个文件:回取计划里就只有一个文件,
+        # 不会因为漏 scp 其中一份而让力常数矩阵少行。
+        if [ "$_agg" -eq 0 ]; then
+            python ../../concat_forces.py ../ {count} ../../forces_all.json \
+                || _agg=1
         fi
         printf '%s %s\n' "$_agg" "$(date -Is)" > ../../.dsh_done
         rmdir ../.finalize.lock 2>/dev/null || true
