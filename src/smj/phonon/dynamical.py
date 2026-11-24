@@ -120,22 +120,36 @@ def imaginary_modes(dynamical_ev2, *, cm1_tol: float = -10.0):
     }
 
 
-def acoustic_sum_residual(force_constants) -> float:
+def acoustic_sum_residual(force_constants, rows=None) -> float:
     """``max_i |Σ_j K_ij|``,单位 eV/Å² —— 声学求和(平移不变性)的绝对残差。
 
     对完全收敛的有限位移集,这个数应在 ``1e-4`` 量级以下;若与 ``max|K|`` 同量级,
     说明截断半径太小或位移-力配对错位。
+
+    ``rows`` 只在"行不完整"的矩阵上才需要给: 拼接后的完整矩阵里,lead 行来自
+    被截断成两个主层的 lead 力常数,它们与第三层及更远的耦合根本不在矩阵里,
+    行和按构造就不可能闭合。只有器件区的行其邻居集合是完整的,判据必须限定在
+    这些行上(见 :func:`smj.phonon.fc.asr_diagnostics`)。
     """
     k = np.asarray(force_constants, dtype=float)
     if k.ndim != 2 or k.shape[0] != k.shape[1]:
         raise ValueError("force_constants 必须是方阵,得到 %r" % (k.shape,))
-    return float(np.max(np.abs(k.sum(axis=1))))
+    row_sums = k.sum(axis=1)
+    if rows is not None:
+        index = np.asarray(rows, dtype=int).ravel()
+        if index.size == 0:
+            raise ValueError("rows 不能为空")
+        if index.min() < 0 or index.max() >= row_sums.size:
+            raise ValueError("rows 越界: 最大 %d,矩阵只有 %d 行"
+                             % (index.max(), row_sums.size))
+        row_sums = row_sums[index]
+    return float(np.max(np.abs(row_sums)))
 
 
-def acoustic_sum_relative_residual(force_constants) -> float:
+def acoustic_sum_relative_residual(force_constants, rows=None) -> float:
     """ASR 残差相对 ``max|K|`` 的比值(无量纲),用于跨体系比较。"""
     k = np.asarray(force_constants, dtype=float)
-    abs_sum = acoustic_sum_residual(k)
+    abs_sum = acoustic_sum_residual(k, rows=rows)
     scale = float(np.max(np.abs(k))) if k.size else 0.0
     if scale <= 0.0:
         return 0.0 if abs_sum == 0.0 else float("inf")

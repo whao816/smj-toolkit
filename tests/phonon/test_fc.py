@@ -301,3 +301,42 @@ def test_asr_diagnostics_threshold_zero_always_projects():
     assert report["projected"] is True
     assert report["residual_after_ev_per_A2"] < 1e-10
 
+
+def test_asr_rows_restrict_to_complete_region():
+    """``rows`` 只判邻居集合完整的区域。
+
+    拼接矩阵里 lead 行来自被截断成两个主层的 lead 力常数,行和按构造不闭合;
+    把它们一起算进来会让判据永远失败。这里人造"原子 0 行不闭合、原子 1/2
+    行闭合"的局面,验证限定 rows 后残差为 0。
+    """
+    matrix = _chain_k().copy()
+    matrix[0, 0] += 5.0                 # 只破坏原子 0 的行和
+    dynamical = dynamical_matrix(matrix, MASSES)
+    device = np.array([3, 4, 5, 6, 7, 8])   # 原子 1、2 的自由度
+
+    from smj.phonon.dynamical import acoustic_sum_residual
+    assert acoustic_sum_residual(matrix) == pytest.approx(5.0, abs=1e-12)
+    assert acoustic_sum_residual(matrix, rows=device) == pytest.approx(0.0, abs=1e-12)
+
+    limited = asr_diagnostics(dynamical, MASSES, threshold=1.0e-3, rows=device)
+    assert limited["projected"] is False
+    assert limited["residual_ev_per_A2"] == pytest.approx(0.0, abs=1e-12)
+
+    whole = asr_diagnostics(dynamical, MASSES, threshold=1.0e-3)
+    assert whole["residual_ev_per_A2"] == pytest.approx(5.0, abs=1e-12)
+    assert whole["projected"] is True
+
+
+def test_asr_projection_with_rows_only_touches_subblock():
+    """限定 rows 的投影不得改动区外耦合(lead 与器件之间的块)。"""
+    matrix = _chain_k().copy()
+    matrix[0, 0] += 5.0
+    matrix[0, 3] += 0.7                 # 区外耦合,投影后必须原样保留
+    dynamical = dynamical_matrix(matrix, MASSES)
+    device = np.array([3, 4, 5, 6, 7, 8])
+    report = asr_diagnostics(dynamical, MASSES, threshold=1.0e-3, rows=device)
+    assert report["projected"] is True
+    # 区外耦合(原子 1 的 x 行 × 原子 0 的 x 列)保持原值
+    assert report["dynamical"][3, 0] == pytest.approx(dynamical[3, 0], abs=1e-15)
+
+

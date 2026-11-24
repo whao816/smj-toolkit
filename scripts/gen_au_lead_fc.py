@@ -190,9 +190,37 @@ def assemble(case: Path, out: Path, *, cutoff: float = 10.0) -> int:
                  source="gen_au_lead_fc.py: bulk 3x3x%d, Gamma, 0.01 A central differences"
                         % layers)
     residual = float(np.max(np.abs(block.sum(axis=1))))
-    print("lead 力常数已写入 %s（%d×%d，截断半径 %.1f Å 丢掉 %d/%d 个原子对，"
-          "ASR 行和残差 %.3e eV/Å²）"
-          % (out, 3 * pair, 3 * pair, cutoff, dropped, pair ** 2, residual))
+
+    # 有意义的是**完整 6 层周期胞**的 ASR —— 每层都有上下两个邻居,行和才可能
+    # 闭合。截断成 2 层的块按构造不闭合(丢掉 layer -1 与 layer 2 的耦合),
+    # 那个数只作参考,不能当质量指标。完整胞由 z 方向平移对称性从 layer 0
+    # 的行块拼出:K(i, j) = K(0, (j - i) mod layers)。
+    n_block = layers * per
+    full_cell = np.zeros((3 * n_block, 3 * n_block), dtype=float)
+    for i in range(layers):
+        for j in range(layers):
+            shift = (j - i) % layers
+            rows = np.arange(3 * per) + 3 * per * i
+            cols = np.arange(3 * per) + 3 * per * j
+            src = np.arange(3 * per) + 3 * per * shift
+            full_cell[np.ix_(rows, cols)] = full[np.ix_(rows_l0, src)]
+    full_cell = 0.5 * (full_cell + full_cell.T)
+    residual_full = float(np.max(np.abs(full_cell.sum(axis=1))))
+    scale_full = float(np.max(np.abs(full_cell))) or 1.0
+    (out / "lead_asr.json").write_text(
+        json.dumps({"asr_residual_full_cell_ev_per_A2": residual_full,
+                    "asr_relative_full_cell": residual_full / scale_full,
+                    "n_layers": layers,
+                    "asr_residual_two_layer_block_ev_per_A2": residual,
+                    "note": "two-layer block is truncated by construction; only "
+                            "the full-cell number is a quality indicator"},
+                   ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    print("lead 力常数已写入 %s（%d×%d，截断半径 %.1f Å 丢掉 %d/%d 个原子对）"
+          % (out, 3 * pair, 3 * pair, cutoff, dropped, pair ** 2))
+    print("  ASR：完整 %d 层周期胞 %.3e eV/Å²（相对 %.2e）← 质量指标"
+          % (layers, residual_full, residual_full / scale_full))
+    print("      截断成 2 层的块 %.3e eV/Å²（按构造不闭合，仅供参考）" % residual)
     return 0
 
 

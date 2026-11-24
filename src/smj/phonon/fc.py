@@ -176,7 +176,8 @@ def apply_asr(dynamical_ev2, masses) -> tuple[np.ndarray, float]:
     return projected, residual
 
 
-def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3) -> dict:
+def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3,
+                    rows=None) -> dict:
     """先测 ASR 残差,超过门限再投影,并把两边的数都记下来(D13)。
 
     返回的 dict 同时带"投影前"和"投影后"两套指标:
@@ -193,12 +194,26 @@ def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3) -> dict
 
     ``threshold`` 是**相对**门限:有限差分与基组噪声本身就在 1e-3~1e-1
     eV/Å² 的绝对量级,拿绝对门限判会让每个 run 都 inconclusive。
+
+    ``rows`` 是自由度下标,限定在**邻居集合完整**的区域上(拼接矩阵里只有
+    器件区满足;lead 行来自被截断成两个主层的 lead 力常数,行和按构造不闭合)。
+    给了 ``rows`` 时,投影也只作用在 ``D[rows, rows]`` 子块上,不碰区外耦合。
     """
     matrix = np.asarray(dynamical_ev2, dtype=float)
     mass = np.asarray(masses, dtype=float)
     force_constants = _rebuild_force_constants(matrix, mass)
-    residual = float(np.max(np.abs(force_constants.sum(axis=1))))
-    scale = float(np.max(np.abs(force_constants))) if force_constants.size else 0.0
+
+    index = None if rows is None else np.asarray(rows, dtype=int).ravel()
+    row_sums = force_constants.sum(axis=1)
+    if index is None:
+        scale_block = force_constants
+    else:
+        if index.size == 0:
+            raise ValueError("rows 不能为空")
+        row_sums = row_sums[index]
+        scale_block = force_constants[index, :]
+    residual = float(np.max(np.abs(row_sums)))
+    scale = float(np.max(np.abs(scale_block))) if scale_block.size else 0.0
     relative = residual / scale if scale > 0.0 else float("inf")
 
     report = {
@@ -212,21 +227,31 @@ def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3) -> dict
     if relative <= threshold:
         return report
 
-    projected, _ = apply_asr(matrix, mass)
+    if index is None:
+        projected, _ = apply_asr(matrix, mass)
+    else:
+        # apply_asr 要的是"每个原子一个质量",而 index 是自由度下标 —— 先折回原子。
+        atoms = np.unique(index // 3)
+        sub, _ = apply_asr(matrix[np.ix_(index, index)], mass[atoms])
+        projected = matrix.copy()
+        projected[np.ix_(index, index)] = sub
     norm = float(np.linalg.norm(matrix))
     report.update(
         projected=True,
         projection_norm=float(np.linalg.norm(projected - matrix) / norm) if norm else None,
-        residual_after_ev_per_A2=acoustic_residual_of(projected, mass),
+        residual_after_ev_per_A2=acoustic_residual_of(projected, mass, rows=index),
         dynamical=projected,
     )
     return report
 
 
-def acoustic_residual_of(dynamical_ev2, masses) -> float:
+def acoustic_residual_of(dynamical_ev2, masses, *, rows=None) -> float:
     """投影后的残差:把 ``D`` 还原成 ``K`` 再取行和的最大绝对值(eV/Å²)。"""
-    return float(np.max(np.abs(
-        _rebuild_force_constants(dynamical_ev2, masses).sum(axis=1))))
+    force_constants = _rebuild_force_constants(dynamical_ev2, masses)
+    row_sums = force_constants.sum(axis=1)
+    if rows is not None:
+        row_sums = row_sums[np.asarray(rows, dtype=int).ravel()]
+    return float(np.max(np.abs(row_sums)))
 
 
 

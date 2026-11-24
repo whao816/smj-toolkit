@@ -182,7 +182,7 @@ T_ph(ω)    = (1/N_k) Σ_k w_k · Tr[G^r_k Γ_L,k G^a_k Γ_R,k]
 | `T_ph(ω→0)` | > 3 | **raise**（超过声学支数） |
 | `G_ph` | > `3G_Q` | **raise**（物理不可能） |
 | 器件区虚频 | < −10 cm⁻¹ | **raise**；`−10…0` 记 warning（金属界面软模噪声） |
-| `‖D·1‖`（ASR 残差） | > 1e-6 eV/Å² | **raise** |
+| `‖D·1‖`（ASR 残差） | 相对残差 `max\|Σ_j K_ij\| / max\|K\|` > 1e-3 | **warn**，超过则做 ASR 投影并把投影前后残差都记下来（D13；绝对门限 1e-6 eV/Å² 被实测噪声否掉） |
 | `‖K − Kᵀ‖/‖K‖` | > 5% | **raise**（中心差分失效或力噪声过大） |
 | 力收敛 | `max|F|` 缺失或 `sc_accuracy_forces` 未达 | **raise**（不猜、不补 0） |
 
@@ -446,7 +446,7 @@ thermal:
 | `ph_band_top_zero` | physical | `t_ph_above_band_max < 1e-6` | Lynn et al., PRB **8**, 3493 (1973), DOI [10.1103/PhysRevB.8.3493](https://doi.org/10.1103/PhysRevB.8.3493)（Au 带顶 4.71 THz = 19.5 meV） |
 | `ph_quantum_bound` | physical | `G_ph < 3·G_Q(T)` | [Schwab et al., Nature 404, 974 (2000)](https://doi.org/10.1038/35010065) |
 | `ph_acoustic_limit` | physical | `T_ph(ω→0) ≤ 3`（**k 平均口径**，见 §3.4 警示框） | 同上（三条声学支） |
-| `ph_asr_residual` | engineering | `< 1e-6 eV/Å²` | — |
+| `ph_asr_residual` | engineering | 相对残差 `< 1e-3`（判投影前的值，D13） | — |
 | `ph_fc_symmetry` | engineering | `‖K−Kᵀ‖/‖K‖ < 5%` | — |
 | `ph_imaginary_modes` | physical | 无 `< −10 cm⁻¹` | 报告 §6 陷阱④（−10 cm⁻¹ 噪声容限） |
 | `ph_lead_cell_match` | engineering | 冻结 lead FC 的面内胞 == 器件配置 | — |

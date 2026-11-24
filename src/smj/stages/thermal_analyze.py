@@ -156,16 +156,17 @@ class ThermalAnalyzeStage(Stage):
         meta = FullFCMeta(n_atoms=n_atoms, device_indices=device_indices,
                           left_indices=left_block, right_indices=right_block)
         full = assemble_full_fc(k_dev, lead, meta)
-        # D13:先测残差(判据判的就是这两个数),超过相对门限才做 ASR 投影,
-        # 并把投影前后的残差与投影范数一并落进 thermal.json。
-        residual = acoustic_sum_residual(full)
-        relative = acoustic_sum_relative_residual(full)
+        # D13:ASR 只在**器件区行**上判 —— lead 行来自被截断成两个主层的 lead
+        # 力常数,它们与第三层及更远的耦合不在矩阵里,行和按构造不可能闭合
+        # (实测 lead 块自身相对残差 0.6)。器件区的邻居集合是完整的,才可判。
+        centre = _dof_indices(device_indices)
+        residual = acoustic_sum_residual(full, rows=centre)
+        relative = acoustic_sum_relative_residual(full, rows=centre)
         asr = asr_diagnostics(dynamical_matrix(full, masses), masses,
-                              threshold=MAX_ASR_RELATIVE)
+                              threshold=MAX_ASR_RELATIVE, rows=centre)
         dynamical = asr["dynamical"]
         imag = imaginary_modes(dynamical)
 
-        centre = _dof_indices(device_indices)
         d_c = dynamical[np.ix_(centre, centre)]
         d_l = dynamical[np.ix_(_dof_indices(left_pl), _dof_indices(left_pl))]
         d_r = dynamical[np.ix_(_dof_indices(right_pl), _dof_indices(right_pl))]
@@ -210,6 +211,8 @@ class ThermalAnalyzeStage(Stage):
             "n_channels_effective": g_ph / gq_pw_per_k(temperature),
             "acoustic_sum_residual": residual,
             "acoustic_sum_relative_residual": relative,
+            # 判据只对器件区行成立：lead 行是截断块，行和按构造不闭合。
+            "asr_region": "device_rows",
             # D13：投影是"超阈值才做"，所以这三个字段要能表达"没投影"。
             # 判据 ph_asr_residual 判的是上面那两个**投影前**的值。
             "asr_projected": bool(asr["projected"]),

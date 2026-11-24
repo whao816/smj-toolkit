@@ -357,7 +357,7 @@
 #### M4-T4 全量 324 位移
 
 - **内容**：提交数组作业，`wait`，`collect`。
-- **DoD**：324 个 `forces.json` 齐全；`asr_residual < 1e-6 eV/Å²`；`fc_asymmetry < 5%`。
+- **DoD**：324 个 `forces.json` 齐全；ASR **相对**残差 `< 1e-3`（D13，投影前口径；绝对 1e-6 eV/Å² 已被实测噪声否掉）；`fc_asymmetry < 5%`。
 
 #### M4-T5 开发期收敛矩阵（**降本版**，见 §6.2）
 
