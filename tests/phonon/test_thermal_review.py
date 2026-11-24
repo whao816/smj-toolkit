@@ -216,3 +216,38 @@ def test_report_without_thermal_does_not_crash(workdir):
     text = render_report({"run_id": "t", "root": str(run)})
     assert "未跑热导链" in text
     assert "## 6. 失败原因" in text
+
+
+# -- D13:ASR 判据改用相对残差 ---------------------------------------------------- #
+
+def _asr_check(payload):
+    from smj.phonon.checks import evaluate_thermal
+    report = evaluate_thermal(payload)
+    for item in report["checks"]:
+        if item["name"] == "ph_asr_residual":
+            return item
+    raise AssertionError("ph_asr_residual 没出现在检查结果里")
+
+
+def test_asr_judged_on_relative_residual_not_absolute():
+    """绝对残差 1e-2 eV/A^2 但相对只有 1e-5 —— 旧口径会误判失败。"""
+    item = _asr_check(_thermal(acoustic_sum_residual=1.0e-2,
+                               acoustic_sum_relative_residual=1.0e-5))
+    assert item["passed"] is True
+    assert "相对残差" in item["detail"]
+
+
+def test_asr_fails_when_relative_residual_exceeds_threshold():
+    item = _asr_check(_thermal(acoustic_sum_residual=1.0e-2,
+                               acoustic_sum_relative_residual=5.0e-3))
+    assert item["passed"] is False
+
+
+def test_asr_falls_back_to_absolute_for_old_payloads():
+    """旧 thermal.json 没有相对残差时,退回 1e-6 绝对口径而不是判缺证据。"""
+    payload = _thermal(acoustic_sum_residual=1.0e-9)
+    payload.pop("acoustic_sum_relative_residual")
+    item = _asr_check(payload)
+    assert item["passed"] is True
+    assert "无相对残差记录" in item["detail"]
+

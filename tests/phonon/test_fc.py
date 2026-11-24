@@ -14,7 +14,9 @@ import pytest
 from smj.phonon.dynamical import dynamical_matrix
 from smj.phonon.fc import (
     FullFCMeta,
+    acoustic_residual_of,
     apply_asr,
+    asr_diagnostics,
     assemble_fc,
     assemble_full_fc,
     lead_device_conflicts,
@@ -245,3 +247,57 @@ def test_rebuild_roundtrip_through_dynamical_matrix():
     np.testing.assert_allclose(_rebuild_force_constants(dynamical, MASSES),
                                matrix, atol=1e-12)
     assert EV_PER_SQRT == pytest.approx(0.064654151301)
+
+
+def _with_row_shift(shift: float) -> np.ndarray:
+    """在第 0 行对角元上抬 ``shift``,制造一个已知大小的 ASR 违反。
+
+    只动对角元是为了保持矩阵对称 —— ``dynamical_matrix`` 默认会对
+    ``D`` 做对称化,若只抬一整行会被折半,预期值就对不上了。
+    """
+    matrix = _chain_k().copy()
+    matrix[0, 0] += shift
+    return matrix
+
+
+def test_asr_diagnostics_measures_before_projecting():
+    """低于门限时只测不投影 —— 投影是"超阈值才做"的动作(D13)。"""
+    shift = 0.01
+    matrix = _with_row_shift(shift)
+    dynamical = dynamical_matrix(matrix, MASSES)
+    report = asr_diagnostics(dynamical, MASSES, threshold=1.0e-3)
+
+    assert report["projected"] is False
+    assert report["projection_norm"] is None
+    assert report["residual_after_ev_per_A2"] is None
+    assert report["residual_ev_per_A2"] == pytest.approx(shift, abs=1e-12)
+    assert report["relative_residual"] == pytest.approx(
+        shift / np.max(np.abs(matrix)), rel=1e-12)
+    # 没投影时返回的矩阵必须原样
+    np.testing.assert_array_equal(report["dynamical"], dynamical)
+
+
+def test_asr_diagnostics_projects_when_above_threshold():
+    matrix = _with_row_shift(5.0)      # 相对残差 ~5/10 = 0.5 >> 1e-3
+    dynamical = dynamical_matrix(matrix, MASSES)
+    report = asr_diagnostics(dynamical, MASSES, threshold=1.0e-3)
+
+    assert report["projected"] is True
+    assert report["relative_residual"] > 1.0e-3
+    # 判据用的是投影前的值,所以它必须仍是那个大数
+    assert report["residual_ev_per_A2"] == pytest.approx(5.0, abs=1e-12)
+    # 投影后行和回到机器零,且投影本身是个小量
+    assert report["residual_after_ev_per_A2"] < 1e-10
+    assert 0.0 < report["projection_norm"] < 0.5
+    assert not np.array_equal(report["dynamical"], dynamical)
+    assert acoustic_residual_of(report["dynamical"], MASSES) < 1e-10
+
+
+def test_asr_diagnostics_threshold_zero_always_projects():
+    """门限取 0 时任何非零残差都要投影(便于确认投影确实能消掉残差)。"""
+    matrix = _with_row_shift(1.0e-9)
+    report = asr_diagnostics(dynamical_matrix(matrix, MASSES), MASSES,
+                             threshold=0.0)
+    assert report["projected"] is True
+    assert report["residual_after_ev_per_A2"] < 1e-10
+

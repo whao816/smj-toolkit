@@ -203,10 +203,13 @@ CRITERIA = [
              '抓它的。物理上限: 每个声学支在 w->0 恰好 1'},
 
     {'name': 'ph_asr_residual', 'kind': 'engineering', 'gate': 'warn',
-     'implemented': True, 'band': [None, 1.0e-6], 'source': None,
-     'note': '声学求和规则残差 max|sum_j K_ij| < 1e-6 eV/A^2, 必须在**完整**'
-             '(器件+lead)矩阵上算 —— 只有器件行时行和不闭合, 算出来是伪指标。'
-             '先测残差再投影(apply_asr), 否则这条退化成空检查'},
+     'implemented': True, 'band': [None, 1.0e-3], 'source': None,
+     'note': '声学求和规则**相对**残差 max|sum_j K_ij| / max|K| < 1e-3(D13)。'
+             '绝对门限 1e-6 eV/A^2 不可用: 有限差分与基组噪声本身就在 '
+             '1e-3~1e-1 eV/A^2 量级。必须在**完整**(器件+lead)矩阵上算 —— '
+             '只有器件行时行和不闭合, 算出来是伪指标。先测残差; 超过门限时'
+             'thermal_analyze 做一次 ASR 投影并把投影前后的残差与投影范数写进 '
+             'thermal.json, 本条判的是**投影前**的值(投影后恒为机器零, 不能拿来判)'},
 
     {'name': 'ph_fc_symmetry', 'kind': 'engineering', 'gate': 'warn',
      'implemented': True, 'band': [None, 5.0e-2], 'source': None,

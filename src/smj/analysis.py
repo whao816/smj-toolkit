@@ -426,7 +426,10 @@ THERMAL_REQUIRED_KEYS = (
 THERMAL_SPECTRUM_KEYS = ("energy_meV", "transmission", "cumulative_g_ph_pw_per_k")
 
 #: 允许出现在 thermal.json 里但不在必需键中的附加键（多出来的保留并告警）。
-THERMAL_OPTIONAL_KEYS = ("relax_max_force_ev_per_A", "lead_fc_sha256", "fc_asymmetry", "notes")
+THERMAL_OPTIONAL_KEYS = ("relax_max_force_ev_per_A", "lead_fc_sha256", "fc_asymmetry", "notes",
+                         # D13：ASR 投影记录。旧文件没有这三个键，故列为可选。
+                         "asr_projected", "asr_projection_norm",
+                         "asr_residual_after_ev_per_A2")
 
 
 def read_thermal(path: str | Path) -> tuple[dict, list[str]]:

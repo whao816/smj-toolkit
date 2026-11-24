@@ -24,7 +24,9 @@ from .units import EV_PER_SQRT
 __all__ = [
     "LeadFC",
     "FullFCMeta",
+    "acoustic_residual_of",
     "apply_asr",
+    "asr_diagnostics",
     "assemble_fc",
     "assemble_full_fc",
     "lead_device_conflicts",
@@ -172,6 +174,60 @@ def apply_asr(dynamical_ev2, masses) -> tuple[np.ndarray, float]:
     complement = identity - projector
     projected = complement @ matrix @ complement
     return projected, residual
+
+
+def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3) -> dict:
+    """先测 ASR 残差,超过门限再投影,并把两边的数都记下来(D13)。
+
+    返回的 dict 同时带"投影前"和"投影后"两套指标:
+
+    ``residual_ev_per_A2`` / ``relative_residual``
+        投影前在**力常数**矩阵上算的 ``max_i |Σ_j K_ij|`` 及其相对值
+        (``/ max|K|``)。判据 ``ph_asr_residual`` 判的就是这两个数 ——
+        投影之后行和恒为机器零,拿投影后的值判等于没判。
+    ``projected`` / ``projection_norm``
+        是否做了投影,以及相对 Frobenius 投影量
+        ``||D_proj - D|| / ||D||``(投影把三条平移模抹掉,量级应当很小)。
+    ``residual_after_ev_per_A2``
+        投影后重算的残差,用来证明投影确实生效。
+
+    ``threshold`` 是**相对**门限:有限差分与基组噪声本身就在 1e-3~1e-1
+    eV/Å² 的绝对量级,拿绝对门限判会让每个 run 都 inconclusive。
+    """
+    matrix = np.asarray(dynamical_ev2, dtype=float)
+    mass = np.asarray(masses, dtype=float)
+    force_constants = _rebuild_force_constants(matrix, mass)
+    residual = float(np.max(np.abs(force_constants.sum(axis=1))))
+    scale = float(np.max(np.abs(force_constants))) if force_constants.size else 0.0
+    relative = residual / scale if scale > 0.0 else float("inf")
+
+    report = {
+        "residual_ev_per_A2": residual,
+        "relative_residual": relative,
+        "projected": False,
+        "projection_norm": None,
+        "residual_after_ev_per_A2": None,
+        "dynamical": matrix,
+    }
+    if relative <= threshold:
+        return report
+
+    projected, _ = apply_asr(matrix, mass)
+    norm = float(np.linalg.norm(matrix))
+    report.update(
+        projected=True,
+        projection_norm=float(np.linalg.norm(projected - matrix) / norm) if norm else None,
+        residual_after_ev_per_A2=acoustic_residual_of(projected, mass),
+        dynamical=projected,
+    )
+    return report
+
+
+def acoustic_residual_of(dynamical_ev2, masses) -> float:
+    """投影后的残差:把 ``D`` 还原成 ``K`` 再取行和的最大绝对值(eV/Å²)。"""
+    return float(np.max(np.abs(
+        _rebuild_force_constants(dynamical_ev2, masses).sum(axis=1))))
+
 
 
 @dataclass(frozen=True)

@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Mapping
 
 import numpy as np
@@ -37,6 +38,14 @@ MAX_ACOUSTIC_T = 3.0
 
 #: 能量低于此值才算"ω→0"（eV）。0.5 meV 远小于带顶 19.5 meV。
 ACOUSTIC_ENERGY_EV = 0.5e-3
+
+#: ASR 的**相对**残差门限（``max|Σ_j K_ij| / max|K|``，无量纲）。
+#:
+#: 绝对门限（1e-6 eV/Å²）不可用：有限差分 + 基组噪声本身就在 1e-3–1e-1 eV/Å²
+#: 量级，拿绝对值判会让每个 run 都 inconclusive。ASR 违反本来就该与 ``max|K|``
+#: 比，这也是 phonopy 社区的口径。超过本门限时 ``thermal_analyze`` 会做一次
+#: ASR 投影，并把投影前后的残差与投影范数一并写进 ``thermal.json``（D13）。
+MAX_ASR_RELATIVE = 1.0e-3
 
 
 def _check(name: str, *, passed: bool | None, detail: str) -> dict:
@@ -112,10 +121,20 @@ def evaluate_thermal(
                % (energy[0] * 1e3, t_low, MAX_ACOUSTIC_T)))
 
     asr = float(thermal["acoustic_sum_residual"])
-    asr_rel = float(thermal.get("acoustic_sum_relative_residual", float("nan")))
-    checks.append(_check(
-        "ph_asr_residual", passed=asr < 1.0e-6,
-        detail="max|sum_j K_ij|=%.3e eV/A^2（相对 %.2e）" % (asr, asr_rel)))
+    asr_rel = thermal.get("acoustic_sum_relative_residual")
+    projected = bool(thermal.get("asr_projected", False))
+    if isinstance(asr_rel, (int, float)) and not math.isnan(float(asr_rel)):
+        passed = float(asr_rel) <= MAX_ASR_RELATIVE
+        detail = ("相对残差 %.2e（门限 %.0e；绝对 %.3e eV/A^2）"
+                  % (float(asr_rel), MAX_ASR_RELATIVE, asr))
+    else:                          # 旧文件没有相对残差,退回绝对口径
+        passed = asr <= 1.0e-6
+        detail = "max|sum_j K_ij|=%.3e eV/A^2（无相对残差记录）" % asr
+    if projected:
+        norm = thermal.get("asr_projection_norm")
+        detail += ("；已做 ASR 投影（相对投影量 %s）"
+                   % ("%.2e" % float(norm) if isinstance(norm, (int, float)) else "未记录"))
+    checks.append(_check("ph_asr_residual", passed=passed, detail=detail))
 
     if fc_asymmetry is None:      # 未显式给出时退回 thermal.json 里记录的值
         recorded = thermal.get("fc_asymmetry")
