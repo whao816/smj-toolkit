@@ -59,6 +59,16 @@ def _lead_fc_path(value: str | Path) -> Path:
     return path
 
 
+def _dof_indices(atoms) -> np.ndarray:
+    """原子下标 → 自由度下标。
+
+    ``dynamical_matrix`` 返回的是 3N×3N 矩阵,第 ``3*a+k`` 行对应原子 ``a``
+    的第 ``k`` 个方向。整条热导链上凡是"取某个原子子集的块",都必须先过这道
+    换算;直接拿原子下标去 ``np.ix_`` 会静默切出错位的块(见 collect 里的注释)。
+    """
+    return np.array([3 * int(a) + k for a in atoms for k in range(3)], dtype=int)
+
+
 @register
 class ThermalAnalyzeStage(Stage):
     name = "thermal_analyze"
@@ -149,15 +159,25 @@ class ThermalAnalyzeStage(Stage):
         dynamical = dynamical_matrix(full, masses)
         imag = imaginary_modes(dynamical)
 
-        centre = np.array(device_indices)
+        centre = _dof_indices(device_indices)
         d_c = dynamical[np.ix_(centre, centre)]
-        d_l = dynamical[np.ix_(left_pl, left_pl)]
-        d_r = dynamical[np.ix_(right_pl, right_pl)]
+        d_l = dynamical[np.ix_(_dof_indices(left_pl), _dof_indices(left_pl))]
+        d_r = dynamical[np.ix_(_dof_indices(right_pl), _dof_indices(right_pl))]
         # negf.transmission 的 v 约定是「中心区 × lead」,即 (n_c, n_lead)
-        v_l = dynamical[np.ix_(centre, left_pl)]
-        v_r = dynamical[np.ix_(centre, right_pl)]
-        v_lead_l = dynamical[np.ix_(left_pl, left_outer)]
-        v_lead_r = dynamical[np.ix_(right_pl, right_outer)]
+        v_l = dynamical[np.ix_(centre, _dof_indices(left_pl))]
+        v_r = dynamical[np.ix_(centre, _dof_indices(right_pl))]
+        v_lead_l = dynamical[np.ix_(_dof_indices(left_pl), _dof_indices(left_outer))]
+        v_lead_r = dynamical[np.ix_(_dof_indices(right_pl), _dof_indices(right_outer))]
+
+        # D 是 3N×3N,按**自由度**编号。用原子下标去切会得到一个形状"看起来
+        # 差不多"的子块(例如 54 个原子的 54×54 恰好与 18 个原子的 3N=54
+        # 撞上),transmission 的形状检查照样通过,但结果是垃圾(2026-11-24
+        # 本地干跑时 T_ph 恒为 0 才发现)。
+        expected = 3 * len(device_indices)
+        if d_c.shape != (expected, expected):
+            raise StageError(
+                "中心区动力学矩阵形状 %r,期望 (%d,%d);请检查自由度下标换算"
+                % (d_c.shape, expected, expected))
 
         negf = thermal.negf
         band_top = float(negf.band_top_meV)

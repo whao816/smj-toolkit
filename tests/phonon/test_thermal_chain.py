@@ -287,3 +287,14 @@ def test_thermal_analyze_zt_folds_electronic(workdir):
     zt_e, k_e, g_ph = 0.115479, 223.992, 20.0
     zt_total = zt_e / (1.0 + g_ph / k_e)
     assert zt_total == pytest.approx(0.1060132, abs=1e-6)
+
+def test_dof_indices_map_atoms_to_three_degrees_of_freedom():
+    """D 是 3N×3N：原子下标必须先换算成自由度下标。
+
+    回归：曾直接拿原子下标 `np.ix_` 去切 D，54 个原子的 54×54 恰好与
+    18 个原子的 3N=54 撞上，形状检查通过但 T_ph 恒为 0。
+    """
+    from smj.stages.thermal_analyze import _dof_indices
+
+    assert list(_dof_indices([0, 2])) == [0, 1, 2, 6, 7, 8]
+    assert _dof_indices([]).size == 0
