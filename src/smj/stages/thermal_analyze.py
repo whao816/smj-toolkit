@@ -119,17 +119,13 @@ class ThermalAnalyzeStage(Stage):
 
         device_indices = [int(i) for i in device_meta["device_indices"]]
         lead_indices = [int(i) for i in device_meta["lead_indices"]]
-        meta = FullFCMeta(n_atoms=n_atoms, device_indices=device_indices,
-                          left_indices=[int(i) for i in device_meta["left_lead_indices"]],
-                          right_indices=[int(i) for i in device_meta["right_lead_indices"]])
-        full = assemble_full_fc(k_dev, lead, meta)
-        residual = acoustic_sum_residual(full)
-        relative = acoustic_sum_relative_residual(full)
-        dynamical = dynamical_matrix(full, masses)
-        imag = imaginary_modes(dynamical)
-
         layers = device_meta["layer_index"]
         sides = device_meta["side"]
+        # 主层(principal layer)= 紧挨器件区的那一层;它外面还有一层用来给
+        # decimation 提供层间耦合 V_lead。**这两层**才是 lead 力常数要覆盖的
+        # 范围 —— lead_fc 存的是「两个主层」的块(18 原子 × 2 层 = 54 维),
+        # 而不是器件侧全部 4 层冻结 lead(36 原子)。传全部 36 个会让
+        # _place_lead_block 直接报「lead 区原子数 36 与 lead 力常数原子数 18 不符」。
         left_pl = [i for i in lead_indices if layers[i] == 1 and sides[i] == "left"]
         right_pl = [i for i in lead_indices if layers[i] == 1 and sides[i] == "right"]
         left_outer = [i for i in lead_indices if layers[i] == 0 and sides[i] == "left"]
@@ -138,6 +134,20 @@ class ThermalAnalyzeStage(Stage):
             raise StageError(
                 "thermal_analyze 找不到两侧的主层或最外层：layers=%s 时每侧至少需要 2 层"
                 % sorted(set(layers)))
+        left_block = left_pl + left_outer
+        right_block = right_pl + right_outer
+        if len(left_block) != lead.n_atoms or len(right_block) != lead.n_atoms:
+            raise StageError(
+                "lead 力常数覆盖 %d 个原子，但器件侧的主层+次外层是 %d 个（左）/%d 个（右）："
+                "两者必须一致，否则拼不出完整矩阵"
+                % (lead.n_atoms, len(left_block), len(right_block)))
+        meta = FullFCMeta(n_atoms=n_atoms, device_indices=device_indices,
+                          left_indices=left_block, right_indices=right_block)
+        full = assemble_full_fc(k_dev, lead, meta)
+        residual = acoustic_sum_residual(full)
+        relative = acoustic_sum_relative_residual(full)
+        dynamical = dynamical_matrix(full, masses)
+        imag = imaginary_modes(dynamical)
 
         centre = np.array(device_indices)
         d_c = dynamical[np.ix_(centre, centre)]

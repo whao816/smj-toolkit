@@ -35,7 +35,13 @@ def displace(text, entry):
     """把 ``entry`` 描述的位移加到 ``text`` 里第 ``atom`` 个原子(0-based)上。"""
     atom = int(entry["atom"])
     axis = int(entry["axis"])
-    delta = float(entry["sign"]) * float(entry["delta_A"])
+    # ``make_displacements`` 写出的 ``delta_A`` 本身**已带符号**
+    # (-0.01 表示负向),``sign`` 只是给人读的冗余字段。
+    # 早期版本写成 ``sign * delta_A``,于是 (-1) * (-0.01) = +0.01,
+    # 正负两个位移实际都朝 +x 走,中心差分 ``F+ - F-`` 恒为 0,
+    # 力常数整矩阵变成 0(2026-11-24 在 gpu1 上以 54 个 SCF 的代价发现)。
+    # 用 ``sign * abs(delta_A)`` 对"带符号"和"只给幅度"两种写法都成立。
+    delta = float(entry["sign"]) * abs(float(entry["delta_A"]))
     if not 0 <= axis <= 2:
         raise ValueError("axis 必须是 0/1/2,实得 %r" % (entry["axis"],))
 

@@ -1078,7 +1078,6 @@ def _thermal_lead_match(run_dir: Path, cfg: Any) -> bool | None:
     checks = (
         (lead.get("a_lattice_A"), spec.get("a_lattice")),
         (tuple(lead.get("in_plane") or ()), tuple(spec.get("in_plane") or ())),
-        (lead.get("layers"), spec.get("electrode_layers")),
     )
     for recorded, expected in checks:
         if recorded is None or expected is None:
@@ -1088,7 +1087,13 @@ def _thermal_lead_match(run_dir: Path, cfg: Any) -> bool | None:
                 return False
         elif recorded != expected:
             return False
-    return True
+    # 层数不做相等比较：lead FC 只存 decimation 需要的**前两个主层**
+    # （V₁/V₂ 所在的两层），器件侧可以是 4 层或 6 层。只要求够两层——
+    # 少于一层的 FC 拿不出层间耦合，NEGF 起不来。
+    layers = lead.get("layers")
+    if layers is None:
+        return None
+    return int(layers) >= 2
 
 
 def _thermal_review(result: ReviewResult, run_dir: Path, cfg: Any) -> None:
