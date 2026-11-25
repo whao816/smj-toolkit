@@ -167,3 +167,38 @@ def test_cutting_below_the_span_drops_pairs():
     # 各两个方向，所以 20 Å 档比 7 Å 档多 8 对 —— 掩码确实按距离在切。
     assert loose["pairs_kept"] == 12
     assert tight["pairs_kept"] == 4
+
+
+def test_convergence_does_not_call_a_covering_cutoff_unconverged():
+    """名义截断覆盖块内全部非零对时，不能判"未收敛"。
+
+    ``effective_span_A`` 是组装矩阵里**实际存在**的最远非零 lead 对。它
+    ≤ 名义 ``fc_cutoff_A`` 只说明"再按名义值切一刀不改变矩阵"，既不是
+    收敛证据，也不是未收敛证据：更远的体相耦合本来就没进这份资产，
+    后处理无法验证。以前把"没有 shortfall"当成 ``converged=False``，
+    会在报告里给出一个没有理由的未收敛警告（2026-11-25 实测：span
+    7.08 Å < cutoff 10 Å，G_ph 在 8/10/12 Å 三档逐位相同）。
+    """
+    from types import SimpleNamespace
+
+    from smj.stages.thermal_analyze import convergence_axes
+
+    built = {
+        "spec": {"electrode_layers": 4, "device_layers": 2},
+        "lead": SimpleNamespace(fc_cutoff_A=10.0),
+    }
+    block = {
+        "values_A": [8.0, 10.0, 12.0],
+        "rows": [
+            {"cutoff_A": 8.0, "g_ph_pw_per_k": 15.92639, "rejected": None},
+            {"cutoff_A": 10.0, "g_ph_pw_per_k": 15.92639, "rejected": None},
+            {"cutoff_A": 12.0, "g_ph_pw_per_k": 15.92639, "rejected": None},
+        ],
+        "relative_spread": 0.0,
+        "effective_span_A": 7.082,
+    }
+    axis = convergence_axes(built, block)["fc_cutoff"]
+    assert axis["nominal_shortfall"] is None
+    assert axis["nominal_covers_span"] is True
+    assert axis["beyond_nominal_checked"] is False
+    assert axis["converged"] is None

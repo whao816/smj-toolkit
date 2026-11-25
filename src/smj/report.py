@@ -993,9 +993,12 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
             if spread is not None:
                 lines.append(
                     f"4–12 Å 范围内 `G_ph` 的相对散布 {100.0 * float(spread):.1f}%。"
-                    "这条轴零机时可得：切的是已组装好的矩阵，不碰 DFT。"
-                    "实测该散布与 η 无关（η=0.05–0.3 meV 都是 22–23%），"
-                    "所以它是真实的截断效应，不是共振采样噪声。")
+                    "这条轴零机时可得：切的是已组装好的矩阵，不碰 DFT。")
+                if cutoff.get("nominal_covers_span"):
+                    lines.append(
+                        "名义截断已覆盖两层块内的全部非零耦合：本次实测 8/10/12 Å "
+                        "三档逐位相同，剩余散布来自把 r_c 刻意切到 6 Å 以下——"
+                        "切掉的是真实近邻，不是名义 `fc_cutoff_A` 不足。")
                 lines.append("")
             shortfall = cutoff.get("nominal_shortfall")
             if shortfall:
@@ -1004,9 +1007,14 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
                     f"{float(cutoff.get('production_A') or 0.0):.1f} Å，但组装矩阵里"
                     f"最远的非零元素在 {float(cutoff.get('effective_span_A') or 0.0):.2f} Å"
                     f"——按名义值再切一刀会丢掉 {100.0 * float(shortfall):.1f}% 的 `G_ph`。"
-                    "2 层 lead 块的平移对称映射把体相里 6 Å 内的一对摆到了器件坐标的"
-                    "更远处，所以「名义截断」和「实际生效」不是一回事。要把它变成真收敛的"
-                    "数，得把 `fc_cutoff_A` 提到 ≥12 Å 重算电极力常数（54 个 SCF，约半天）。")
+                    "要把它变成真收敛的数，得把 `fc_cutoff_A` 提上去重算电极力常数。")
+                lines.append("")
+            if cutoff.get("beyond_nominal_checked") is False:
+                lines.append(
+                    "> 超出名义截断的体相耦合不在当前 lead 力常数资产里，"
+                    "无法后处理验证：后处理只能证明「不多切」，不能证明「没漏切」。"
+                    "要量化这一段，需要用更大的 `fc_cutoff_A` 重算一次电极"
+                    "力常数（54 个 SCF）后对照。")
                 lines.append("")
         for key, label in (("lead_layers", "lead 层数"),
                            ("device_layers", "器件区层数")):

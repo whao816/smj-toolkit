@@ -134,8 +134,14 @@ def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
         raise StageError(
             "thermal_analyze 找不到两侧的主层或最外层：layers=%s 时每侧至少需要 2 层"
             % sorted(set(layers)))
-    left_block = left_pl + left_outer
-    right_block = right_pl + right_outer
+    # 顺序必须是「次外层 + 主层」,不能是「主层 + 次外层」。lead_fc.npy 由
+    # gen_au_lead_fc.py 按参考层 0 → 参考层 1 排列(前 3N 是层 0、后 3N 是
+    # 层 1,层间块为 K(0,1));器件里 layer 0 是最外层、layer 1 是主层,所以
+    # 层 0 对应 outer、层 1 对应 principal。反过来传会把 K(0,1) 当成
+    # K(1,0) —— 矩阵依旧对称、检查全过,但方向错了一次转置,实测 G_ph 从
+    # 15.93 掉到 13.72 pW/K(−14%)。
+    left_block = left_outer + left_pl
+    right_block = right_outer + right_pl
     if len(left_block) != lead.n_atoms or len(right_block) != lead.n_atoms:
         raise StageError(
             "lead 力常数覆盖 %d 个原子，但器件侧的主层+次外层是 %d 个（左）/%d 个（右）："
@@ -184,6 +190,7 @@ def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
         "n_atoms": n_atoms,
         "elements": elements,
         "positions": positions,
+        "lattice": device_meta.get("lattice"),
         "masses": masses,
         "device_indices": device_indices,
         "lead_indices": lead_indices,
@@ -206,10 +213,28 @@ def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
     }
 
 
-def _atom_distances(positions: np.ndarray) -> np.ndarray:
-    """原子对距离矩阵（Å）。3×3 板只有 90 个原子，直接暴力算。"""
+def _atom_distances(positions: np.ndarray, lattice=None) -> np.ndarray:
+    """原子对距离矩阵（Å）。3×3 板只有 90 个原子，直接暴力算。
+
+    ``lattice`` 给出时对**前两个晶格矢量**做最小像折算（板沿第三条矢量有真空，
+    折返会造出不存在的近邻，所以不折 z）。lead 块来自周期体相：nap-sh 里
+    (18, 35) 的裸距是 11.89 Å，最小像是 3.11 Å。用裸距做截断判据会在名义
+    10 Å 处把跨边界的真实近邻切掉，造出 4.3% 的伪差异。
+    """
     positions = np.asarray(positions, dtype=float)
     delta = positions[:, None, :] - positions[None, :, :]
+    if lattice is not None:
+        vectors = np.asarray(lattice, dtype=float)
+        if vectors.ndim != 2 or vectors.shape[0] < 2 or vectors.shape[1] != 3:
+            raise ValueError("lattice 必须是至少两条三维矢量，得到 %r"
+                             % (vectors.shape,))
+        cell = vectors[:2, :2]
+        if abs(float(np.linalg.det(cell))) < 1.0e-12:
+            raise ValueError("面内晶格矢量线性相关，无法做最小像折算")
+        frac = delta[:, :, :2] @ np.linalg.inv(cell)
+        wrapped = (frac - np.round(frac)) @ cell
+        delta = delta.copy()
+        delta[:, :, :2] = wrapped
     return np.sqrt(np.einsum("ijk,ijk->ij", delta, delta))
 
 
@@ -224,15 +249,16 @@ def cutoff_sensitivity(built: dict, omega: np.ndarray, eta: float, *,
     掉到 1e-19，那是伪结果而不是敏感性）。真正带截断参数的是电极力常数
     —— ``gen_au_lead_fc.py`` 就是按 ``fc_cutoff_A`` 切的，所以这条轴只该切它。
 
-    切的距离用**真实原子间距**（含层间 Δz），不是面内最小像，因为 lead 块
-    本身已经是有限的两层，没有周期像。
+    距离必须用**面内最小像**：lead 块本身虽只有两层，但它来自周期体相，器件坐标
+    里 11.9 Å 的一对在体相里可能只隔 3.1 Å（nap-sh 的 (18,35) 就是这样）。用裸距
+    会在名义 10 Å 处切掉真实近邻，造出 4.3% 的伪差异。
     """
     positions = np.asarray(built["positions"], dtype=float)
     # 切的是**动力学矩阵**（eV²），不是力常数：``_curve_factory`` 要的是前者，
     # 拿力常数当输入会让每个频率都跑到带顶以上，透射恒为 0（第一版就踩了这个）。
     # 零化的元素位置两者一一对应，D_ij = K_ij/√(m_i m_j)，所以切法等价。
     matrix = np.asarray(built["dynamical"], dtype=float)
-    distances = _atom_distances(positions)
+    distances = _atom_distances(positions, built.get("lattice"))
     curve = _curve_factory(built, omega, eta)
 
     lead_dofs = _dof_indices(built["lead_indices"])
@@ -242,9 +268,9 @@ def cutoff_sensitivity(built: dict, omega: np.ndarray, eta: float, *,
     if cutoffs is None:
         cutoffs = (4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0)
 
-    # 组装矩阵里 lead 块最远的**非零**元素有多远：名义截断半径与实际生效的
-    # 截断半径不一定相等（2 层块的平移对称映射会把体相里 6 Å 内的一对摆到
-    # 器件坐标的 11.9 Å 处）。这个数直接决定"按名义值切一刀"会不会真的改变结果。
+    # 组装矩阵里 lead 块最远的**非零**元素（面内最小像）有多远。名义截断
+    # 10 Å 通常大于两层块的面内跨度，所以这个数只用来说明"这个块里到底有哪些
+    # 距离在起作用"，不能拿它证明 10 Å 对**体相**力常数已经足够。
     block = matrix[np.ix_(lead_dofs, lead_dofs)]
     span = 0.0
     for i, atom_i in enumerate(lead_atoms):
@@ -285,7 +311,7 @@ def cutoff_sensitivity(built: dict, omega: np.ndarray, eta: float, *,
         "rows": rows,
         "relative_spread": spread,
         "effective_span_A": round(span, 3),
-        "method": "只对 lead×lead 块按真实原子间距置零后重算 NEGF（不碰 DFT）",
+        "method": "只对 lead×lead 块按面内最小像距离置零后重算 NEGF（不碰 DFT）",
     }
 
 
@@ -303,21 +329,35 @@ def convergence_axes(built: dict, cutoff_block: dict) -> dict:
     # 不在 device spec 里。
     cutoff = float(getattr(built.get("lead"), "fc_cutoff_A", 0.0) or 0.0)
     span = float(cutoff_block.get("effective_span_A") or 0.0)
-    # 名义截断 vs 实际生效：2 层块的平移映射会把几个原子对摆到器件坐标里
-    # 更远处（实测名义 10 Å 的 lead 块，最远非零元素在 11.9 Å）。若两者差
-    # 得多，说明"按名义值再切一刀"会真的改变结果，这条轴不能算已收敛。
+    # ``effective_span_A`` 用的是**面内最小像距离**（lead 块来自周期体相，
+    # 裸坐标距离会把跨边界的近邻算成 11.9 Å，实测最小像只有 3.1 Å）。
+    # 它 ≤ 名义截断，只说明"再按名义值切一刀不改变矩阵"，既不是收敛证据、
+    # 也不是未收敛证据：超出名义截断的体相耦合本来就没进这份资产，后处理
+    # 无法验证。所以三种状态要分开：
+    #   span > cutoff 且按名义值切会改变结果 → converged=False（有确凿短差）
+    #   span > cutoff 但影响 <1%            → converged=True
+    #   span ≤ cutoff                       → converged=None（beyond unverified）
+    covers = bool(cutoff and span <= cutoff + 1.0e-9)
     gap = None
-    if cutoff and span > cutoff:
+    if cutoff and not covers:
         nominal = next((row for row in cutoff_block.get("rows", [])
                         if abs(row["cutoff_A"] - cutoff) < 1e-9), None)
         full = max((row["g_ph_pw_per_k"] for row in cutoff_block.get("rows", [])
                     if row["g_ph_pw_per_k"] is not None), default=None)
         if nominal and nominal.get("g_ph_pw_per_k") and full:
             gap = float(1.0 - nominal["g_ph_pw_per_k"] / full)
+    if gap is not None:
+        converged: bool | None = bool(gap <= 0.01)
+    elif covers:
+        converged = None
+    else:
+        converged = False
     return {
         "fc_cutoff": dict(cutoff_block, production_A=cutoff,
                           nominal_shortfall=gap,
-                          converged=bool(gap is not None and gap <= 0.01)),
+                          nominal_covers_span=covers,
+                          beyond_nominal_checked=False,
+                          converged=converged),
         "lead_layers": {
             "status": "unmeasured",
             "current": layers,

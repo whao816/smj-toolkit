@@ -360,15 +360,17 @@ def test_report_prints_environment_and_convergence_axes(workdir):
         "fc_cutoff": {
             "values_A": [8.0, 10.0, 12.0],
             "rows": [
-                {"cutoff_A": 8.0, "g_ph_pw_per_k": 11.775, "rejected": None},
-                {"cutoff_A": 10.0, "g_ph_pw_per_k": 13.123, "rejected": None},
-                {"cutoff_A": 12.0, "g_ph_pw_per_k": 13.717, "rejected": None},
+                {"cutoff_A": 8.0, "g_ph_pw_per_k": 15.92639, "rejected": None},
+                {"cutoff_A": 10.0, "g_ph_pw_per_k": 15.92639, "rejected": None},
+                {"cutoff_A": 12.0, "g_ph_pw_per_k": 15.92639, "rejected": None},
             ],
-            "relative_spread": 0.2305,
-            "effective_span_A": 11.907,
+            "relative_spread": 0.0983,
+            "effective_span_A": 7.082,
             "production_A": 10.0,
-            "nominal_shortfall": 0.0432,
-            "converged": False,
+            "nominal_shortfall": None,
+            "nominal_covers_span": True,
+            "beyond_nominal_checked": False,
+            "converged": None,
         },
         "lead_layers": {"status": "unmeasured", "current": 4,
                         "requires": "新建 6 层版"},
@@ -381,9 +383,12 @@ def test_report_prints_environment_and_convergence_axes(workdir):
     assert "**运行环境**" in text
     assert "环境指纹" in text
     assert "**收敛轴**" in text
-    # 名义 10 Å 与实际 11.907 Å 的落差必须变成显式警告，而不是让人从表里自己看。
-    assert "截断半径未收敛" in text
-    assert "11.91" in text
+    # 名义截断覆盖了块内全部非零对时，不能报「未收敛」；但也不能把
+    # 「后处理看不到更远耦合」说成收敛证据。
+    assert "截断半径未收敛" not in text
+    assert "名义截断已覆盖" in text
+    assert "无法后处理验证" in text
+    assert "9.8%" in text
     assert "lead 层数" in text and "未测" in text
 
 
