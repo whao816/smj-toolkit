@@ -400,9 +400,9 @@ thermal:
     sc_accuracy_forces: 1.0e-3
     array_max_parallel: 8
   negf:
-    eta_meV: 0.5
-    omega_max_meV: 25.0
-    omega_step_meV: 0.1
+    eta_meV: 0.05          # D15 冻结协议值（换 η = 换方法，见 §8）
+    omega_max_meV: 19.5
+    omega_step_meV: 0.05
     asr: true
   lead_fc: "au111_3x3_l4.json"
 ```
@@ -419,9 +419,9 @@ thermal:
   "N_eff": 0.0,
   "ZT_total": null,
   "k_e_pW_per_K": null,
-  "omega_max_meV": 25.0,
-  "points": 251,
-  "eta_meV": 0.5,
+  "omega_max_meV": 19.5,
+  "points": 391,
+  "eta_meV": 0.05,
   "asr_residual": 0.0,
   "fc_asymmetry": 0.0,
   "imaginary_modes_cm1": [],
@@ -429,9 +429,24 @@ thermal:
   "t_ph_above_band_max": 0.0,
   "lead_fc_file": "au111_3x3_l4.json",
   "lead_fc_sha256": "…",
+  "soft_modes": [],
+  "soft_mode_impact_relative_g_ph": null,
+  "g_ph_symmetric_pw_per_k": null,
+  "g_ph_soft_removed_pw_per_k": null,
+  "g_ph_by_temperature": {"temperature_K": [], "g_ph_pw_per_k": []},
   "warnings": []
 }
 ```
+
+> 注：字段名以实现为准（`smj.thermal.v1` 实际写 `g_ph_pw_per_k`、`g_quantum_pw_per_k`、
+> `spectrum.{energy_meV,transmission,cumulative_g_ph_pw_per_k}` 等，见
+> `src/smj/analysis.py` 的 `THERMAL_REQUIRED_KEYS`）。上面列的是**语义槽位**。
+> 可选键（旧文件没有也不报错）：`asr_projected`/`asr_projection_norm`/
+> `asr_residual_after_ev_per_A2`/`asr_region`（D13）、`soft_modes` 与三个
+> `soft_mode*`/`g_ph_symmetric*` 字段、`g_ph_by_temperature`。
+> `soft_modes` 每项含 `index/cm1/participation_ratio/regions{molecule,device_au,lead}/
+> top_atoms/bonds/rigid_body`；`g_ph_by_temperature` 是同一份 `T_ph` 换玻色因子
+> 得到的 14 个温度点（10–800 K），不额外花机时。
 
 配套 `transmission_ph.csv`（`omega_meV,t_ph`）与 `conductance_cum.csv`（`omega_meV,g_cum_pW_per_K`）。写入沿用 `analysis.py:_write_json` 的 `.tmp` + `os.replace` + `allow_nan=False`。
 
@@ -495,6 +510,7 @@ B1 可以完全离线做，是**风险最低、信息量最大**的一批：解�
 | **D9** | 要不要跑一个「文献对账」控制体系（octanedithiol 或 BDT）？ | **建议做一次，但必须用户明确同意，且结果不混进生产结论** | 我们是**唯一用 FHI-aims 做分子结 `κ_ph` 的组**，没有第三方数值可对账（§10 R7）。文献基准很窄但一致：Au–烷二硫醇–Au 在 300 K 应落在 **15–25 pW/K**（Cui 实验 ~20；Mosso 理论 19、实验 20±6；Klöckner 烷链 15–45）。跑一个 C8 或 BDT 就能一次性检验整条链（力常数→NEGF→积分）。**这是对照臂，按 AGENTS.md 必须先说明理由和代价、经用户同意才跑**；且报告里单列，不得与 nap/az/ind 的结果并列 |
 | **D13** | ASR 残差怎么算、阈值多少？ | **判相对残差 `max\|Σ_j K_ij\|/max\|K\| < 1e-3`，先测再投影（C 方案）** | 绝对门限 1e-6 eV/Å² 被实测噪声否掉：有限差分 + 基组噪声本身就在 1e-3–1e-1 eV/Å²。且投影必须作用在**器件行子集**上——lead 两层块按构造就不闭合（完整 6 层胞 1.05e-3、2 层块 0.60），拿它判会永远失败 |
 | **D14** | 网格独立性门限 1% 达不到，怎么办？ | **重标为 5%，并承认 η 才是主敏感量** | 2026-11-25 实测（nap-sh，同一份 `force_constants.npy`）：粗化一半的 `ΔG/G` 在 η=0.05/0.1/0.2/0.3 meV 下分别是 1.99%/1.58%/2.46%/2.21%，加密网格不降反在 1–2% 摆动 → 梯形积分在峰宽 ~η 的窄共振上有 2.0%–2.5% 的求积底噪。真正决定数值的是 η：η 0.5→0.05 meV 使 `G_ph` 由 10.9 升到 13.7 pW/K（+25%），单调外推 η→0 ≈ 13.8。故 `G_ph` 一律按「η→0 外推值 + η 敏感性作为误差带」报告，门限只保留来抓「网格明显不够」（>5%） |
+| **D15** | η 与能量步长怎么固定？ | **冻结为 η = 0.05 meV、步长 = 0.05 meV（`ThermalNEGFConfig` 默认值即协议值）** | D14 已证明这两个参数直接乘在结果上：同一份力常数换 η 就能让 `G_ph(300 K)` 动 25%，跨分子比较若不锁死 η，异构体之间 10–30% 的预期差异会被数值参数淹没。生产值取 η→0 外推平台的起点（13.72 vs 外推 13.8，差 0.6%），步长同步取 0.05 只为把谱画准（求积底噪与步长无关）。**换 η = 换方法**：必须同时改这里、改报告里的误差带说明、并在论文横向比较中声明；`tests/phonon/test_stages.py::test_negf_defaults_are_the_frozen_protocol` 钉住这两个数 |
 
 ---
 

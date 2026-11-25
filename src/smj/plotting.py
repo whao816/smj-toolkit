@@ -778,3 +778,82 @@ def plot_thermal(
         fig = None
     return {"ok": True, "written": written, "figure": fig,
             "quantiles": quantiles}
+
+
+def plot_thermal_vs_temperature(
+    source: str | Path | Mapping[str, Any],
+    out: str | Path | None = None,
+    *,
+    formats: Sequence[str] | None = None,
+    dpi: float = 600,
+    return_figure: bool = False,
+    title: str | None = None,
+) -> dict[str, Any]:
+    """``G_ph(T)`` 曲线（M5-T3 附赠）。谐波 Landauer 的 ``T_ph(ω)`` 与温度无关，
+    换 T 只换玻色因子，所以这条线**不额外花机时**。
+
+    它回答两个审稿人会问的问题：
+
+    * **300 K 的值够不够收敛**——曲线在 300 K 以上还有多少上升空间；
+    * **低温对不对**——声子热导在 ``k_BT ≪ ħω`` 时必须回到 ``G ∝ T`` 的
+      量子极限，这条线是免费的内部一致性检验。
+
+    ``source`` 是 ``thermal.json`` 路径或 dict（需含 ``g_ph_by_temperature``）。
+    没有该字段时返回 ``{"ok": False, "reason": ...}``。
+    """
+    import json as _json
+
+    if isinstance(source, Mapping):
+        data = dict(source)
+    else:
+        path = Path(source)
+        if path.is_dir():
+            path = path / "thermal_analyze" / "thermal.json"
+        data = _json.loads(path.read_text(encoding="utf-8"))
+
+    curve = data.get("g_ph_by_temperature") or {}
+    temperatures = [float(v) for v in curve.get("temperature_K") or []]
+    conductances = [float(v) for v in curve.get("g_ph_pw_per_k") or []]
+    if not temperatures or len(temperatures) != len(conductances):
+        return {"ok": False, "reason": "thermal.json 里没有 g_ph_by_temperature 曲线"}
+
+    try:
+        plt = _pyplot()
+    except RuntimeError as exc:
+        return {"ok": False, "reason": str(exc)}
+
+    fig, ax = plt.subplots(figsize=(5.6, 4.2), dpi=dpi)
+    ax.plot(temperatures, conductances, color="#1f4e79", lw=1.6, marker="o", ms=3.2)
+    reference = float(data.get("temperature_K", 300.0))
+    plateau = conductances[-1]
+    value_at_reference = None
+    for temperature, value in zip(temperatures, conductances):
+        if abs(temperature - reference) < 1e-9:
+            value_at_reference = value
+            break
+    if value_at_reference is not None:
+        ax.plot([reference], [value_at_reference], marker="o", ms=6.0,
+                mfc="#c00000", mec="#c00000", zorder=5)
+        ax.axvline(reference, color="#c00000", ls="--", lw=0.9, alpha=0.6)
+        ax.annotate("%.0f K: %.2f pW/K" % (reference, value_at_reference),
+                    xy=(reference, value_at_reference), xytext=(6, -16),
+                    textcoords="offset points", fontsize=8.5, color="#c00000")
+    ax.axhline(plateau, color="#7f7f7f", ls=":", lw=0.9)
+    ax.annotate("high-T limit %.2f pW/K" % plateau, xy=(temperatures[0], plateau),
+                xytext=(2, 4), textcoords="offset points",
+                fontsize=8.0, color="#4d4d4d")
+    ax.set_xlabel(r"$T$ (K)")
+    ax.set_ylabel(r"$G_{\mathrm{ph}}$ (pW/K)")
+    ax.set_xlim(0.0, max(temperatures) * 1.03)
+    ax.set_ylim(0.0, max(conductances) * 1.12)
+    if title:
+        ax.set_title(title, fontsize=10.5)
+    fig.subplots_adjust(left=0.16, right=0.97, top=0.92, bottom=0.13)
+
+    written = [] if out is None else [str(p) for p in _save(fig, out, formats, dpi)]
+    if not return_figure:
+        plt.close(fig)
+        fig = None
+    return {"ok": True, "written": written, "figure": fig,
+            "g_at_reference_pw_per_k": value_at_reference,
+            "g_high_temperature_pw_per_k": plateau}

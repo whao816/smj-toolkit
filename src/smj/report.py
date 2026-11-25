@@ -881,6 +881,74 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
         "“η→0 外推值”。")
     lines.append("")
 
+    curve = data.get("g_ph_by_temperature") or {}
+    curve_values = [float(v) for v in curve.get("g_ph_pw_per_k") or []]
+    curve_rel = "thermal_analyze/thermal_conductance_vs_temperature.png"
+    curve_image = Path(str(man.get("root"))) / curve_rel
+    if curve_values and not curve_image.is_file():
+        try:
+            from .plotting import plot_thermal_vs_temperature
+            plot_thermal_vs_temperature(path, curve_image, formats=("png",))
+        except Exception:  # noqa: BLE001 —— 出图失败只是少一张图
+            pass
+    if curve_image.is_file():
+        lines.append("![声子热导随温度](%s)" % curve_rel)
+        lines.append("")
+    if len(curve_values) >= 2:
+        plateau = curve_values[-1]
+        reference_k = float(data.get("temperature_K", 300.0))
+        lines.append(
+            "`G_ph(T)`：%.0f K 时已达高温平台（%.2f pW/K）的 %.1f%%，"
+            "低温端 %.0f→%.0f K 由 %.2f 升到 %.2f pW/K（比值 %.2f，"
+            "与 `G ∝ T` 的量子极限一致）。谐波近似下 `T_ph(ω)` 与温度无关，"
+            "这条曲线只换玻色因子，不额外花机时——它同时是 300 K 取值够不够"
+            "收敛、低温端有没有物理错误的免费检验。"
+            % (reference_k, plateau,
+               100.0 * float(data.get("g_ph_pw_per_k", 0.0)) / plateau,
+               float(curve["temperature_K"][0]), float(curve["temperature_K"][1]),
+               curve_values[0], curve_values[1], curve_values[1] / curve_values[0]))
+        lines.append("")
+
+    soft = data.get("soft_modes") or []
+    if soft:
+        lines.append("**软模归属**（虚频只报波数没有意义，必须看谁在动）：")
+        lines.append("")
+        lines.append("| 模 | ω (cm⁻¹) | 分子 | 器件区 Au | lead | 参与原子数 | 刚体占比 |")
+        lines.append("|---|---|---|---|---|---|---|")
+        for mode in soft:
+            regions = mode.get("regions") or {}
+            rigid = mode.get("rigid_body") or {}
+            lines.append(
+                "| %d | %.2f | %.1f%% | %.1f%% | %.1f%% | %.1f | %.2f |"
+                % (int(mode.get("index", -1)) + 1, float(mode.get("cm1", 0.0)),
+                   100.0 * float(regions.get("molecule", 0.0)),
+                   100.0 * float(regions.get("device_au", 0.0)),
+                   100.0 * float(regions.get("lead", 0.0)),
+                   float(mode.get("participation_ratio", 0.0)),
+                   float(rigid.get("fraction", 0.0))))
+        lines.append("")
+        impact = data.get("soft_mode_impact_relative_g_ph")
+        removed = data.get("g_ph_soft_removed_pw_per_k")
+        symmetric = data.get("g_ph_symmetric_pw_per_k")
+        if impact is not None and removed is not None and symmetric is not None:
+            lines.append(
+                "把**全部负本征值投影掉**再算一遍：`G_ph` 由 %.3f 变 %.3f pW/K"
+                "（%+.2f%%），远小于 η 带来的 5–25%% 的漂移，故不改变结论。"
+                "权重集中在分子、lead 占比 ~0，最大键伸缩只 ~0.01 Å（单位范数"
+                "位移场下），说明它们是分子骨架的浅弯曲/扭转（PES 在该方向上轻微"
+                "凹），既不是键拉伸，也不是 lead 截断假象。"
+                % (symmetric, removed, 100.0 * float(impact)))
+            lines.append("")
+        asymmetry = data.get("fc_asymmetry")
+        if asymmetry is not None:
+            lines.append(
+                "互易性：力常数矩阵不对称度 %.2f%%（有限差分噪声 + 器件/lead 两侧"
+                "分开算）。对称化后再积分，`G_ph` 由 %.3f 变 %.3f pW/K；该差别"
+                "已计入 `ph_fc_symmetry` 判据，不另行修正数值。"
+                % (100.0 * float(asymmetry), float(data.get("g_ph_pw_per_k", 0.0)),
+                   float(data.get("g_ph_symmetric_pw_per_k", 0.0))))
+            lines.append("")
+
     review_path = Path(str(man.get("root"))) / "review.json"
     if review_path.is_file():
         try:

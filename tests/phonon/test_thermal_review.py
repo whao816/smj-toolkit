@@ -46,6 +46,22 @@ def _thermal(**over):
         "spectrum": spectrum,
         "zt": {"available": False, "reason": "no electron result"},
         "fc_asymmetry": 1.0e-3,
+        # M5 收尾新增：温度曲线与软模归属（解释性字段，可选）
+        "g_ph_by_temperature": {
+            "temperature_K": [10.0, 50.0, 100.0, 300.0, 800.0],
+            "g_ph_pw_per_k": [0.5 * g_ph / 6.0, 0.7 * g_ph, 0.92 * g_ph,
+                              g_ph, 1.01 * g_ph],
+        },
+        "soft_modes": [
+            {"index": 0, "cm1": -21.3, "participation_ratio": 14.0,
+             "regions": {"molecule": 0.995, "device_au": 0.005, "lead": 0.0},
+             "top_atoms": [{"atom": 3, "element": "C", "weight": 0.2}],
+             "bonds": [{"pair": [3, 4], "label": "C-C", "stretch": 0.0105}],
+             "rigid_body": {"fraction": 0.14}},
+        ],
+        "soft_mode_impact_relative_g_ph": 0.002,
+        "g_ph_symmetric_pw_per_k": g_ph,
+        "g_ph_soft_removed_pw_per_k": g_ph * 1.002,
     }
     payload.update(over)
     return payload
@@ -311,3 +327,53 @@ def test_report_embeds_spectrum_figure_and_quantiles(workdir):
         assert "| %s |" % label in text
     # 分位必须在报告里给出波数,方便与振动模式指认对照
     assert "波数 (cm" in text
+
+
+def test_report_embeds_temperature_curve_and_soft_modes(workdir):
+    """`G_ph(T)` 曲线与软模归属表都要进报告。
+
+    这两块回答的是两类不同问题：曲线是"300 K 够不够收敛"，软模表是"那 2 个
+    虚频到底动了什么、要不要紧"。仅有 `G_ph` 一个数时两者都无从判断。
+    """
+    pytest.importorskip("matplotlib")
+    from smj.report import render_report
+
+    run = workdir / "run"
+    _write(run / "thermal_analyze" / "thermal.json", _thermal())
+    text = render_report({"run_id": "t", "root": str(run)})
+    assert "thermal_conductance_vs_temperature.png" in text
+    assert (run / "thermal_analyze"
+            / "thermal_conductance_vs_temperature.png").is_file()
+    assert "G_ph(T)" in text
+    assert "与 `G ∝ T` 的量子极限一致" in text
+    # 软模表：分子/器件 Au/lead 三列占比 + 参与比 + 刚体占比
+    assert "软模归属" in text
+    assert "| 1 | -21.30 |" in text
+    assert "99.5%" in text
+    assert "投影掉" in text
+    assert "互易性" in text
+
+
+def test_plot_thermal_vs_temperature_reports_reference_and_plateau(workdir):
+    pytest.importorskip("matplotlib")
+    from smj.plotting import plot_thermal_vs_temperature
+
+    payload = _thermal()
+    result = plot_thermal_vs_temperature(payload, workdir / "curve.png",
+                                         formats=("png",))
+    assert result["ok"] is True
+    assert result["g_at_reference_pw_per_k"] == pytest.approx(
+        payload["g_ph_pw_per_k"])
+    assert result["g_high_temperature_pw_per_k"] == pytest.approx(
+        payload["g_ph_by_temperature"]["g_ph_pw_per_k"][-1])
+    assert (workdir / "curve.png").is_file()
+
+
+def test_plot_thermal_vs_temperature_without_curve_is_not_ok(workdir):
+    from smj.plotting import plot_thermal_vs_temperature
+
+    payload = _thermal()
+    payload.pop("g_ph_by_temperature")
+    result = plot_thermal_vs_temperature(payload, workdir / "curve.png")
+    assert result["ok"] is False
+    assert "g_ph_by_temperature" in result["reason"]

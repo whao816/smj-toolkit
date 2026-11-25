@@ -28,6 +28,7 @@ from ..phonon.checks import MAX_ASR_RELATIVE
 from ..phonon.fc import (FullFCMeta, asr_diagnostics, assemble_full_fc,
                          load_lead_fc)
 from ..phonon.landauer import cumulative_thermal_conductance, thermal_conductance
+from ..phonon.modes import describe_soft_modes
 from ..phonon.negf import transmission
 from ..phonon.units import gq_pw_per_k
 from .base import Collected, Prepared, Stage, register
@@ -122,7 +123,7 @@ class ThermalAnalyzeStage(Stage):
         lead = load_lead_fc(_lead_fc_path(thermal.lead_fc))
 
         n_atoms = int(device_meta["n_atoms"])
-        elements = self._elements(ctx.artifact("thermal_fc", "geometry.in"))
+        elements, positions = self._structure(ctx.artifact("thermal_fc", "geometry.in"))
         if len(elements) != n_atoms:
             raise StageError(
                 "thermal_analyze 的元素数(%d)与 device_metadata 的 n_atoms(%d) 不一致"
@@ -169,25 +170,28 @@ class ThermalAnalyzeStage(Stage):
                               masses, threshold=MAX_ASR_RELATIVE, rows=centre)
         dynamical = asr["dynamical"]
         imag = imaginary_modes(dynamical)
-
-        d_c = dynamical[np.ix_(centre, centre)]
-        d_l = dynamical[np.ix_(_dof_indices(left_pl), _dof_indices(left_pl))]
-        d_r = dynamical[np.ix_(_dof_indices(right_pl), _dof_indices(right_pl))]
-        # negf.transmission 的 v 约定是「中心区 × lead」,即 (n_c, n_lead)
-        v_l = dynamical[np.ix_(centre, _dof_indices(left_pl))]
-        v_r = dynamical[np.ix_(centre, _dof_indices(right_pl))]
-        v_lead_l = dynamical[np.ix_(_dof_indices(left_pl), _dof_indices(left_outer))]
-        v_lead_r = dynamical[np.ix_(_dof_indices(right_pl), _dof_indices(right_outer))]
+        # 虚频只报波数没有意义：把本征矢拆成「谁在动、动的是哪类键」。
+        # 区域划分是判断物理软模 vs lead 截断假象的第一道筛子。
+        molecule_indices = [int(i) for i in device_meta.get("molecule_indices") or []]
+        molecule_set = set(molecule_indices)
+        regions = {
+            "molecule": molecule_indices,
+            "device_au": [i for i in device_indices if i not in molecule_set],
+            "lead": lead_indices,
+        }
+        soft_modes = describe_soft_modes(dynamical, masses=masses, elements=elements,
+                                         positions=positions, regions=regions)
 
         # D 是 3N×3N,按**自由度**编号。用原子下标去切会得到一个形状"看起来
         # 差不多"的子块(例如 54 个原子的 54×54 恰好与 18 个原子的 3N=54
         # 撞上),transmission 的形状检查照样通过,但结果是垃圾(2026-11-24
         # 本地干跑时 T_ph 恒为 0 才发现)。
+        arrived = dynamical[np.ix_(centre, centre)]
         expected = 3 * len(device_indices)
-        if d_c.shape != (expected, expected):
+        if arrived.shape != (expected, expected):
             raise StageError(
                 "中心区动力学矩阵形状 %r,期望 (%d,%d);请检查自由度下标换算"
-                % (d_c.shape, expected, expected))
+                % (arrived.shape, expected, expected))
 
         negf = thermal.negf
         band_top = float(negf.band_top_meV)
@@ -196,12 +200,64 @@ class ThermalAnalyzeStage(Stage):
         energy_mev = np.linspace(0.0, band_top * 1.25, max(n_points, 2))
         omega = energy_mev * 1.0e-3
         eta = float(negf.eta_meV) * 1.0e-3
-        t_ph = np.array([
-            transmission(float(w), d_c, d_l, d_r, v_l, v_r, eta ** 2,
-                        v_lead_l=v_lead_l, v_lead_r=v_lead_r)
-            for w in omega])
+        dofs = _dof_indices
+
+        def transmission_curve(matrix) -> np.ndarray:
+            """给一份动力学矩阵，切块算整条 ``T_ph(ω)``。
+
+            抽成闭包是为了做一次「把虚频投影掉」的对照：软模对热导到底有没有
+            影响，只能靠同一套切块再算一遍来回答，不能凭"虚频不可传播"下断言。
+            """
+            return np.array([
+                transmission(float(w),
+                             matrix[np.ix_(centre, centre)],
+                             matrix[np.ix_(dofs(left_pl), dofs(left_pl))],
+                             matrix[np.ix_(dofs(right_pl), dofs(right_pl))],
+                             matrix[np.ix_(centre, dofs(left_pl))],
+                             matrix[np.ix_(centre, dofs(right_pl))],
+                             eta ** 2,
+                             v_lead_l=matrix[np.ix_(dofs(left_pl), dofs(left_outer))],
+                             v_lead_r=matrix[np.ix_(dofs(right_pl), dofs(right_outer))])
+                for w in omega])
+
+        t_ph = transmission_curve(dynamical)
         g_ph = thermal_conductance(omega, t_ph, temperature, band_top_mev=band_top)
         cumulative = cumulative_thermal_conductance(omega, t_ph, temperature)
+
+        # 虚频对热导有没有影响：把全部负本征值投影掉再算一遍 G_ph。这是一次
+        # 同一套切块的对照（多花一遍 NEGF 时间，不碰 DFT），比"虚频不可传播
+        # 所以无所谓"这种断言可靠。
+        #
+        # 基准取**对称化**后的矩阵：本征分解要求厄米，而有限差分给的 K 不是
+        # 严格对称的（互易性残差 ~0.5%）。若拿非对称 D 当基准，这个残差会混
+        # 进 "+1.1%"，看起来像虚频的影响（实测对称化后是 +0.58%）。
+        soft_impact = None
+        g_symmetric = None
+        g_removed = None
+        symmetric = 0.5 * (dynamical + dynamical.T)
+        eigenvalues = np.linalg.eigvalsh(symmetric)
+        if (eigenvalues < 0.0).any():
+            _, eigenvectors = np.linalg.eigh(symmetric)
+            negative = eigenvalues < 0.0
+            basis = eigenvectors[:, negative]
+            cleaned = symmetric - basis @ np.diag(eigenvalues[negative]) @ basis.T
+            g_symmetric = thermal_conductance(
+                omega, transmission_curve(symmetric), temperature,
+                band_top_mev=band_top)
+            g_removed = thermal_conductance(
+                omega, transmission_curve(cleaned), temperature,
+                band_top_mev=band_top)
+            if g_symmetric:
+                soft_impact = (g_removed - g_symmetric) / g_symmetric
+        # 谐波 Landauer 的 T_ph(ω) 与温度无关，换 T 只是换玻色因子 —— 这条
+        # G_ph(T) 曲线**不额外花机时**。它回答两件事：300 K 的值离高温平台
+        # 还有多远（差多少算"准"），以及低温端是否回到 G∝T 的量子极限。
+        temperature_grid = np.array(
+            [10.0, 20.0, 30.0, 50.0, 75.0, 100.0, 150.0,
+             200.0, 250.0, 300.0, 400.0, 500.0, 600.0, 800.0])
+        g_ph_by_temperature = [
+            thermal_conductance(omega, t_ph, float(t), band_top_mev=band_top)
+            for t in temperature_grid]
 
         payload = {
             "schema": SCHEMA,
@@ -222,6 +278,21 @@ class ThermalAnalyzeStage(Stage):
             "asr_projection_norm": asr["projection_norm"],
             "asr_residual_after_ev_per_A2": asr["residual_after_ev_per_A2"],
             "imaginary_modes": imag,
+            # 软模归属（modes.describe_soft_modes）：原子/区域/键三类权重。
+            # 判据只看 imaginary_modes 的 count 与 worst_cm1，这里是解释材料。
+            "soft_modes": soft_modes,
+            # 把负本征值全部投影掉后 G_ph 的相对变化（None = 无虚频）。这是
+            # 「虚频到底要不要紧」的定量答复，比定性论证可复核。两个基准值
+            # 一并落盘，免得报告只能给一个百分数而看不出绝对量级。
+            "soft_mode_impact_relative_g_ph": soft_impact,
+            "g_ph_symmetric_pw_per_k": g_symmetric,
+            "g_ph_soft_removed_pw_per_k": g_removed,
+            # 免费的温度曲线（同一份 T_ph，只换玻色因子）。300 K 是否已到平台、
+            # 低温是否 G∝T，都从这两列直接读出。
+            "g_ph_by_temperature": {
+                "temperature_K": [float(t) for t in temperature_grid],
+                "g_ph_pw_per_k": [float(v) for v in g_ph_by_temperature],
+            },
             "n_k_points": 1,
             "band_top_meV": band_top,
             "eta_meV": float(negf.eta_meV),
@@ -242,14 +313,20 @@ class ThermalAnalyzeStage(Stage):
         # 出图是演示品，不是判定依据：没有 matplotlib 时只记 note（同 junction_analyze）。
         plot_note = None
         try:
-            from ..plotting import plot_thermal
+            from ..plotting import plot_thermal, plot_thermal_vs_temperature
             plotted = plot_thermal(stage_dir / "thermal.json",
                                    stage_dir / "thermal_spectrum.png",
                                    formats=("png", "pdf"))
             if not plotted.get("ok"):
                 plot_note = "热导谱未出图：%s" % plotted.get("reason")
+            curve = plot_thermal_vs_temperature(
+                stage_dir / "thermal.json",
+                stage_dir / "thermal_conductance_vs_temperature.png",
+                formats=("png", "pdf"))
+            if not curve.get("ok"):
+                plot_note = "G_ph(T) 曲线未出图：%s" % curve.get("reason")
         except Exception as exc:  # noqa: BLE001 —— 出图失败不得影响数值结论
-            plot_note = "热导谱未出图：%s" % exc
+            plot_note = "热导出图失败：%s" % exc
         results = {"thermal": {
             "g_ph_pw_per_k": g_ph,
             "temperature_K": temperature,
@@ -264,6 +341,9 @@ class ThermalAnalyzeStage(Stage):
                100.0 * g_ph / gq_pw_per_k(temperature)),
             "ASR 残差 %.3e eV/Å²（相对 %.3e）；虚频 %d 个（最差 %.1f cm⁻¹）"
             % (residual, relative, imag["count"], imag["worst_cm1"]),
+            "G_ph(T)：%.0f K 时是高温平台（%.3f pW/K）的 %.1f%%"
+            % (temperature, g_ph_by_temperature[-1],
+               100.0 * g_ph / g_ph_by_temperature[-1]),
         ]
         if plot_note:
             notes.append(plot_note)
@@ -305,6 +385,18 @@ class ThermalAnalyzeStage(Stage):
             "g_ph_over_k_e": g_ph / k_e,
             "zt_total": zt_e / (1.0 + g_ph / k_e),
         }
+
+    @staticmethod
+    def _structure(geometry: Path) -> tuple[list[str], np.ndarray]:
+        """读 FHI-aims ``geometry.in`` 的元素序列与坐标（Å，只取 ``atom`` 行）。"""
+        elements: list[str] = []
+        coords: list[list[float]] = []
+        for line in Path(geometry).read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[0] == "atom":
+                coords.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                elements.append(parts[4])
+        return elements, np.asarray(coords, dtype=float)
 
     @staticmethod
     def _elements(geometry: Path) -> list[str]:

@@ -359,12 +359,23 @@ class ThermalFCConfig:
 
 @dataclass
 class ThermalNEGFConfig:
-    """声子 NEGF 的谱参数。"""
+    """声子 NEGF 的谱参数。
 
-    #: 虚部展宽 η(meV)。0.5 meV 与 Pauly 组的 1e-5 a.u.(0.27 meV) 同量级。
-    eta_meV: float = 0.5
-    #: 能量步长(meV)。9.5–19.5 meV 之间 0.1 meV 步长 = 101 点。
-    energy_step_meV: float = 0.1
+    这两个数是**冻结的生产协议**（方案 D15），不是可随手调的收敛参数：
+
+    * η 是数值展宽，不是物理线宽。同一份力常数上 η 从 0.5 降到 0.05 meV，
+      ``G_ph(300 K)`` 从 10.9 单调升到 13.72 pW/K（η→0 外推 ≈13.8）；
+      0.3 meV 给 12.37。**跨分子比较必须用同一个 η**，否则 25% 的差别
+      全部来自这个参数。
+    * 步长再加密也压不下 1–2% 的梯形求积底噪（η=0.05/0.1/0.2/0.3 下分别
+      1.99%/1.58%/2.46%/2.21%），所以判据门限重标到 5%（D14），步长取 0.05
+      只是为了把谱画得准、不是为了收敛。
+    """
+
+    #: 虚部展宽 η(meV)。冻结协议值：0.05 meV。
+    eta_meV: float = 0.05
+    #: 能量步长(meV)。冻结协议值：0.05 meV（0–19.5 meV 共 391 点）。
+    energy_step_meV: float = 0.05
     #: Au 声子带顶(meV)。实测 fcc-Au 最高支在 L 点 4.71 THz = 19.5 meV
     #: (Lynn, Smith & Nicklow, PRB 8, 3493 (1973))。超过它的弹性透射必须为零。
     band_top_meV: float = 19.5
@@ -938,8 +949,8 @@ def _parse_thermal(data: Mapping[str, Any], warnings: list[str]) -> ThermalConfi
             "更小的截断会把相邻层的耦合切掉" % fc.cutoff)
 
     negf = ThermalNEGFConfig(
-        eta_meV=_as_float(negf_raw.get("eta_mev", 0.5), "thermal.negf.eta_mev"),
-        energy_step_meV=_as_float(negf_raw.get("energy_step_mev", 0.1),
+        eta_meV=_as_float(negf_raw.get("eta_mev", 0.05), "thermal.negf.eta_mev"),
+        energy_step_meV=_as_float(negf_raw.get("energy_step_mev", 0.05),
                                   "thermal.negf.energy_step_mev"),
         band_top_meV=_as_float(negf_raw.get("band_top_mev", 19.5),
                                "thermal.negf.band_top_mev"),

@@ -145,7 +145,9 @@ def test_thermal_disabled_by_default(workdir):
     assert thermal.fc.cutoff == pytest.approx(10.0)
     assert thermal.fc.array_parallel == 8
     assert thermal.fc.k_grid == (3, 3, 1)
-    assert thermal.negf.eta_meV == pytest.approx(0.5)
+    # D15 冻结协议：η 与步长都取 0.05（见 ThermalNEGFConfig 的 docstring）
+    assert thermal.negf.eta_meV == pytest.approx(0.05)
+    assert thermal.negf.energy_step_meV == pytest.approx(0.05)
     assert thermal.negf.band_top_meV == pytest.approx(19.5)
     # 温度缺省继承 transport.temperature(默认 300 K)
     assert thermal.resolved_temperature(config.transport.temperature) == 300.0
@@ -272,3 +274,16 @@ def test_fc_script_calls_extract_forces_with_two_arguments():
                               extra={"last": 3, "parallel": 2, "count": 4})
     assert "extract_forces.py aims.out forces.json" in text
     assert "extract_forces.py aims.out >" not in text
+
+def test_negf_defaults_are_the_frozen_protocol():
+    """D15：η 与步长是冻结的生产协议，改动等于改方法。
+
+    实测依据(同一份力常数)：η=0.5 meV 时 G_ph(300 K)=10.9 pW/K、0.3→12.37、
+    0.1→13.61、0.05→13.72，η→0 外推 13.8。跨分子比较不同 η 会凭空造出 25%
+    的系统差别，所以默认值必须是协议值。
+    """
+    from smj.config import ThermalNEGFConfig
+
+    cfg = ThermalNEGFConfig()
+    assert cfg.eta_meV == 0.05
+    assert cfg.energy_step_meV == 0.05

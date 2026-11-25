@@ -429,7 +429,15 @@ THERMAL_SPECTRUM_KEYS = ("energy_meV", "transmission", "cumulative_g_ph_pw_per_k
 THERMAL_OPTIONAL_KEYS = ("relax_max_force_ev_per_A", "lead_fc_sha256", "fc_asymmetry", "notes",
                          # D13：ASR 投影记录。旧文件没有这三个键，故列为可选。
                          "asr_projected", "asr_projection_norm",
-                         "asr_residual_after_ev_per_A2", "asr_region")
+                         "asr_residual_after_ev_per_A2", "asr_region",
+                         # 软模归属（modes.describe_soft_modes）。解释性字段，
+                         # 缺了不影响任何判据，故可选。
+                         "soft_modes",
+                         # 免费的温度曲线（同一份透射谱，只换玻色因子）
+                         "g_ph_by_temperature",
+                         # 把负本征值投影掉后 G_ph 的相对变化（None = 无虚频）
+                         "soft_mode_impact_relative_g_ph",
+                         "g_ph_symmetric_pw_per_k", "g_ph_soft_removed_pw_per_k")
 
 
 def read_thermal(path: str | Path) -> tuple[dict, list[str]]:
