@@ -138,6 +138,11 @@ class ThermalFcStage(Stage):
         np.save(stage_dir / "force_constants.npy", k_dev)
 
         elements = self._elements(stage_dir / "geometry.in")
+        summary = self._read_summary(stage_dir)
+        slugs = [s for s in ((summary or {}).get("slots") or [])
+                 if isinstance(s, dict)]
+        cycles = [int(s.get("n_cycles") or 0) for s in slugs
+                  if s.get("converged") is True and s.get("n_cycles")]
         results = {
             "thermal_fc": {
                 "n_atoms": n_atoms,
@@ -147,12 +152,22 @@ class ThermalFcStage(Stage):
                 "force_constants_shape": list(k_dev.shape),
                 "fc_max_abs": float(np.abs(k_dev).max()) if k_dev.size else 0.0,
                 "n_elements": len(set(elements)),
+                # 收敛证据:没有 fc_summary.json 时是 None(老 run 兼容),
+                # 有则是远端逐槽位读 aims.out 的结果。
+                "scf_converged": (
+                    None if summary is None
+                    else not (summary.get("not_converged") or summary.get("missing"))),
+                "scf_cycles_min": min(cycles) if cycles else None,
+                "scf_cycles_max": max(cycles) if cycles else None,
             }
         }
         notes = ["力常数 %d×%d，max|K|=%.4g eV/Å²（ASR 残差在 thermal_analyze 里"
                  "按**完整**矩阵算：这里只有器件行，求和必然不闭合）"
                  % (k_dev.shape[0], k_dev.shape[1],
                     results["thermal_fc"]["fc_max_abs"])]
+        if cycles:
+            notes.append("SCF：%d 个位移点全部收敛，自洽圈数 %d–%d"
+                         % (len(cycles), min(cycles), max(cycles)))
         return self.collected(
             ctx, stage_dir,
             artifacts=[name for name in ("displacements.json", "force_constants.npy")
@@ -170,32 +185,50 @@ class ThermalFcStage(Stage):
         return [int(i) for i in (meta.get("device_indices") or [])]
 
     @staticmethod
-    def _read_forces(stage_dir: Path, expected: int, n_atoms: int) -> np.ndarray:
-        """读全部位移点的力：优先 ``forces_all.json``，退回逐个 ``fc/NNNN``。
+    def _read_summary(stage_dir: Path) -> dict | None:
+        path = stage_dir / "fc_summary.json"
+        if not path.is_file():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
 
-        数组作业的收尾步骤会在远端把 N 份 ``forces.json`` 拼成
-        ``forces_all.json``（一个文件就够回取）。逐个回取的老路径保留，
-        是为了兼容手工补跑或拼接步骤失败的工况。
+    @staticmethod
+    def _retry_hint(missing: list[int]) -> str:
+        head = ",".join(str(int(slot)) for slot in missing[:10])
+        more = "..." if len(missing) > 10 else ""
+        return ("smj thermal --stage thermal_fc --retry %s%s" % (head, more))
+
+    @staticmethod
+    def _read_forces(stage_dir: Path, expected: int, n_atoms: int) -> np.ndarray:
+        """读全部位移点的力，并拒绝"看着齐、其实不能用"的数据。
+
+        三件事按顺序做:
+
+        1. ``fc_summary.json`` 里记着未收敛的槽位 → 直接失败。不收敛的 SCF 照样
+           会写出力,只用形状/条数检查**发现不了**,而这类力常数看起来完全正常
+           (2026-11-25 检查 110 个槽位时确认过:收敛与否只能从 aims.out 读)。
+        2. 逐个 ``fc/NNNN/forces.json`` 优先(重试后本地可能比汇总文件更新),
+           其次才是数组作业收尾拼好的 ``forces_all.json``。
+        3. 缺槽位时报错并给出可直接执行的 ``--retry`` 命令,而不是让人进
+           ``fc/`` 逐个看。
         """
-        bundle = stage_dir / "forces_all.json"
-        if bundle.is_file():
-            try:
-                payload = json.loads(bundle.read_text(encoding="utf-8"))
-                stacked = np.asarray(payload["forces"], dtype=float)
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                raise StageError(
-                    "thermal_fc 读取 %s 失败: %s" % (bundle, exc)) from exc
-            if stacked.shape != (expected, n_atoms, 3):
-                raise StageError(
-                    "thermal_fc 的 %s 形状是 %r，应为 (%d, %d, 3)"
-                    % (bundle, stacked.shape, expected, n_atoms))
-            return stacked
+        summary = ThermalFcStage._read_summary(stage_dir)
+        not_converged = list((summary or {}).get("not_converged") or [])
+        if not_converged:
+            raise StageError(
+                "thermal_fc 有 %d 个位移点的 SCF 未收敛（%s）；这些力不能用来做"
+                "力常数（收敛与否从 aims.out 读，形状检查发现不了）。先用 "
+                "`%s` 重跑，再重新 collect"
+                % (len(not_converged), not_converged[:10],
+                   ThermalFcStage._retry_hint(not_converged)))
+
         found: dict[int, np.ndarray] = {}
-        missing: list[int] = []
         for slot in range(expected):
             record = stage_dir / "fc" / ("%04d" % slot) / "forces.json"
             if not record.is_file():
-                missing.append(slot)
                 continue
             try:
                 payload = json.loads(record.read_text(encoding="utf-8"))
@@ -207,12 +240,26 @@ class ThermalFcStage(Stage):
                     "thermal_fc 的 %s 力数组形状是 %r，应为 (%d, 3)"
                     % (record, array.shape, n_atoms))
             found[slot] = array
-        if missing:
-            raise StageError(
-                "thermal_fc 缺 %d 个位移点的力（前几个 slot: %s）；"
-                "数组作业没跑完就 collect 会让力常数矩阵少行"
-                % (len(missing), missing[:5]))
-        return np.stack([found[slot] for slot in range(expected)], axis=0)
+        if len(found) == expected:
+            return np.stack([found[slot] for slot in range(expected)], axis=0)
+
+        bundle = stage_dir / "forces_all.json"
+        if bundle.is_file():
+            try:
+                payload = json.loads(bundle.read_text(encoding="utf-8"))
+                stacked = np.asarray(payload["forces"], dtype=float)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise StageError(
+                    "thermal_fc 读取 %s 失败: %s" % (bundle, exc)) from exc
+            # 有失败槽位时汇总文件里是 null 占位,必须先看 summary/形状
+            if stacked.shape == (expected, n_atoms, 3):
+                return stacked
+
+        missing = sorted(set(range(expected)) - set(found))
+        raise StageError(
+            "thermal_fc 缺 %d 个位移点的力（前几个 slot: %s）；数组作业没跑完就 "
+            "collect 会让力常数矩阵少行。用 `%s` 重跑后再 collect"
+            % (len(missing), missing[:10], ThermalFcStage._retry_hint(missing)))
 
     @staticmethod
     def _elements(geometry: Path) -> list[str]:

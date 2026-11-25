@@ -63,10 +63,13 @@ if [ "$_count" -ge {count} ]; then
         fi
         # 把 {count} 份 forces.json 拼成一个文件:回取计划里就只有一个文件,
         # 不会因为漏 scp 其中一份而让力常数矩阵少行。
-        if [ "$_agg" -eq 0 ]; then
-            python ../../concat_forces.py ../ {count} ../../forces_all.json \
-                || _agg=1
-        fi
+        #
+        # --allow-missing:某个槽位失败时也要落盘 fc_summary.json。否则一次失败
+        # 就意味着"没有任何汇总产物",只能靠人工进 fc/ 逐个看 aims.out
+        # (2026-11-25 首次跑 324 个位移时正是这样排查的)。现在失败槽位会被写进
+        # summary,collect 的报错直接给出 `smj thermal --stage thermal_fc --retry N`。
+        python ../../concat_forces.py ../ {count} ../../forces_all.json \
+            --summary ../../fc_summary.json --allow-missing || _agg=1
         printf '%s %s\n' "$_agg" "$(date -Is)" > ../../.dsh_done
         rmdir ../.finalize.lock 2>/dev/null || true
     fi

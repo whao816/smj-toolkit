@@ -698,6 +698,84 @@ def cmd_stage(args: argparse.Namespace) -> int:
     return EXIT_UNFINISHED if outcome.status == "waiting" else EXIT_FAILED
 
 
+def _resolve_retry_slots(spec: str, stage_dir: Path) -> list[int]:
+    """把 ``--retry`` 的 SPEC 变成槽位下标列表。
+
+    支持两种写法：显式下标（``17,203``），以及从远端收尾写下的
+    ``fc_summary.json`` 里取 ``missing`` / ``not_converged``。后者是主路径：
+    collect 的报错信息里给出的就是它可以接受的写法。
+    """
+    text = str(spec).strip()
+    lowered = text.lower()
+    if lowered in ("missing", "not-converged", "not_converged"):
+        summary_path = Path(stage_dir) / "fc_summary.json"
+        if not summary_path.is_file():
+            raise SmjError(
+                "--retry %s 需要 %s（远端数组作业收尾时写的收敛报告）。"
+                "没有它就直接给下标：--retry 17,203"
+                % (text, summary_path))
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SmjError("读 %s 失败: %s" % (summary_path, exc)) from exc
+        key = "missing" if lowered == "missing" else "not_converged"
+        slots = [int(item) for item in (summary.get(key) or [])]
+        if not slots:
+            raise SmjError("%s 里 %s 为空：没有需要重跑的槽位" % (summary_path, key))
+        return slots
+    slots = []
+    for part in text.replace(" ", "").split(","):
+        if not part:
+            continue
+        try:
+            slots.append(int(part))
+        except ValueError:
+            raise SmjError(
+                "--retry 的下标必须是整数（收到 %r）；也可以写 missing "
+                "或 not-converged" % part) from None
+    if not slots:
+        raise SmjError("--retry 没给下标")
+    return slots
+
+
+def _cmd_thermal_retry(args, config, runner, names) -> int:
+    """只重跑 ``thermal_fc`` 数组作业里失败/未收敛的槽位。
+
+    为什么单独一条路径：324 个位移点跑 9 小时，失败一两个点是常态。整批重跑
+    既浪费机时也可能踩到同样的资源问题；而 Slurm 的命令行 ``--array=17,203``
+    会覆盖脚本里的 ``#SBATCH --array`` 行，所以不必改脚本、不必重新 prepare。
+    重跑任务的收尾逻辑按"已完成份数"触发，凑齐后会重写
+    ``forces_all.json`` 与 ``fc_summary.json``。
+    """
+    if any(name != "thermal_fc" for name in names):
+        raise SmjError("--retry 只能用于 thermal_fc；加 --stage thermal_fc 或去掉 --stage")
+    if config.mode != "slurm-ssh":
+        raise SmjError("--retry 只在 slurm-ssh 模式有意义（local 模式会顺序重跑整批）")
+    stage_dir = Path(runner.layout.stage_dir("thermal_fc"))
+    manifest = stage_dir / "displacements.json"
+    if not manifest.is_file():
+        raise SmjError("thermal_fc 还没 prepare（缺 %s）" % manifest)
+    try:
+        count = len(json.loads(manifest.read_text(encoding="utf-8")))
+    except (OSError, ValueError) as exc:
+        raise SmjError("读 %s 失败: %s" % (manifest, exc)) from exc
+    slots = _resolve_retry_slots(args.retry, stage_dir)
+    bad = sorted({slot for slot in slots if slot < 0 or slot >= count})
+    if bad:
+        raise SmjError("重跑下标越界: %s（有效范围 0–%d）" % (bad[:5], count - 1))
+    parallel = max(1, int(getattr(config.thermal.fc, "array_parallel", 8) or 8))
+    array_spec = "--array=%s%%%d" % (",".join(str(slot) for slot in slots), parallel)
+    payload = runner.submit("thermal_fc", force=True, sbatch_args=(array_spec,))
+    if args.json:
+        _emit_json(payload)
+    else:
+        print("重跑 %d 个槽位: %s" % (len(slots), array_spec))
+        _print_submission(payload, stage="thermal_fc")
+        print("跑完后 `smj thermal --stage thermal_fc --collect` 会重拼"
+              "forces_all.json / fc_summary.json。")
+    return EXIT_OK
+
+
 def cmd_thermal(args: argparse.Namespace) -> int:
     """声子热导链：``thermal_device`` → ``thermal_relax`` → ``thermal_fc`` →
     ``thermal_analyze``。
@@ -735,6 +813,9 @@ def cmd_thermal(args: argparse.Namespace) -> int:
                        "或去掉 --dry-run" % action)
 
     runner = _make_runner(args, config)
+
+    if args.retry is not None:
+        return _cmd_thermal_retry(args, config, runner, names)
 
     if action == "status":
         rows = []
@@ -1634,6 +1715,11 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--run", action="store_true", help="prepare→submit→wait→collect")
     group.add_argument("--analyze-only", dest="analyze_only", action="store_true",
                        help="只重算 NEGF/Landauer（力常数已在盘上，不碰集群）")
+    group.add_argument("--retry", metavar="SPEC", default=None,
+                       help=("只重跑 thermal_fc 数组作业里失败/未收敛的槽位。"
+                             "SPEC 是逗号分隔的下标（如 17,203），"
+                             "或 missing / not-converged（从 fc_summary.json 读）。"
+                             "重跑后收尾步骤会自动重拼 forces_all.json"))
     thermal_cmd.add_argument("--dry-run", action="store_true", help="只生成输入")
     thermal_cmd.add_argument("--force", action="store_true", help="允许重跑/覆盖")
     _add_common(thermal_cmd)

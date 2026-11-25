@@ -17,7 +17,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
 from .config import RunConfig
 from .context import StageContext
@@ -341,8 +341,13 @@ class StageRunner:
         return payload
 
     # -- submit ------------------------------------------------------------ #
-    def submit(self, name: str, *, force: bool | None = None) -> dict[str, Any]:
-        """提交阶段作业（slurm-ssh 用 sbatch；local 同步执行脚本）。"""
+    def submit(self, name: str, *, force: bool | None = None,
+               sbatch_args: Sequence[str] = ()) -> dict[str, Any]:
+        """提交阶段作业（slurm-ssh 用 sbatch；local 同步执行脚本）。
+
+        ``sbatch_args`` 透传给 ``sbatch``，目前只有数组作业的 ``--array=17,203``
+        （只重跑失败槽位）用得上；local 模式不支持。
+        """
         key = normalize_stage(name)
         stage = self.get_stage(key)
         if not getattr(stage, "needs_submit", True):
@@ -383,7 +388,8 @@ class StageRunner:
         if self.config.mode == "slurm-ssh":
             session = self._session()
             try:
-                submission = session.submit(key, stage_dir, script=script)
+                submission = session.submit(key, stage_dir, script=script,
+                                            sbatch_args=tuple(sbatch_args))
             except SubmitUncertain as exc:
                 # 2026-11-22 复审 P0：sbatch 超时/无 job id 不能当"提交失败"。
                 # 作业可能已经在排队，状态必须是显式的“未知”，让下一次 run 停下来

@@ -4,6 +4,21 @@
 
 ## 未发布
 
+### 改进:热导数组作业的失败恢复(2026-11-25)
+
+- `thermal_fc` 收尾步骤改为 `--allow-missing --summary fc_summary.json`：槽位失败
+  时也落盘汇总产物，并把缺槽位与**SCF 未收敛**槽位写进 `fc_summary.json`。
+  此前失败一次就没有任何可读产物，只能进 `fc/` 逐个看 `aims.out`。
+- `thermal_fc.collect` 消费 `fc_summary.json`：未收敛槽位直接拒绝（不收敛的 SCF
+  照样写出形状正确的力，条数与形状检查发现不了），缺槽位的报错里直接给出可执行
+  的 `smj thermal --stage thermal_fc --retry 17,203`。
+- 新增 `smj thermal --retry SPEC`：只重跑指定槽位（逗号下标，或 `missing` /
+  `not-converged`），用命令行 `--array=` 覆盖脚本里的 `#SBATCH --array`，不必
+  重新 prepare；凑齐后收尾逻辑会重写 `forces_all.json` 与 `fc_summary.json`。
+- `concat_forces.concat(..., allow_missing=..., with_summary=...)` 与
+  `scan_aims`（判 `Self-consistency cycle converged` / `NOT converged`）。
+- 回取计划 `thermal_fc` 增加 `fc_summary.json`。
+
 ### 新功能:单分子结热导（声子）计算链(2026-11-23)
 
 - 新增独立的四阶段链 `thermal_device` → `thermal_relax` → `thermal_fc` →

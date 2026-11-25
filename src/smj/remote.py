@@ -278,7 +278,8 @@ class RemoteSession:
 
     # -- 提交 -------------------------------------------------------------- #
     def submit(self, stage: str, stage_dir: str | Path | None = None,
-               *, script: str | None = None) -> Submission:
+               *, script: str | None = None,
+               sbatch_args: Sequence[str] = ()) -> Submission:
         """清理 → 上传 → sbatch，返回 :class:`Submission`。"""
         stage = normalize_stage(stage)
         if getattr(self.ctx, "dry_run", False):
@@ -297,7 +298,13 @@ class RemoteSession:
         uploaded, skipped = self.upload_inputs(stage, stage_dir, script)
 
         args = list(SMJ_SCRIPT_ARGS.get(script, ()))
-        command = "cd %s && sbatch %s" % (shlex.quote(remote_dir), shlex.quote(script))
+        # sbatch_args 用于"只重跑数组作业里失败的槽位":命令行 --array=... 会
+        # 覆盖脚本里的 #SBATCH --array 行,所以不必重写脚本。
+        extra = " ".join(shlex.quote(str(a)) for a in sbatch_args)
+        command = "cd %s && sbatch%s %s" % (
+            shlex.quote(remote_dir),
+            (" " + extra) if extra else "",
+            shlex.quote(script))
         if args:
             command += " " + " ".join(shlex.quote(str(a)) for a in args)
         result = self._run(command, timeout=120)
