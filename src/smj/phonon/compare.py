@@ -18,9 +18,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..analysis import read_thermal
+from .environment import IDENTITY_KEYS, identity
 
 __all__ = [
     "PROTOCOL_KEYS",
+    "IDENTITY_KEYS",
     "RunRecord",
     "Comparison",
     "find_runs",
@@ -43,6 +45,7 @@ class RunRecord:
     verdict: str | None = None
     failed: list[str] = field(default_factory=list)
     inconclusive: list[str] = field(default_factory=list)
+    environment: dict | None = None
 
     @property
     def g_ph(self) -> float:
@@ -52,6 +55,10 @@ class RunRecord:
     def protocol(self) -> dict:
         return {key: self.payload.get(key) for key in PROTOCOL_KEYS}
 
+    @property
+    def environment_identity(self) -> dict:
+        return identity(self.environment)
+
 
 @dataclass
 class Comparison:
@@ -60,6 +67,11 @@ class Comparison:
     records: list[RunRecord]
     mismatches: dict[str, list[str]]
     consistent: bool
+    environment_mismatches: dict[str, list[str]] = field(default_factory=dict)
+
+    @property
+    def environment_consistent(self) -> bool:
+        return not self.environment_mismatches
 
     def rows(self) -> list[dict]:
         return [
@@ -119,6 +131,13 @@ def load_run(path: Path, *, name: str | None = None) -> RunRecord:
     thermal_path = path / "thermal_analyze" / "thermal.json"
     payload, _warnings = read_thermal(thermal_path)
     record = RunRecord(name=name or path.name, path=path, payload=payload)
+    environment_path = path / "thermal_analyze" / "environment.json"
+    if environment_path.is_file():
+        try:
+            record.environment = json.loads(
+                environment_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            record.environment = None
     review_path = path / "review.json"
     if review_path.is_file():
         try:
@@ -143,8 +162,25 @@ def compare(records: list[RunRecord]) -> Comparison:
         if len(values) > 1:
             mismatches[key] = ["%s: %s" % (", ".join(names), raw)
                                for raw, names in values.items()]
+
+    # 环境单独比：它不属于"协议"，因为环境差异往往不是选择而是意外
+    # （换了 numpy、换了 aims 二进制）。但差异同样能让 G_ph 变几个百分点，
+    # 所以也要摆出来。单 run 时不比 —— 没有第二个东西可对照。
+    environment_mismatches: dict[str, list[str]] = {}
+    if len(records) > 1:
+        for key in IDENTITY_KEYS:
+            values: dict[str, list[str]] = {}
+            for record in records:
+                values.setdefault(repr(record.environment_identity.get(key)),
+                                  []).append(record.name)
+            if len(values) > 1:
+                environment_mismatches[key] = [
+                    "%s: %s" % (", ".join(names), raw)
+                    for raw, names in values.items()]
+
     return Comparison(records=records, mismatches=mismatches,
-                      consistent=not mismatches)
+                      consistent=not mismatches,
+                      environment_mismatches=environment_mismatches)
 
 
 def render_markdown(result: Comparison) -> str:
@@ -156,6 +192,14 @@ def render_markdown(result: Comparison) -> str:
                      "请先对齐 η、能量步长、温度与电极力常数。")
         lines.append("")
         for key, detail in result.mismatches.items():
+            lines.append("- `%s`：%s" % (key, "；".join(detail)))
+        lines.append("")
+    if result.environment_mismatches:
+        lines.append("> **环境不一致**：决定数值的输入或工具在 run 之间不同。"
+                     "这不是协议选择，通常是换了机器、换了 FHI-aims 二进制、"
+                     "species 目录或 numpy 版本 —— 差异可能来自这里而不是体系。")
+        lines.append("")
+        for key, detail in result.environment_mismatches.items():
             lines.append("- `%s`：%s" % (key, "；".join(detail)))
         lines.append("")
     lines.append("| run | G_ph (pW/K) | N_eff | G_Q (pW/K) | T (K) | "

@@ -101,6 +101,44 @@ def test_compare_consistent_runs_have_no_warning(workdir) -> None:
     assert "协议不一致" not in render_markdown(result)
 
 
+def test_compare_flags_environment_differences(workdir) -> None:
+    root = Path(workdir).resolve() / "runs"
+    a = _write_run(root, "a", _payload(), nested=False)
+    b = _write_run(root, "b", _payload(), nested=False)
+    def _env(aims="a" * 64):
+        # identity() 读的是嵌套结构（与环境清单的 schema 一致）。
+        return {
+            "schema": "smj.environment.v1",
+            "generated_at": "2026-11-25T00:00:00+00:00",
+            "smj": {"version": "0.2.2rc2", "root": "/x/src/smj"},
+            "python": {"version": "3.12.10", "implementation": "CPython",
+                       "executable": "/usr/bin/python3"},
+            "platform": {"system": "Linux", "machine": "x86_64",
+                         "release": "4.18.0", "processor": "x86_64"},
+            "packages": {"numpy": "2.3.0"},
+            "junction_provenance_sha256": "p" * 64,
+            "thermal": {},
+            "binaries": {"aims": {"path": "/opt/aims", "sha256": aims,
+                                  "exists": True}},
+            "species": {"directory": "/s", "files": {"Au.in": "c" * 64},
+                        "digest": "s" * 64, "present": True},
+            "lead_fc": {"path": "/l/lead_fc.json", "sha256": "l" * 64},
+        }
+
+    (a / "thermal_analyze" / "environment.json").write_text(
+        json.dumps(_env()), encoding="utf-8")
+    (b / "thermal_analyze" / "environment.json").write_text(
+        json.dumps(_env(aims="b" * 64)), encoding="utf-8")
+
+    result = compare([load_run(a), load_run(b)])
+    # 协议一致但环境不同：两者必须分开报告 —— 前者是方法选择，后者是换了工具。
+    assert result.consistent
+    assert not result.environment_consistent
+    assert "aims_sha256" in result.environment_mismatches
+    text = render_markdown(result)
+    assert "环境不一致" in text and "FHI-aims" in text
+
+
 def test_compare_reads_verdict_from_review(workdir) -> None:
     root = Path(workdir).resolve() / "runs"
     run = _write_run(root, "a", _payload(), nested=False)

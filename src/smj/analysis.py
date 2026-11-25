@@ -437,7 +437,11 @@ THERMAL_OPTIONAL_KEYS = ("relax_max_force_ev_per_A", "lead_fc_sha256", "fc_asymm
                          "g_ph_by_temperature",
                          # 把负本征值投影掉后 G_ph 的相对变化（None = 无虚频）
                          "soft_mode_impact_relative_g_ph",
-                         "g_ph_symmetric_pw_per_k", "g_ph_soft_removed_pw_per_k")
+                         "g_ph_symmetric_pw_per_k", "g_ph_soft_removed_pw_per_k",
+                         # 三条收敛轴的状态（截断已测，另两条登记为未测）。
+                         "convergence",
+                         # 环境清单指纹（正文在 environment.json）。
+                         "environment")
 
 
 def read_thermal(path: str | Path) -> tuple[dict, list[str]]:

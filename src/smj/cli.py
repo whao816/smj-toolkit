@@ -753,6 +753,8 @@ def cmd_thermal_compare(args: argparse.Namespace) -> int:
     if args.json:
         _emit_json({"consistent": result.consistent,
                     "mismatches": result.mismatches,
+                    "environment_consistent": result.environment_consistent,
+                    "environment_mismatches": result.environment_mismatches,
                     "rows": result.rows()})
     else:
         if args.out:

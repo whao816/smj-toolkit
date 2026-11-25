@@ -200,6 +200,140 @@ def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
         "imag": imag,
         "soft_modes": soft_modes,
         "lead": lead,
+        # 器件规格（层数、面内、截断）——收敛轴的"当前值"从这里读，
+        # 免得在报告里再写一遍可能与 geometry 不符的常数。
+        "spec": device_meta.get("spec") or {},
+    }
+
+
+def _atom_distances(positions: np.ndarray) -> np.ndarray:
+    """原子对距离矩阵（Å）。3×3 板只有 90 个原子，直接暴力算。"""
+    positions = np.asarray(positions, dtype=float)
+    delta = positions[:, None, :] - positions[None, :, :]
+    return np.sqrt(np.einsum("ijk,ijk->ij", delta, delta))
+
+
+def cutoff_sensitivity(built: dict, omega: np.ndarray, eta: float, *,
+                       temperature: float, band_top: float,
+                       cutoffs: tuple[float, ...] | None = None) -> dict:
+    """电极力常数截断半径的敏感性（零机时：只切现有矩阵）。
+
+    切**只切 lead 的 lead×lead 块**（``d_L``/``d_R`` 与 ``V_L``/``V_R``）。
+    为什么不整体切：器件区的力来自周期 DFT 胞，长程耦合已经折进胞内，按距离
+    再切等于凭空造一个不同的哈密顿量（实测整体切 5 Å 会把分子切断，``G_ph``
+    掉到 1e-19，那是伪结果而不是敏感性）。真正带截断参数的是电极力常数
+    —— ``gen_au_lead_fc.py`` 就是按 ``fc_cutoff_A`` 切的，所以这条轴只该切它。
+
+    切的距离用**真实原子间距**（含层间 Δz），不是面内最小像，因为 lead 块
+    本身已经是有限的两层，没有周期像。
+    """
+    positions = np.asarray(built["positions"], dtype=float)
+    # 切的是**动力学矩阵**（eV²），不是力常数：``_curve_factory`` 要的是前者，
+    # 拿力常数当输入会让每个频率都跑到带顶以上，透射恒为 0（第一版就踩了这个）。
+    # 零化的元素位置两者一一对应，D_ij = K_ij/√(m_i m_j)，所以切法等价。
+    matrix = np.asarray(built["dynamical"], dtype=float)
+    distances = _atom_distances(positions)
+    curve = _curve_factory(built, omega, eta)
+
+    lead_dofs = _dof_indices(built["lead_indices"])
+    lead_atoms = list(built["lead_indices"])
+    lead_mask = distances[np.ix_(lead_atoms, lead_atoms)]
+
+    if cutoffs is None:
+        cutoffs = (4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0)
+
+    # 组装矩阵里 lead 块最远的**非零**元素有多远：名义截断半径与实际生效的
+    # 截断半径不一定相等（2 层块的平移对称映射会把体相里 6 Å 内的一对摆到
+    # 器件坐标的 11.9 Å 处）。这个数直接决定"按名义值切一刀"会不会真的改变结果。
+    block = matrix[np.ix_(lead_dofs, lead_dofs)]
+    span = 0.0
+    for i, atom_i in enumerate(lead_atoms):
+        for j, atom_j in enumerate(lead_atoms):
+            if np.abs(block[3 * i:3 * i + 3, 3 * j:3 * j + 3]).max() > 0.0:
+                span = max(span, float(lead_mask[i, j]))
+
+    rows = []
+    for cutoff in cutoffs:
+        keep = lead_mask <= float(cutoff)
+        truncated = matrix.copy()
+        lead_block = truncated[np.ix_(lead_dofs, lead_dofs)]
+        keep_dof = np.repeat(np.repeat(keep, 3, axis=0), 3, axis=1)
+        truncated[np.ix_(lead_dofs, lead_dofs)] = np.where(keep_dof, lead_block, 0.0)
+        entry = {"cutoff_A": float(cutoff), "g_ph_pw_per_k": None,
+                 "rejected": None,
+                 "pairs_kept": int(keep.sum() - len(lead_atoms))}
+        try:
+            transmission_curve = curve(truncated)
+            entry["g_ph_pw_per_k"] = float(
+                thermal_conductance(omega, transmission_curve, temperature,
+                                    band_top_mev=band_top))
+        except ValueError as exc:
+            # 切得太狠会造出带顶以上的伪通道 —— 这本身就是该 r_c 不可用的
+            # 证据，记下来而不是丢掉。
+            entry["rejected"] = str(exc)
+        rows.append(entry)
+
+    accepted = [(row["cutoff_A"], row["g_ph_pw_per_k"]) for row in rows
+                if row["g_ph_pw_per_k"] is not None]
+    spread = None
+    if len(accepted) >= 2:
+        values = [value for _, value in accepted]
+        largest = max(values)
+        spread = float((largest - min(values)) / largest) if largest else None
+    return {
+        "values_A": [float(c) for c in cutoffs],
+        "rows": rows,
+        "relative_spread": spread,
+        "effective_span_A": round(span, 3),
+        "method": "只对 lead×lead 块按真实原子间距置零后重算 NEGF（不碰 DFT）",
+    }
+
+
+def convergence_axes(built: dict, cutoff_block: dict) -> dict:
+    """三条收敛轴的状态：一条已测（后处理可得），两条未测（需重跑 DFT）。
+
+    为什么要把"未测"写进产物：读 ``thermal.json`` 的人只看到 13.7，不会知道
+    lead 层数与器件区大小从没扫过。把它们连同所需作业写在同一份文件里，
+    比写在文档里更难被忽略。
+    """
+    spec = built.get("spec") or {}
+    layers = int(spec.get("electrode_layers") or 0)
+    device_layers = int(spec.get("device_layers") or 0)
+    # 生产截断半径来自 lead 力常数本身（gen_au_lead_fc.py 按它切的），
+    # 不在 device spec 里。
+    cutoff = float(getattr(built.get("lead"), "fc_cutoff_A", 0.0) or 0.0)
+    span = float(cutoff_block.get("effective_span_A") or 0.0)
+    # 名义截断 vs 实际生效：2 层块的平移映射会把几个原子对摆到器件坐标里
+    # 更远处（实测名义 10 Å 的 lead 块，最远非零元素在 11.9 Å）。若两者差
+    # 得多，说明"按名义值再切一刀"会真的改变结果，这条轴不能算已收敛。
+    gap = None
+    if cutoff and span > cutoff:
+        nominal = next((row for row in cutoff_block.get("rows", [])
+                        if abs(row["cutoff_A"] - cutoff) < 1e-9), None)
+        full = max((row["g_ph_pw_per_k"] for row in cutoff_block.get("rows", [])
+                    if row["g_ph_pw_per_k"] is not None), default=None)
+        if nominal and nominal.get("g_ph_pw_per_k") and full:
+            gap = float(1.0 - nominal["g_ph_pw_per_k"] / full)
+    return {
+        "fc_cutoff": dict(cutoff_block, production_A=cutoff,
+                          nominal_shortfall=gap,
+                          converged=bool(gap is not None and gap <= 0.01)),
+        "lead_layers": {
+            "status": "unmeasured",
+            "current": layers,
+            "candidates": [layers, layers + 2] if layers else [],
+            "requires": "新建 %d 层版热导器件并重跑位移集（约 1 天/档）"
+                        % (layers + 2 if layers else 0),
+            "why_not_post_hoc": "层数改变参与 DFT 的原子，力常数矩阵必须重算",
+        },
+        "device_layers": {
+            "status": "unmeasured",
+            "current": device_layers,
+            "candidates": [1, device_layers] if device_layers else [],
+            "requires": "device_layers=1 时器件区约 36 原子、216 个位移"
+                        "（比生产档少 1/3 机时），可复用同一 relax 几何",
+            "why_not_post_hoc": "器件区决定哪些行来自 DFT、哪些来自冻结 lead 块",
+        },
     }
 
 
@@ -318,7 +452,7 @@ class ThermalAnalyzeStage(Stage):
     depends = ("thermal_fc",)
     needs_submit = False
     input_hint = "消费 thermal_fc/force_constants.npy 与 thermal.lead_fc"
-    outputs = ("thermal.json",)
+    outputs = ("thermal.json", "environment.json")
 
     def prepare(self, ctx, stage_dir: Path) -> Prepared:
         stage_dir = Path(stage_dir)
@@ -486,6 +620,24 @@ class ThermalAnalyzeStage(Stage):
             },
         }
         payload["zt"] = self._zt_payload(ctx, g_ph)
+        # 三条收敛轴：截断半径可后处理（零机时），另两条只登记为未测并写清
+        # 代价。它回答的是"13.7 这个数对哪几个开关最不敏感"。
+        cutoffs = cutoff_sensitivity(built, omega, eta, temperature=temperature,
+                                     band_top=band_top)
+        payload["convergence"] = convergence_axes(built, cutoffs)
+        # 环境清单：决定数值的输入与工具。单独落盘是因为它比 thermal.json
+        # 长得快（species 目录有几十份文件），digest 才进主文件。
+        from ..phonon.environment import collect as collect_environment
+        from ..phonon.environment import digest as environment_digest
+        environment = collect_environment(ctx.config)
+        (stage_dir / "environment.json").write_text(
+            json.dumps(environment, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8")
+        payload["environment"] = {
+            "schema": environment["schema"],
+            "digest": environment_digest(environment),
+            "file": "environment.json",
+        }
         (stage_dir / "thermal.json").write_text(
             json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
             encoding="utf-8")
@@ -524,6 +676,24 @@ class ThermalAnalyzeStage(Stage):
             % (temperature, g_ph_by_temperature[-1],
                100.0 * g_ph / g_ph_by_temperature[-1]),
         ]
+        spread = cutoffs.get("relative_spread")
+        span = cutoffs.get("effective_span_A")
+        nominal = payload["convergence"]["fc_cutoff"].get("production_A")
+        shortfall = payload["convergence"]["fc_cutoff"].get("nominal_shortfall")
+        if spread is None:
+            notes.append("收敛轴：力常数截断扫描中途有组合被带顶闸门拒，"
+                         "见 thermal.json 的 convergence.fc_cutoff.rows")
+        else:
+            notes.append(
+                "收敛轴：力常数截断 4–12 Å 范围内 G_ph 相对散布 %.1f%%；"
+                "lead 层数与器件区大小仍未测（需重跑位移集）"
+                % (100.0 * spread))
+        if shortfall:
+            notes.append(
+                "收敛轴警告：名义截断 %.1f Å，但组装矩阵里最远非零元素在 %.2f Å，"
+                "按名义值切一刀会丢 %.1f%% —— 这个截断半径**没有收敛**，"
+                "应把 fc_cutoff_A 提高后重算电极力常数（约 54 个 SCF）"
+                % (nominal or 0.0, span or 0.0, 100.0 * shortfall))
         if plot_note:
             notes.append(plot_note)
         if payload["zt"].get("zt_total") is not None:
@@ -532,8 +702,8 @@ class ThermalAnalyzeStage(Stage):
                 % (payload["zt"]["zt_total"], payload["zt"]["zt_electronic"],
                    payload["zt"]["g_ph_over_k_e"]))
         return self.collected(
-            ctx, stage_dir, artifacts=["thermal.json"], results=results,
-            notes=notes)
+            ctx, stage_dir, artifacts=["thermal.json", "environment.json"],
+            results=results, notes=notes)
 
     # -- 内部 -------------------------------------------------------------- #
     @staticmethod

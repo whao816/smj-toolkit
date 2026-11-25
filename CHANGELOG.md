@@ -4,6 +4,28 @@
 
 ## 未发布
 
+### 新功能:热导的环境清单与三条收敛轴(2026-11-25)
+
+- 新增 `src/smj/phonon/environment.py`：`thermal_analyze` 每次 collect 写
+  `environment.json`（`smj.environment.v1`），记录 smj/Python/numpy 版本、FHI-aims
+  二进制 sha256、species 目录内容摘要、lead 力常数 sha256 与热导配置快照。
+  `identity()` 只取六项且**不含路径**（不同安装目录仍是同一套工具），`digest()`
+  剔除 `generated_at` 以便逐字比对。`thermal.json` 里存 `environment.digest`。
+- `thermal-compare` 增加环境比对：`environment_consistent` / `environment_mismatches`
+  与协议比对**分开报告**——前者是换了工具，后者是换了方法（D15）。
+- `thermal.json` 新增 `convergence`：力常数截断轴（零机时，切已组装矩阵的 lead 块
+  后重算 NEGF）+ lead 层数与器件区大小两条**未测**轴（含所需作业与
+  `why_not_post_hoc`）。
+- 截断轴实测（nap-sh，η=0.05 meV）：4/5/6/7/8/10/12 Å → 10.55/10.72/12.42/12.20/
+  11.77/13.12/13.72 pW/K，相对散布 23.0%；该散布在 η=0.05–0.3 meV 都是 22–23%，
+  故为真实截断效应而非共振采样噪声。
+- 由此发现一个真问题：名义 `fc_cutoff_A = 10 Å`，但组装矩阵里最远的非零元素在
+  11.91 Å，按名义值切会丢 4.3%（`nominal_shortfall`、`converged=false`）。
+  2 层 lead 块的平移对称映射把体相里 6 Å 内的一对摆到了器件坐标更远处，所以
+  「名义截断」与「实际生效」不是一回事。报告据此给显式警告与修复动作
+  （`fc_cutoff_A` 提到 ≥12 Å 重算电极力常数，54 个 SCF，约半天）。
+- 报告新增「运行环境」与「收敛轴」两段；README 新增 §6.1.2。
+
 ### 新功能:热导的跨 run 比较与正则化扫参(2026-11-25)
 
 - 新增 `smj thermal-compare PATH...`：读各 run 的 `thermal_analyze/thermal.json`，

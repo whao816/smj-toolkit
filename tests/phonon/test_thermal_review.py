@@ -329,6 +329,64 @@ def test_report_embeds_spectrum_figure_and_quantiles(workdir):
     assert "波数 (cm" in text
 
 
+def test_report_prints_environment_and_convergence_axes(workdir):
+    """环境指纹与收敛轴要进报告：一个数配上"哪套工具算的、扫过什么"才可复核。"""
+    from smj.report import render_report
+
+    run = workdir / "run"
+    _write(run / "thermal_analyze" / "thermal.json", _thermal())
+    _write(run / "thermal_analyze" / "environment.json", {
+        "schema": "smj.environment.v1",
+        "generated_at": "2026-11-25T00:00:00+00:00",
+        "smj": {"version": "0.2.2rc2", "root": "/x/src/smj"},
+        "python": {"version": "3.12.10", "implementation": "CPython",
+                   "executable": "/usr/bin/python3"},
+        "platform": {"system": "Linux", "machine": "x86_64",
+                     "release": "4.18.0", "processor": "x86_64"},
+        "packages": {"numpy": "2.3.0"},
+        "junction_provenance_sha256": "p" * 64,
+        "thermal": {},
+        "binaries": {"aims": {"path": "/opt/aims", "sha256": "a" * 64,
+                              "exists": True}},
+        "species": {"directory": "/s", "files": {}, "digest": "s" * 64,
+                    "present": True},
+        "lead_fc": {"path": "/l/lead_fc.json", "sha256": "l" * 64},
+    })
+    payload = _thermal()
+    payload["environment"] = {"schema": "smj.environment.v1",
+                              "digest": "0123456789abcdef" + "0" * 48,
+                              "file": "environment.json"}
+    payload["convergence"] = {
+        "fc_cutoff": {
+            "values_A": [8.0, 10.0, 12.0],
+            "rows": [
+                {"cutoff_A": 8.0, "g_ph_pw_per_k": 11.775, "rejected": None},
+                {"cutoff_A": 10.0, "g_ph_pw_per_k": 13.123, "rejected": None},
+                {"cutoff_A": 12.0, "g_ph_pw_per_k": 13.717, "rejected": None},
+            ],
+            "relative_spread": 0.2305,
+            "effective_span_A": 11.907,
+            "production_A": 10.0,
+            "nominal_shortfall": 0.0432,
+            "converged": False,
+        },
+        "lead_layers": {"status": "unmeasured", "current": 4,
+                        "requires": "新建 6 层版"},
+        "device_layers": {"status": "unmeasured", "current": 2,
+                          "requires": "device_layers=1"},
+    }
+    _write(run / "thermal_analyze" / "thermal.json", payload)
+    text = render_report({"run_id": "t", "root": str(run)})
+
+    assert "**运行环境**" in text
+    assert "环境指纹" in text
+    assert "**收敛轴**" in text
+    # 名义 10 Å 与实际 11.907 Å 的落差必须变成显式警告，而不是让人从表里自己看。
+    assert "截断半径未收敛" in text
+    assert "11.91" in text
+    assert "lead 层数" in text and "未测" in text
+
+
 def test_report_embeds_temperature_curve_and_soft_modes(workdir):
     """`G_ph(T)` 曲线与软模归属表都要进报告。
 
