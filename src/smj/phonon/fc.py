@@ -408,8 +408,9 @@ def assemble_full_fc(k_dev: np.ndarray, lead: LeadFC, meta: FullFCMeta) -> np.nd
     互易性要求两者互为转置;漏掉时矩阵不对称度约 8%,后果有两个:
     ① ASR 残差从 1e-13 涨到 2.7 eV/Å²(看似"力常数不合声学求和规则",
     实际是矩阵缺块);② ``dynamical_matrix(symmetrize=True)`` 把交叉块
-    平均成一半,``v_l``(器件↔主层耦合)直接少一半,透射按 ``|v|⁴`` 掉一个
-    数量级(2026-11-25 实测:补转置前 G_ph 偏低 4 倍)。
+    平均成一半,``v_l``(器件↔主层耦合)直接少一半,而透射按 ``|v|⁴`` 变化 ——
+    弱耦合处可差一个数量级,强耦合处因共振饱和不易察觉,属"看不出错但数值错"
+    的一类(2026-11-25 实测:补转置后 ASR 残差从 2.7 降到 2.6e-13)。
     """
     n = int(meta.n_atoms)
     matrix = np.zeros((3 * n, 3 * n), dtype=float)
