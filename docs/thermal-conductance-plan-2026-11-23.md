@@ -517,7 +517,7 @@ B1 可以完全离线做，是**风险最低、信息量最大**的一批：解�
 | T13 | provenance | `python scripts/gen_junction_provenance.py` | `PROVENANCE.json` 的 sha256 与 `git status` 一致 |
 | T14 | **文献对账**（可选，**须用户明确同意**，见 D9） | `smj thermal --run`（octanedithiol 或 BDT） | `G_ph(300 K)` 落在 **15–25 pW/K**。超出 3× 按 R4 逐条查，**不许调参去凑** |
 
-> ⚠️ **T14 的对账带只对「DFT 谐波理论值」成立，不要拿实验值去比**。15–25 pW/K 是从 B-4 里那批**同为简谐 Landauer** 的计算结果取的（Klöckner 烷链 15–45、苯二胺 25.24、Sadeghi 烷烃 25.4/33.4/30.3、Mosso 理论 22/19）。Mosso 的**实验**值是 ODT **37±5**、OPE3 **23±5**——比他们自己的 DFT 理论值高 1.7×。我们的方法在结构上就少了非谐（Li et al. 2021 给 ~15%），预期**系统性偏低**，所以拿 37 当靶子会必然「差 2 倍」并误判为 bug。若要与实验比，必须在报告里写明「简谐 NEGF 与实验的已知偏差来源」，而不是当成验收线。
+> ⚠️ **T14 的对账带只对「DFT 谐波理论值」成立，不要拿实验值去比**。15–25 pW/K 是从 B-4 里那批**同为简谐 Landauer** 的计算结果取的（Klöckner 烷链 15–45、苯二胺 25.24、Sadeghi 烷烃 25.4/33.4/30.3、Mosso 理论 22/19）——**且只有硫醇锚定那几行才算同族**：苯二胺 25.24 是**氨基（–NH₂）锚定**，接触刚度不同，只能当上限参考（见 B-4 锚定注）。Mosso 的**实验**值是 ODT **37±5**、OPE3 **23±5**——比他们自己的 DFT 理论值高 1.7×。我们的方法在结构上就少了非谐（Li et al. 2021 给 ~15%），预期**系统性偏低**，所以拿 37 当靶子会必然「差 2 倍」并误判为 bug。若要与实验比，必须在报告里写明「简谐 NEGF 与实验的已知偏差来源」，而不是当成验收线。
 
 ---
 
@@ -684,13 +684,33 @@ FHI-vibes 就是 phonopy + 有限位移。也就是说：对 PBE、对 90 原子
 | 体系 | `G_ph` (pW/K, 300 K) | 方法 | 出处 |
 |---|---|---|---|
 | 烷二硫醇 n=2–30 CH₂ | **15–45** | TURBOMOLE DFPT + 自写 NEGF | Klöckner et al., [PRB **94**, 205425 (2016)](https://arxiv.org/abs/1609.03827) |
-| 苯二胺 / 2,6-二溴 | **25.24 / 10.46** | 同上（**唯一明写检查过无虚频**） | Klöckner et al., [PRB **96**, 245419 (2017)](https://arxiv.org/abs/1708.06021) |
+| 苯二胺（para）/ 2,6-二溴苯二胺 | **25.24 / 10.46**（Table 1，`κ_pn` 列） | 同上（**唯一明写检查过无虚频**）；Au 电极 + **氨基（–NH₂）锚定** | Klöckner et al., [PRB **96**, 245419 (2017)](https://arxiv.org/abs/1708.06021)，DOI [10.1103/PhysRevB.96.245419](https://doi.org/10.1103/PhysRevB.96.245419) |
 | C60 单体 / 二聚体 | **25.5–46.3 / 7.3–7.4** | 同上（**唯一给全 NEGF 参数**：声子 `η=1e-5 a.u.`、32×32 横向 k） | Klöckner et al., [PRB **95**, 245404 (2017)](https://arxiv.org/abs/1704.00591) |
 | 烷烃 N=1,2,4,8 | **25.4 / 33.4 / 30.3 / 5.6** | SIESTA 有限位移 + 自写 NEGF | Sadeghi et al., [arXiv:1510.05945](https://arxiv.org/abs/1510.05945) |
 | 同上（力场对照） | **40–45**（强接触）/ **20–22**（弱接触） | LAMMPS EAM + Morse，RNEMD | Wang et al., [arXiv:2209.06266](https://arxiv.org/abs/2209.06266) |
 | C60 二聚体（力场对照） | **41.5**（DFT-NEGF 为 7.0，**差 6×**） | LAMMPS AIREBO，无 Au–S 键 | Li/Wang/Segal, [arXiv:2402.06172](https://arxiv.org/abs/2402.06172) |
 
+**两条关键基准的完整出处与取数位置**
+
+**（1）苯二胺 25.24 pW/K —— 理论值，Table 1**
+[Klöckner, Cuevas & Pauly, *Phys. Rev. B* **96**, 245419 (2017)](https://arxiv.org/abs/1708.06021)（DOI [10.1103/PhysRevB.96.245419](https://doi.org/10.1103/PhysRevB.96.245419)）Table 1 原文行：
+
+> `1,4-diaminobenzene (para)`　`κ_pn = 25.24`（pW/K）　`κ_el = 2.61`（pW/K）　`G = 4.7×10⁻³ G₀`（理论）/ `6.4×10⁻³ G₀`（实验 [70]）
+
+同表其余取代物：2-F **24.40**、2-Cl **22.17**、2-Br **16.94**、2-I **15.24**、2,5-二Br **17.85**、2,6-二Br **10.46**。方法是简谐 Landauer–Büttiker（该文式 (1) `κ_pn=(1/h)∫dE·E·τ_pn·∂n/∂T`），TURBOMOLE + PBE + def2-SV(P) + DFPT 解析 Hessian，Au 电极。该文另有一句可直接引用作带顶佐证：「the small Debye energy of Au of around 20 meV」。
+
+**（2）烷链 C10 ≈20 pW/K —— 实验值，Fig. 3c**
+[Cui et al., *Nature* **572**, 628 (2019)](https://doi.org/10.1038/s41586-019-1420-z)（DOI [10.1038/s41586-019-1420-z](https://doi.org/10.1038/s41586-019-1420-z)，Konstanz 开放获取副本）正文原文：
+
+> "the thermal conductance of the single-alkanedithiol junctions exhibits a **nearly length-independent behaviour with a value of approximately 20 pW K⁻¹**, suggesting that thermal transport in single-molecule junctions is ballistic."
+
+C-SThM 实验：Au 基底 295 K，C2–C10，每分子 108–155 条痕（Fig. 3b 注明 C2 155、C4 133、C8 110、C10 108 条）。同文的**理论**（Landauer–Büttiker；计算由 J. C. Klöckner 在 F. Pauly 指导下完成）给出拉伸两区间的平均值：**AG 22–33 pW/K、AB 16–21 pW/K**，且「the computed phononic contribution … is nearly independent of molecular length」。
+
+> **注：两个数不是同一量。** 25.24 是**理论**（氨基锚定、苯环 π 体系），~20 是**实验**（硫醇锚定、饱和烷链、295 K）。它们各自都与自己的理论/实验对照相符，但不能互相替代，也不能直接和本仓的 `G_ph` 并列。
+
 **对账带的取法**：取**同一化学族**（烷二硫醇 / ODT / OPE3）的 **DFT 谐波计算值**，交集是 **15–25 pW/K**（Cui 计算 16–21 / 22–33、Mosso 理论 19、Klöckner 15–45 的下半段）。**不把 C60（25–46）与力场（20–45）混进来**——前者是 π 体系且电极耦合更强，后者差 6 倍说明唯象势不可用于定量。这就是 D9 用 **C8 或 BDT** 而不是用 nap/az/ind 对账的原因。
+
+> **锚定基团差异（本仓必须显式标注）**：上表里能直接与本仓比较的只有**硫醇盐（–S⁻）锚定**那几行（烷二硫醇、烷烃、OPE3、ODT）。**苯二胺 25.24 与 C60 的数值都是氨基或直接接触体系**，接触刚度与界面质量完全不同：–NH₂ 对 Au 的成键弱于 –S⁻，而声子透射主要由最窄处的接触刚度决定，所以拿 25.24 当 S 锚定芳香结的靶子会系统性偏高。Cui 的 ~20 是**硫醇**实验值，方法学上可比，但它是实验（含非谐与接触构型平均），只能作量级检查。
 
 > **口径警告（与 T14 那条一致）**：Cui 的**实验**值 ~20 pW/K 与 Mosso 的**实验**值 ODT 37±5 / OPE3 23±5 **不在**这个带里——它们比各自的 DFT 理论值高 1.7×（Mosso）到持平（Cui）。本仓方法在结构上缺非谐（预期偏低 ~15%），因此 15–25 这条线是**「理论对理论」的验收带**；若某天要报「与实验吻合」，必须先扣掉非谐与接触构型的系统偏差，否则是拿两个不同物理量在比。
 
