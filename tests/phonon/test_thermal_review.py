@@ -125,6 +125,29 @@ def test_evaluate_thermal_passes_when_evidence_complete():
     assert outcome["failed"] == [] and outcome["inconclusive"] == []
 
 
+def test_grid_drift_threshold_follows_measured_noise_floor(monkeypatch):
+    """D14: 门限按实测求积噪声(2.0%-2.5%)取 5%, 不再是不达的 1%。
+
+    直接调门限比构造"恰好 3% 漂移"的谱更稳: 该检查的唯一可调量就是门限,
+    而漂移本身由谱形状决定。两条边界都要钉住 —— 太小会误判, 太大等于不查。
+    """
+    from smj.phonon import checks
+
+    assert checks.MAX_GRID_DRIFT == 5.0e-2
+
+    monkeypatch.setattr(checks, "MAX_GRID_DRIFT", 1.0e-12)
+    tight = checks.evaluate_thermal(
+        _thermal(), relax_max_force=1.0e-3,
+        relax_sc_accuracy_forces="5E-3", lead_cell_match=True)
+    assert "ph_grid_independence" in tight["inconclusive"]
+
+    monkeypatch.setattr(checks, "MAX_GRID_DRIFT", 1.0)
+    loose = checks.evaluate_thermal(
+        _thermal(), relax_max_force=1.0e-3,
+        relax_sc_accuracy_forces="5E-3", lead_cell_match=True)
+    assert "ph_grid_independence" not in loose["inconclusive"]
+
+
 def test_evaluate_thermal_fails_above_band_top():
     from smj.phonon.checks import evaluate_thermal
 

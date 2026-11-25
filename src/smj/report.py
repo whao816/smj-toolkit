@@ -830,6 +830,15 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
                     _fmt(data.get("eta_meV"), "%.3f")))
     lines.append("| 来源 | `%s` |" % _cell(str(path)))
     lines.append("")
+    lines.append(
+        "η（`eta_meV`）是**数值正则化参数，不是物理线宽**：它只给表面格林函数"
+        "一个虚部，把窄的法布里-珀罗共振展宽。η 越小、共振越尖，`G_ph` 单调"
+        "升高并外推到 η→0 的弹道上限。因此本方法的系统不确定性主要来自 η，"
+        "量级可与非谐修正（文献 ~15%）相比；两项都不在本方法内，报告 `G_ph` "
+        "时必须一起说明。量级参照：η 由 0.5 降到 0.05 meV，同一份力常数下 "
+        "`G_ph` 可由 10.9 升到 13.7 pW/K。横向对比时请对齐 η，或统一声明为"
+        "“η→0 外推值”。")
+    lines.append("")
 
     review_path = Path(str(man.get("root"))) / "review.json"
     if review_path.is_file():
