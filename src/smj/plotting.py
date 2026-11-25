@@ -645,6 +645,33 @@ def plot_te_multi(
         meta["figure"] = (fig, ax)
     return meta
 
+def cumulative_quantiles(energy, cumulative, quantiles=(25, 50, 75, 90)):
+    """累积热导达到 ``q%`` 的能量（meV, 线性插值）。
+
+    单个 ``G_ph`` 数字看不出热流从哪来；这组能量直接回答"哪一段声子把热带
+    过去"，是解释分子间差异的主要依据（低频 vs 界面骨架模）。
+    """
+    total = float(cumulative[-1]) if cumulative else 0.0
+    if total <= 0.0:
+        return {}
+    out = {}
+    pct = [100.0 * float(v) / total for v in cumulative]
+    for level in quantiles:
+        index = 0
+        while index < len(pct) and pct[index] < level:
+            index += 1
+        if index == 0:
+            out["%d%%" % level] = float(energy[0])
+        elif index >= len(pct):
+            out["%d%%" % level] = float(energy[-1])
+        else:
+            y0, y1 = pct[index - 1], pct[index]
+            frac = 0.0 if y1 == y0 else (level - y0) / (y1 - y0)
+            out["%d%%" % level] = float(
+                energy[index - 1] + frac * (energy[index] - energy[index - 1]))
+    return out
+
+
 def plot_thermal(
     source: str | Path | Mapping[str, Any],
     out: str | Path | None = None,
@@ -652,14 +679,20 @@ def plot_thermal(
     formats: Sequence[str] | None = None,
     dpi: float = 600,
     return_figure: bool = False,
+    title: str | None = None,
+    xmax_mev: float = 22.0,
 ) -> dict[str, Any]:
-    """画声子热导谱：左轴 ``T_ph(ω)``，右轴累积 ``G_ph(ω)``（M5-T3）。
+    """画声子热导两联图：(a) ``T_ph(ω)``，(b) 归一化累积 ``G_ph``（M5-T3）。
 
-    ``source`` 可以是 ``thermal.json`` 的路径或已解析的 dict。竖向虚线标出
-    Au 声子带顶（19.5 meV）—— 越过它的透射必须是零，图上看得见比表里写着
-    更容易发现串味。
+    ``source`` 可以是 ``thermal.json`` 的路径或已解析的 dict。
+
+    * 上图把 lead 声子带顶以上（默认 19.5 meV）阴影化 —— 那里的弹性透射
+      **必须**为零（方案 §3.6 的 fail-closed 判据），图上看得见比表里写着更
+      容易发现串味。
+    * 下图标出 25/50/75/90% 的贡献分位，用来读"热流由哪一段声子带走"。
 
     没有 matplotlib 时返回 ``{"ok": False, "reason": ...}``（与 ``plot_te`` 同口径）。
+    返回值里 ``quantiles`` 是 ``{"25%": 5.79, ...}``（单位 meV），供报告直接引用。
     """
     import json as _json
 
@@ -676,31 +709,59 @@ def plot_thermal(
     transmission = [float(v) for v in spectrum["transmission"]]
     cumulative = [float(v) for v in spectrum["cumulative_g_ph_pw_per_k"]]
     band_top = float(data.get("band_top_meV", 19.5))
+    quantiles = cumulative_quantiles(energy, cumulative)
 
     try:
         plt = _pyplot()
     except RuntimeError as exc:
-        return {"ok": False, "reason": str(exc)}
+        return {"ok": False, "reason": str(exc), "quantiles": quantiles}
 
-    fig, ax = plt.subplots(figsize=(6.4, 4.0), dpi=dpi)
-    ax.plot(energy, transmission, color="#1f4e79", lw=1.4, label="T_ph")
-    ax.set_xlabel("phonon energy (meV)")
-    ax.set_ylabel("T_ph(ω)", color="#1f4e79")
-    ax.tick_params(axis="y", labelcolor="#1f4e79")
-    ax.axvline(band_top, color="#999999", ls="--", lw=0.9)
-    ax.text(band_top, ax.get_ylim()[1] * 0.96, " Au band top",
-            color="#666666", fontsize=7, va="top")
+    total = float(cumulative[-1]) if cumulative else 0.0
+    pct = [100.0 * v / total if total > 0 else 0.0 for v in cumulative]
 
-    ax2 = ax.twinx()
-    ax2.plot(energy, cumulative, color="#a33", lw=1.2, ls="-")
-    ax2.set_ylabel("G_ph cumulative (pW/K)", color="#a33")
-    ax2.tick_params(axis="y", labelcolor="#a33")
+    fig, (ax_top, ax_bottom) = plt.subplots(
+        2, 1, figsize=(7.2, 6.6), dpi=dpi, sharex=True,
+        gridspec_kw={"height_ratios": [1.35, 1.0], "hspace": 0.08})
 
+    ax_top.plot(energy, transmission, color="#1f4e79", lw=1.4, zorder=3)
+    ax_top.axvspan(band_top, xmax_mev, color="#b0b0b0", alpha=0.22, lw=0, zorder=1)
+    ax_top.axvline(band_top, color="#7f7f7f", ls="--", lw=1.0, zorder=2)
+    ax_top.set_ylabel(r"$T_{\mathrm{ph}}(\hbar\omega)$")
+    top = max(max(transmission), 1.0)
+    ax_top.set_ylim(0.0, top * 1.12)
+    ax_top.text(band_top - 0.35, top * 1.06, "lead band top %.1f meV" % band_top,
+                fontsize=8.5, color="#4d4d4d", va="top", ha="right")
     g_ph = float(data.get("g_ph_pw_per_k", 0.0))
-    ax.set_title("G_ph(%.0f K) = %.2f pW/K  (N_eff = %.3f)"
-                 % (float(data.get("temperature_K", 300.0)), g_ph,
-                    float(data.get("n_channels_effective", 0.0))), fontsize=9)
-    fig.tight_layout()
+    ax_top.text(0.015, 0.96,
+                "$G_{\\mathrm{ph}}$(%d K) = %.2f pW/K\n"
+                "$G_Q$ = %.1f, $N_{\\mathrm{eff}}$ = %.3f\n"
+                "$\\eta$ = %.2f meV"
+                % (int(float(data.get("temperature_K", 300.0))), g_ph,
+                   float(data.get("g_quantum_pw_per_k", 0.0)),
+                   float(data.get("n_channels_effective", 0.0)),
+                   float(data.get("eta_meV", 0.0))),
+                transform=ax_top.transAxes, va="top", ha="left", fontsize=8.5,
+                bbox={"facecolor": "white", "alpha": 0.85,
+                      "edgecolor": "#cccccc", "boxstyle": "round,pad=0.35"})
+
+    ax_bottom.plot(energy, pct, color="#a83232", lw=1.4, zorder=3)
+    for label, e_level in quantiles.items():
+        level = float(label.rstrip("%"))
+        ax_bottom.axhline(level, color="#a83232", ls=":", lw=0.8, alpha=0.45)
+        ax_bottom.plot([e_level], [level], marker="o", ms=4.0,
+                       color="#a83232", zorder=4)
+        ax_bottom.annotate("%s @ %.1f meV" % (label, e_level),
+                           xy=(e_level, level), xytext=(4, -11),
+                           textcoords="offset points", fontsize=8.0,
+                           color="#7a2020")
+    ax_bottom.set_xlabel(r"phonon energy $\hbar\omega$ (meV)")
+    ax_bottom.set_ylabel(r"cumulative $G_{\mathrm{ph}}$ (%)")
+    ax_bottom.set_ylim(0.0, 102.0)
+    ax_bottom.set_xlim(0.0, xmax_mev)
+
+    if title:
+        fig.suptitle(title, fontsize=11.0, y=0.965)
+    fig.subplots_adjust(left=0.14, right=0.97, top=0.90, bottom=0.10)
 
     written: list[str] = []
     if out is not None:
@@ -710,9 +771,10 @@ def plot_thermal(
         for suffix in suffixes:
             target = stem.with_suffix("." + suffix)
             target.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(target)
+            fig.savefig(target, bbox_inches="tight")
             written.append(str(target))
     if not return_figure:
         plt.close(fig)
         fig = None
-    return {"ok": True, "written": written, "figure": fig}
+    return {"ok": True, "written": written, "figure": fig,
+            "quantiles": quantiles}

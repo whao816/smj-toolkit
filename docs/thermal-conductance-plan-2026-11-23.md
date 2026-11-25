@@ -459,6 +459,7 @@ thermal:
 ### 6.6 报告与 CLI
 
 - `report.py`：新增 `## 5. 热导`（现有 `## 4. 输运结果` 在 1010-1043 之后）。表行：`G_ph`、`G_Q`、`N_eff`、`ZT_e`、`ZT_total`、`T_ph(ω>带顶)`、ASR 残差、虚频数、lead FC 文件 sha。图：`T_ph(ω)` + 累积 `G_cum(ω)` 双轴。
+- **图与分位（实现后补充）**：两联图由 `plotting.plot_thermal` 统一产出（`thermal_analyze/thermal_spectrum.png|pdf`），报告以相对路径 `![](thermal_analyze/thermal_spectrum.png)` 嵌入，缺图时在 `_thermal_section` 里 best-effort 重画、失败只留文字。图下附**热流贡献分位表**（`plotting.cumulative_quantiles`：累积 `G_ph` 达 25/50/75/90% 时的能量，单位 meV 与 cm⁻¹）。理由：`G_ph` 是积分，单看总分不出热流由哪段声子带走；实测 nap-sh 的分位落在 5.8/10.9/12.2/14.3 meV（47/88/99/116 cm⁻¹），全部在界面骨架模区间，而分子内 C–C 伸缩（~190 meV）在 lead 带顶之上、弹性透射严格为零——这条证据直接支撑「热导由接触与低频骨架决定、与 π 共轭弱相关」的结论。
 - `report.py` 的 `_transport_summary`（:391）不动；热导单独一个 `_thermal_summary`。
 - `cli.py`：新增子命令 `smj thermal`（`--run/--prepare/--submit/--wait/--collect`，照 `cmd_stage`:637 的形状），以及 `smj thermal --analyze-only`（只重跑 NEGF，不重跑 DFT）。
 - `state.py`：`STAGE_ORDER` **不变**；新增 `THERMAL_STAGES = ("thermal_device", "thermal_relax", "thermal_fc", "thermal_negf")` 供 `smj thermal` 按序调用。

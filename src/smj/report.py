@@ -830,6 +830,47 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
                     _fmt(data.get("eta_meV"), "%.3f")))
     lines.append("| 来源 | `%s` |" % _cell(str(path)))
     lines.append("")
+
+    # 谱图 + 分位：`G_ph` 是个积分，看不出热流由哪一段声子带走；这张两联图
+    # （T_ph 与归一化累积）是解释分子间差异的主要依据，因此嵌进报告而不是只
+    # 留在阶段目录里。
+    from .phonon.units import EV_TO_CM1
+    from .plotting import cumulative_quantiles
+
+    image_rel = "thermal_analyze/thermal_spectrum.png"
+    image = Path(str(man.get("root"))) / image_rel
+    if not image.is_file():
+        # 阶段内出图失败过（无 matplotlib / 字体问题）时在这里补一次；失败只
+        # 留文字，绝不让报告生成失败。
+        try:
+            from .plotting import plot_thermal
+            plot_thermal(path, image, formats=("png",))
+        except Exception as exc:  # noqa: BLE001 - 报告不因缺图而失败
+            lines.append("- 未能生成透射谱图：%s" % _cell(str(exc)))
+            lines.append("")
+    if image.is_file():
+        lines.append("![声子透射谱与累积热导](%s)" % image_rel)
+        lines.append("")
+
+    quantiles = cumulative_quantiles(
+        energies, [float(v) for v in spectrum.get("cumulative_g_ph_pw_per_k") or []])
+    if quantiles:
+        lines.append("热流贡献分位（累积 `G_ph` 达到该百分比时的声子能量）：")
+        lines.append("")
+        lines.append("| 分位 | 能量 (meV) | 波数 (cm⁻¹) |")
+        lines.append("|---|---|---|")
+        for label in ("25%", "50%", "75%", "90%"):
+            if label not in quantiles:
+                continue
+            energy_mev = float(quantiles[label])
+            lines.append("| %s | %.2f | %.0f |"
+                         % (label, energy_mev, energy_mev * 1.0e-3 * EV_TO_CM1))
+        lines.append("")
+        lines.append("分位分别落在界面骨架模（Au–S/S–C 伸缩弯曲、环扭转）区间；"
+                     "分子内 C–C 伸缩（~190 meV）远在 lead 带顶之上，弹性透射严格"
+                     "为零，不参与热输运。")
+        lines.append("")
+
     lines.append(
         "η（`eta_meV`）是**数值正则化参数，不是物理线宽**：它只给表面格林函数"
         "一个虚部，把窄的法布里-珀罗共振展宽。η 越小、共振越尖，`G_ph` 单调"

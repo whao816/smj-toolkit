@@ -274,3 +274,40 @@ def test_asr_falls_back_to_absolute_for_old_payloads():
     assert item["passed"] is True
     assert "无相对残差记录" in item["detail"]
 
+
+
+# -- M5-T3:谱图与分位 ---------------------------------------------------------- #
+
+def test_cumulative_quantiles_interpolates_and_is_monotonic():
+    from smj.plotting import cumulative_quantiles
+
+    quantiles = cumulative_quantiles([0.0, 1.0, 2.0, 3.0], [0.0, 1.0, 2.0, 4.0])
+    assert quantiles["25%"] == pytest.approx(1.0)
+    assert quantiles["50%"] == pytest.approx(2.0)
+    assert quantiles["75%"] == pytest.approx(2.5)
+    assert quantiles["90%"] == pytest.approx(2.8)
+    ordered = [quantiles[k] for k in ("25%", "50%", "75%", "90%")]
+    assert ordered == sorted(ordered)
+
+
+def test_cumulative_quantiles_empty_when_nothing_conducts():
+    from smj.plotting import cumulative_quantiles
+
+    assert cumulative_quantiles([0.0, 1.0], [0.0, 0.0]) == {}
+
+
+def test_report_embeds_spectrum_figure_and_quantiles(workdir):
+    """图与分位表要进报告——`G_ph` 是积分，看不出热流从哪段声子来。"""
+    pytest.importorskip("matplotlib")
+    from smj.report import render_report
+
+    run = workdir / "run"
+    _write(run / "thermal_analyze" / "thermal.json", _thermal())
+    text = render_report({"run_id": "t", "root": str(run)})
+    assert "![声子透射谱与累积热导](thermal_analyze/thermal_spectrum.png)" in text
+    assert (run / "thermal_analyze" / "thermal_spectrum.png").is_file()
+    assert "热流贡献分位" in text
+    for label in ("25%", "50%", "75%", "90%"):
+        assert "| %s |" % label in text
+    # 分位必须在报告里给出波数,方便与振动模式指认对照
+    assert "波数 (cm" in text
