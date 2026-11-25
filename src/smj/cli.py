@@ -1294,6 +1294,33 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return EXIT_OK if ok else EXIT_FAILED
 
 
+def cmd_lead_fc(args: argparse.Namespace) -> int:
+    """电极力常数资产：默认打印身份，``--export DIR`` 复制出去。"""
+    from .phonon import assets as assets_mod
+
+    try:
+        if args.export:
+            written = assets_mod.export_lead_fc(args.export)
+            if args.json:
+                print(json.dumps({"exported": [str(p) for p in written]},
+                                 ensure_ascii=False, indent=2))
+            else:
+                for path in written:
+                    print("已导出: %s" % path)
+                print("在 smj.yaml 里用 thermal.lead_fc 指向该目录即可替换随包资产。")
+            return 0
+        info = assets_mod.lead_fc_info()
+        if args.json:
+            print(json.dumps(info, ensure_ascii=False, indent=2, default=str))
+        else:
+            for line in assets_mod.describe_lines():
+                print(line)
+        return 0
+    except (FileNotFoundError, ValueError, OSError) as exc:
+        print("错误: %s" % exc, file=sys.stderr)
+        return 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     checks: list[dict[str, Any]] = []
 
@@ -1774,6 +1801,18 @@ def build_parser() -> argparse.ArgumentParser:
         description="检查 Python、PyYAML、numpy、vendored junction、模板与阶段模块。")
     _add_common(verify, with_config=False)
     verify.set_defaults(handler=cmd_verify)
+
+    lead_fc = subparsers.add_parser(
+        "lead-fc", help="查看/导出声子热导用的电极力常数资产",
+        description=("声子 NEGF 需要一份 Au(111) 半无限电极的力常数。它由一次"
+                     "体相有限位移得到（3x3x6 层、Gamma、54 个 SCF），与分子无关，"
+                     "所以随包发布一份。--show 看身份，--export 导出后可用 "
+                     "thermal.lead_fc 指向自己的版本。"))
+    _add_common(lead_fc, with_config=False)
+    lead_fc.add_argument("--show", action="store_true", help="打印资产身份（默认动作）")
+    lead_fc.add_argument("--export", metavar="DIR", default=None,
+                         help="把资产复制到 DIR（生成 lead_fc.npy + lead_fc.json）")
+    lead_fc.set_defaults(handler=cmd_lead_fc)
 
     return parser
 

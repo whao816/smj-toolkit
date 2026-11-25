@@ -48,12 +48,19 @@ def _fc_asymmetry(force_constants) -> float:
 
 
 
-def _lead_fc_path(value: str | Path) -> Path:
+def _lead_fc_path(value: str | Path | None) -> Path:
     """``thermal.lead_fc`` 可以写成目录(用其中的 ``lead_fc.json``)或直接写文件。
 
     ``save_lead_fc`` 落盘的是 ``lead_fc.npy`` + ``lead_fc.json`` 两个文件,
     用户按目录配置更自然,这里两种都接受。
+
+    ``None`` / ``"auto"`` 解析到**随包发布的 Au(111) 资产**（``smj.phonon.assets``）：
+    电极是金、与分子无关，那份力常数只需算一次，不该让每个使用者先搭一套
+    体相计算才能跑分子。
     """
+    if value is None or str(value) == "auto":
+        from ..phonon.assets import lead_fc_dir
+        return lead_fc_dir() / "lead_fc.json"
     path = Path(value)
     if path.is_dir():
         candidate = path / "lead_fc.json"
@@ -88,16 +95,26 @@ class ThermalAnalyzeStage(Stage):
             raise StageBlocked(
                 self.name, "缺 thermal_fc/force_constants.npy：请先跑 finite_fc 并 collect",
                 [str(fc_path)])
-        if not thermal.lead_fc:
+        if thermal.lead_fc is None:
             raise StageBlocked(
                 self.name,
                 "配置缺 thermal.lead_fc：声子 NEGF 需要冻结 lead 力常数（方案 D4）。"
-                "先用一份 bulk/厚板算一次并 save_lead_fc 落盘。",
+                "把 thermal.lead_fc 写成 auto（用随包资产），或用 "
+                "`smj lead-fc --export DIR` 导出后指向该目录。",
                 [])
         path = _lead_fc_path(thermal.lead_fc)
         if not path.is_file():
-            raise StageBlocked(self.name, "thermal.lead_fc 指向的文件不存在: %s" % path,
-                               [str(path)])
+            raise StageBlocked(
+                self.name,
+                "thermal.lead_fc 指向的文件不存在: %s（若用 auto，"
+                "请用 `smj lead-fc --show` 确认随包资产是否完整）" % path,
+                [str(path)])
+        from ..phonon.assets import lead_fc_info
+        try:
+            lead_info = lead_fc_info(path.parent)
+        except (OSError, ValueError) as exc:
+            raise StageBlocked(self.name, "与 thermal.lead_fc 自检失败: %s" % exc,
+                               [str(path)]) from exc
         return self.prepared(
             ctx, stage_dir,
             inputs=[Path(fc_path), path],
@@ -106,6 +123,11 @@ class ThermalAnalyzeStage(Stage):
                 "不提交任何作业",
                 "温度 %.3f K；N_k=1（3×3 超胞的 Γ，Γ 已把 9 个原胞 q 点折叠进来）"
                 % thermal.resolved_temperature(ctx.config.transport.temperature),
+                "电极力常数：%s（面内 %s，%d 层，sha256 %s）"
+                % (lead_info["path"], "×".join(str(v) for v in
+                                               lead_info.get("in_plane", [])),
+                   int(lead_info.get("layers", 0)),
+                   str(lead_info.get("sha256", ""))[:12]),
             ],
             commands=[],
             parent_stage="thermal_fc",

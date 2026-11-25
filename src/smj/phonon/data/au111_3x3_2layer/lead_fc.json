@@ -1,0 +1,16 @@
+{
+  "a_lattice_A": 4.07823,
+  "element": "Au",
+  "fc_cutoff_A": 10.0,
+  "force_constants_file": "lead_fc.npy",
+  "in_plane": [
+    3,
+    3
+  ],
+  "layers": 2,
+  "n_atoms_per_layer": 9,
+  "schema": "smj.lead_fc.v1",
+  "sha256": "8d09fc53155f533726ee575eee8d5268a0f064f66d9453cb22b393ca901b3888",
+  "source": "gen_au_lead_fc.py: bulk 3x3x6, Gamma, 0.01 A central differences",
+  "units": "eV/Ang^2"
+}

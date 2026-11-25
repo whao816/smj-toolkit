@@ -391,8 +391,13 @@ class ThermalConfig:
     enabled: bool = False
     #: 计算温度(K)。``None`` = 继承 ``transport.temperature``（默认 300 K）。
     temperature_K: float | None = None
-    #: 冻结 lead 力常数的路径（JSON）。相对路径按 yaml 所在目录解析。
-    lead_fc: str | None = None
+    #: 电极力常数（lead FC）的位置。``"auto"`` = 用随包发布的 Au(111) 资产
+    #: （``smj.phonon.assets``），写路径（目录或 JSON）则覆盖它。
+    #:
+    #: 为什么默认给资产而不是要求先算一次：电极是金、与分子无关，那份力常数
+    #: 只需要算一次（3×3×6 层、Γ、54 个 SCF）。要重算或换成自己的版本，
+    #: 用 ``smj lead-fc --export DIR`` 导出后按本字段指过去。
+    lead_fc: str | None = "auto"
     electrode: ThermalElectrodeConfig = field(default_factory=ThermalElectrodeConfig)
     fc: ThermalFCConfig = field(default_factory=ThermalFCConfig)
     negf: ThermalNEGFConfig = field(default_factory=ThermalNEGFConfig)
@@ -971,7 +976,7 @@ def _parse_thermal(data: Mapping[str, Any], warnings: list[str]) -> ThermalConfi
     return ThermalConfig(
         enabled=_as_bool(data.get("enabled", False), "thermal.enabled"),
         temperature_K=temperature_K,
-        lead_fc=_as_str(lead_fc, "thermal.lead_fc") if lead_fc else None,
+        lead_fc=_as_str(lead_fc, "thermal.lead_fc") if lead_fc else "auto",
         electrode=electrode,
         fc=fc,
         negf=negf,
@@ -1179,7 +1184,9 @@ def load_config(path: str | Path | None = None) -> RunConfig:
         config.paths.species_defaults = str(config.resolve(config.paths.species_defaults))
     if config.electrode.library_dir:
         config.electrode.library_dir = str(config.resolve(config.electrode.library_dir))
-    if config.thermal.lead_fc:
+    # "auto" 是关键字，不能当相对路径解析（否则会被拼成 yaml 目录下的
+    # 一个名叫 auto 的文件）。
+    if config.thermal.lead_fc and config.thermal.lead_fc != "auto":
         config.thermal.lead_fc = str(config.resolve(config.thermal.lead_fc))
     return config
 

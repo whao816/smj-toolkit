@@ -136,7 +136,9 @@ def test_thermal_disabled_by_default(workdir):
     thermal = config.thermal
     assert thermal.enabled is False
     assert thermal.temperature_K is None
-    assert thermal.lead_fc is None
+    # 默认不是 None：随包发布一份 Au(111) lead FC，"auto" 解析到它，
+    # 否则每个使用者都得先搭一套体相计算才能跑分子（见 smj.phonon.assets）。
+    assert thermal.lead_fc == "auto"
     assert thermal.electrode.in_plane == (3, 3)
     assert thermal.electrode.layers == 4
     assert thermal.electrode.device_layers == 2

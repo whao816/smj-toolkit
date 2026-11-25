@@ -462,6 +462,62 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 可直接用 `sha256` 对账；归档目录已在 `.gitignore` 中，重复 prepare/collect 会追加新条目
 而不是覆盖历史。归档失败只记阶段 note，不阻断计算。
 
+## 6.1 声子热导（thermal 链）
+
+给定 Au–分子–Au 结，算声子热导 `G_ph`（pW/K）与声子透射谱 `T_ph(ħω)`。**它不是 κ**：
+单分子结没有确定的截面积，块体的傅里叶定律 / Wiedemann–Franz / 动力学理论都不适用，
+能报的只有热导 `G`（W/K）本身。
+
+**前置条件比电子链少**：只需要 FHI-aims（任何带 `compute_forces` 的版本即可，有限位移
+不依赖 DFPT），电极力常数随包发布，不用自己先算一份体相：
+
+```bash
+$ smj lead-fc --show          # 资产身份：Au / 4.078230 Å / 3×3 / 2 层 / sha256
+$ smj lead-fc --export my_lead   # 导出后可用 thermal.lead_fc 指向自己的版本
+```
+
+`smj.yaml` 里打开（其余键都有可用默认值）：
+
+```yaml
+thermal:
+  enabled: true
+  electrode: {in_plane: [3, 3], layers: 4, device_layers: 2, vacuum: 20.0}
+  fc:        {displacement: 0.01, cutoff: 10.0, array_parallel: 8, k_grid: [1, 1, 1]}
+  negf:      {eta_meV: 0.05, energy_step_meV: 0.05, band_top_meV: 19.5}
+```
+
+热导链**独立于电子六阶段链**（D12）：它不出现在 `smj status`/`smj plan` 的默认输出里，
+也不接受 `run --from/--to` 区间，逐阶段用 `smj thermal --stage X --run`。
+
+| 阶段 | 做什么 | 产物 | 上机 |
+|---|---|---|---|
+| `thermal_device` | 建 Au(111) 3×3 周期板（`layers` 层 × 两侧）+ 去质子化分子，标 `layer_index`/`side`/`role`；`S–Au = gap/2 + au_s_distance − S–S/2` | `geometry.in`、`device_metadata.json` | 本地 |
+| `thermal_relax` | 弛豫（冻结最外层 `freeze_outer_layers` 层），模板带 `compute_forces .true.`、`preconditioner kerker 1.5`、`k_grid K K 1` | `geometry.in.next_step`、`aims.out` | 1 个作业 |
+| `thermal_fc` | 对器件区每个自由度做 ±0.01 Å 中心差分（6N 个点）→ 读力 → 力常数 | `force_constants.npy`、`displacements.json`、`forces_all.json` | 数组作业 |
+| `thermal_analyze` | 拼 lead 力常数 → 动力学矩阵 → ASR 诊断 → 表面自能 → `T_ph` → Landauer 积分 | `thermal.json`、`thermal_spectrum.*`、`thermal_conductance_vs_temperature.*` | 本地 |
+
+nap-sh 实测（arXiv 级标定，2026-11）：90 原子（Au 72 + 分子 18）、器件区 54、**324 个位移**、
+8 路并发 **约 9 h**（单点 20–35 min）；`G_ph(300 K) = 13.72 pW/K`、`G_Q = 283.93 pW/K`、
+有效通道数 `N_eff = 0.048`，300 K 已达高温平台的 98.9%。
+
+判定走 `smj review` 的 `thermal` 块，十条判据：`ph_transmission_present`、`ph_relax_converged`、
+`ph_band_top_zero`、`ph_quantum_bound`、`ph_acoustic_limit`、`ph_asr_residual`、`ph_fc_symmetry`、
+`ph_imaginary_modes`、`ph_lead_cell_match`、`ph_grid_independence`。error 门未过 → 顶层
+`blocked`；warn 门未过或**缺证据** → `thermal.verdict = inconclusive`（不会判 pass），
+顶层 `status` 仍是 `passed/warning/blocked` 三值，不改变既有退出码语义。
+
+两条容易踩的硬约束：
+
+1. **热导器件与电子链器件不是同一体系**。热导用 Au(111) 周期板（有主层才能做半无限表面
+   自能），电子链用金字塔团簇；`G_ph` 与 `G/G0` **不可并列**，`smj report` 的
+   `## 5. 热导（声子）` 里有强制提示。
+2. **η 是数值正则化参数，不是物理线宽**。换 η 等于换方法：本体系 η 由 0.5 降到 0.05 meV，
+   `G_ph` 由 10.9 升到 13.7（+25%）。协议值冻结在 0.05 meV / 0.05 meV 步长（方案 D15），
+   与文献横比必须同 η，或显式声明为「η→0 外推值」（外推约 13.8 pW/K）。
+
+已知限制：简谐近似（非谐修正文献估计 ~15%）；线性响应给不出热整流；`ZT_total` 要求同一
+几何的电子透射，本链不提供（`thermal.json` 里 `zt.available = false` 并写明原因）。
+
 ## 7. 附带功能
 
 | 命令 | 作用 | 产物/输出 |
@@ -592,8 +648,10 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   0.05 Å、表面索引集合没变）旧签名即失效，`smj review` 默认 `blocked`，只有显式
   `review.accept_deviation` 才降为 warning 并标注“人工豁免”。`review.connection_check`
   默认 `true`，没有有效签名时 `smj review` 为 `blocked`。
-- **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
-  （未测晶格热导就不下总 ZT 结论）。
+- **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT。
+  热导链能测 `G_ph`，但它是**另一个器件**（周期板，见 §6.1），与电子 `G/G0` 不同构，
+  `thermal.json` 的 `zt.available` 因此恒为 `false` 并写明原因——不要拿两个器件的
+  分子结论互相拼成总 ZT。
 - **电极厚度口径**：`electrode.au_per_electrode` 只在 `source: builtin` 生效
   （`null` = 完整 60 Au/侧；整数按完整原子层截断，30 → 35/侧；上限 30）。默认
   `source: library` 时该键被完全忽略，团簇大小由 `electrodes.library` 文件决定。
