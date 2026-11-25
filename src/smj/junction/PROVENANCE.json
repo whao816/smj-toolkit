@@ -3,7 +3,7 @@
   "upstream": "agenticdft/agenticdft/tools/junction",
   "upstream_commit": null,
   "rebuilt_from": "smj_toolkit-0.1.0-py3-none-any.whl（原 wheel 未带 PROVENANCE.json）",
-  "repo_commit": "2b93e5a64f0cef7aca51f92e89a041ab89181364",
+  "repo_commit": "e93d72e4e1d1c9926bfe35bf40d3e70174af1762",
   "files": {
     "__init__.py": {
       "sha256": "4204f46bde3b7fd9837689995a70017b1e2e824089a4ee97fb55134e6dd27aa2",

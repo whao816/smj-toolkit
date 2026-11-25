@@ -69,6 +69,18 @@ def _lead_fc_path(value: str | Path | None) -> Path:
     return path
 
 
+def _structure(geometry: Path) -> tuple[list[str], np.ndarray]:
+    """读 FHI-aims ``geometry.in`` 的元素序列与坐标（Å，只取 ``atom`` 行）。"""
+    elements: list[str] = []
+    coords: list[list[float]] = []
+    for line in Path(geometry).read_text(encoding="utf-8").splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[0] == "atom":
+            coords.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            elements.append(parts[4])
+    return elements, np.asarray(coords, dtype=float)
+
+
 def _dof_indices(atoms) -> np.ndarray:
     """原子下标 → 自由度下标。
 
@@ -77,6 +89,227 @@ def _dof_indices(atoms) -> np.ndarray:
     换算;直接拿原子下标去 ``np.ix_`` 会静默切出错位的块(见 collect 里的注释)。
     """
     return np.array([3 * int(a) + k for a in atoms for k in range(3)], dtype=int)
+
+
+def _energy_grid(band_top: float, step: float) -> tuple[np.ndarray, np.ndarray]:
+    """能量网格：到 ``1.25 × 带顶``，给闸门留出"带顶以上必须为零"的取样点。"""
+    n_points = int(round(band_top / step)) + 1
+    energy_mev = np.linspace(0.0, band_top * 1.25, max(n_points, 2))
+    return energy_mev * 1.0e-3, energy_mev
+
+
+def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
+    """把"力常数 → 完整矩阵 → 动力学矩阵 → 切块下标"这段装配抽出来。
+
+    抽成函数不只是为了让 ``collect`` 短一点：``--sensitivity`` 要用**同一份**
+    矩阵、**同一套**切块把 η/步长扫一遍。如果两边各写一份，就会重演 2026-11-24
+    那个 bug（原子下标当自由度下标切 D，形状恰好撞上，T_ph 恒为 0 而检查全过）。
+    """
+    k_dev = np.load(fc_path)
+    device_meta = json.loads(Path(device_meta_path).read_text(encoding="utf-8"))
+    lead = load_lead_fc(_lead_fc_path(thermal.lead_fc))
+
+    n_atoms = int(device_meta["n_atoms"])
+    elements, positions = _structure(Path(geometry_path))
+    if len(elements) != n_atoms:
+        raise StageError(
+            "thermal_analyze 的元素数(%d)与 device_metadata 的 n_atoms(%d) 不一致"
+            % (len(elements), n_atoms))
+    masses = masses_from_elements(elements)
+
+    device_indices = [int(i) for i in device_meta["device_indices"]]
+    lead_indices = [int(i) for i in device_meta["lead_indices"]]
+    layers = device_meta["layer_index"]
+    sides = device_meta["side"]
+    # 主层(principal layer)= 紧挨器件区的那一层;它外面还有一层用来给
+    # decimation 提供层间耦合 V_lead。**这两层**才是 lead 力常数要覆盖的
+    # 范围 —— lead_fc 存的是「两个主层」的块(18 原子 × 2 层 = 54 维),
+    # 而不是器件侧全部 4 层冻结 lead(36 原子)。传全部 36 个会让
+    # _place_lead_block 直接报「lead 区原子数 36 与 lead 力常数原子数 18 不符」。
+    left_pl = [i for i in lead_indices if layers[i] == 1 and sides[i] == "left"]
+    right_pl = [i for i in lead_indices if layers[i] == 1 and sides[i] == "right"]
+    left_outer = [i for i in lead_indices if layers[i] == 0 and sides[i] == "left"]
+    right_outer = [i for i in lead_indices if layers[i] == 0 and sides[i] == "right"]
+    if not (left_pl and right_pl and left_outer and right_outer):
+        raise StageError(
+            "thermal_analyze 找不到两侧的主层或最外层：layers=%s 时每侧至少需要 2 层"
+            % sorted(set(layers)))
+    left_block = left_pl + left_outer
+    right_block = right_pl + right_outer
+    if len(left_block) != lead.n_atoms or len(right_block) != lead.n_atoms:
+        raise StageError(
+            "lead 力常数覆盖 %d 个原子，但器件侧的主层+次外层是 %d 个（左）/%d 个（右）："
+            "两者必须一致，否则拼不出完整矩阵"
+            % (lead.n_atoms, len(left_block), len(right_block)))
+    meta = FullFCMeta(n_atoms=n_atoms, device_indices=device_indices,
+                      left_indices=left_block, right_indices=right_block)
+    full = assemble_full_fc(k_dev, lead, meta)
+    # D13:ASR 只在**器件区行**上判 —— lead 行来自被截断成两个主层的 lead
+    # 力常数,它们与第三层及更远的耦合不在矩阵里,行和按构造不可能闭合
+    # (实测 lead 块自身相对残差 0.6)。器件区的邻居集合是完整的,才可判。
+    centre = _dof_indices(device_indices)
+    residual = acoustic_sum_residual(full, rows=centre)
+    relative = acoustic_sum_relative_residual(full, rows=centre)
+    # symmetrize=False:器件↔lead 交叉块已由 assemble_full_fc 补了转置,
+    # 再走一次对称化只会把 lead 侧那两块按构造不闭合的行平均进器件行,
+    # 凭空造出 0.1% 的"合规则违反"(实测 2.6e-13 → 7.5e-2 eV/Å²)。
+    asr = asr_diagnostics(dynamical_matrix(full, masses, symmetrize=False),
+                          masses, threshold=MAX_ASR_RELATIVE, rows=centre)
+    dynamical = asr["dynamical"]
+    imag = imaginary_modes(dynamical)
+    # 虚频只报波数没有意义：把本征矢拆成「谁在动、动的是哪类键」。
+    # 区域划分是判断物理软模 vs lead 截断假象的第一道筛子。
+    molecule_indices = [int(i) for i in device_meta.get("molecule_indices") or []]
+    molecule_set = set(molecule_indices)
+    regions = {
+        "molecule": molecule_indices,
+        "device_au": [i for i in device_indices if i not in molecule_set],
+        "lead": lead_indices,
+    }
+    soft_modes = describe_soft_modes(dynamical, masses=masses, elements=elements,
+                                     positions=positions, regions=regions)
+
+    # D 是 3N×3N,按**自由度**编号。用原子下标去切会得到一个形状"看起来
+    # 差不多"的子块(例如 54 个原子的 54×54 恰好与 18 个原子的 3N=54
+    # 撞上),transmission 的形状检查照样通过,但结果是垃圾(2026-11-24
+    # 本地干跑时 T_ph 恒为 0 才发现)。
+    arrived = dynamical[np.ix_(centre, centre)]
+    expected = 3 * len(device_indices)
+    if arrived.shape != (expected, expected):
+        raise StageError(
+            "中心区动力学矩阵形状 %r,期望 (%d,%d);请检查自由度下标换算"
+            % (arrived.shape, expected, expected))
+
+    return {
+        "n_atoms": n_atoms,
+        "elements": elements,
+        "positions": positions,
+        "masses": masses,
+        "device_indices": device_indices,
+        "lead_indices": lead_indices,
+        "left_pl": left_pl,
+        "right_pl": right_pl,
+        "left_outer": left_outer,
+        "right_outer": right_outer,
+        "centre": centre,
+        "full": full,
+        "dynamical": dynamical,
+        "asr": asr,
+        "residual": residual,
+        "relative": relative,
+        "imag": imag,
+        "soft_modes": soft_modes,
+        "lead": lead,
+    }
+
+
+def _curve_factory(built: dict, omega: np.ndarray, eta: float):
+    """给一份动力学矩阵算整条 ``T_ph(ω)``（η 在这里定，便于扫参）。"""
+    centre = built["centre"]
+    dofs = _dof_indices
+    left_pl, right_pl = built["left_pl"], built["right_pl"]
+    left_outer, right_outer = built["left_outer"], built["right_outer"]
+
+    def curve(matrix) -> np.ndarray:
+        return np.array([
+            transmission(float(w),
+                         matrix[np.ix_(centre, centre)],
+                         matrix[np.ix_(dofs(left_pl), dofs(left_pl))],
+                         matrix[np.ix_(dofs(right_pl), dofs(right_pl))],
+                         matrix[np.ix_(centre, dofs(left_pl))],
+                         matrix[np.ix_(centre, dofs(right_pl))],
+                         eta ** 2,
+                         v_lead_l=matrix[np.ix_(dofs(left_pl), dofs(left_outer))],
+                         v_lead_r=matrix[np.ix_(dofs(right_pl), dofs(right_outer))])
+            for w in omega])
+
+    return curve
+
+
+def sensitivity(fc_path, device_meta_path, geometry_path, thermal, *, temperature,
+                etas: list[float] | None = None,
+                steps: list[float] | None = None) -> dict:
+    """用同一份力常数扫 η 与能量步长（不碰 DFT、不花机时）。
+
+    为什么需要它：这条谱在 η=0.05 meV 下有法布里–珀罗针状结构，η 从 0.5 降到
+    0.05 会让 ``G_ph`` 从 10.9 升到 13.7（+25%），而梯形积分的点数从 0.1 加到
+    0.05 meV 只改变 1–2%。也就是说**η 是方法参数、步长只是求积精度**；不把这条
+    曲线摆出来，横向比较就变成了"不同 η 的两次计算谁高谁低"。
+    """
+    built = _build(fc_path, device_meta_path, geometry_path, thermal)
+    band_top = float(thermal.negf.band_top_meV)
+    etas = [0.3, 0.2, 0.1, 0.05] if etas is None else list(etas)
+    steps = [0.1, 0.05, 0.025] if steps is None else list(steps)
+
+    rows = []
+    for eta_mev in etas:
+        eta = float(eta_mev) * 1.0e-3
+        for step in steps:
+            omega, _ = _energy_grid(band_top, float(step))
+            curve = _curve_factory(built, omega, eta)
+            entry = {"eta_meV": float(eta_mev), "energy_step_meV": float(step)}
+            try:
+                t_ph = curve(built["dynamical"])
+                entry["g_ph_pw_per_k"] = float(
+                    thermal_conductance(omega, t_ph, temperature,
+                                        band_top_mev=band_top))
+                entry["rejected"] = None
+            except ValueError as exc:
+                # 带顶闸门拒绝本身就是结果：η 太大时泄漏被采到，说明该 η 下
+                # T_ph 已经不可信，不是"算错了"。
+                entry["g_ph_pw_per_k"] = None
+                entry["rejected"] = str(exc)
+            rows.append(entry)
+
+    by_eta: dict[float, dict[float, float | None]] = {}
+    for row in rows:
+        by_eta.setdefault(row["eta_meV"], {})[row["energy_step_meV"]] = \
+            row["g_ph_pw_per_k"]
+
+    # η → 0 外推。**不能用全部点做一次全局线性拟合**：G(η) 是饱和的
+    # （实测 0.3/0.2/0.1/0.05 → 12.37/13.12/13.61/13.72），全局拟合被低端
+    # 的陡坡拖出 13.67，反而**低于**最小 η 处的 13.72 —— 不合物理。
+    # 渐近斜率只由**最小的两个 η**给出,且固定在**生产步长**那一行:不同步长
+    # 之间本来就有 2% 的非单调摆动(13.449 vs 13.717),拿最细步长外推会把
+    # 求积底噪当成 η 趋势。
+    production_step = float(thermal.negf.energy_step_meV)
+    if not by_eta or production_step not in next(iter(by_eta.values())):
+        production_step = min(steps)
+    extrapolated = None
+    usable = sorted(((eta, values[production_step]) for eta, values in by_eta.items()
+                     if values.get(production_step) is not None),
+                    key=lambda item: item[0])
+    if len(usable) >= 2:
+        eta_small, g_small = usable[0]
+        eta_next, g_next = usable[1]
+        slope = (g_small - g_next) / (eta_small - eta_next)
+        extrapolated = {
+            "g_ph_pw_per_k": float(g_small + slope * (0.0 - eta_small)),
+            "slope_pw_per_k_per_meV": float(slope),
+            "n_points": 2,
+            "at_energy_step_meV": production_step,
+            "smallest_eta_meV": float(eta_small),
+            "g_ph_at_smallest_eta_pw_per_k": float(g_small),
+            "method": "生产步长下、两个最小 η 的渐近线性外推",
+        }
+
+    step_spread = {}
+    for eta, values in by_eta.items():
+        finite = [v for v in values.values() if v is not None]
+        if len(finite) >= 2 and max(finite) > 0:
+            step_spread[str(eta)] = float((max(finite) - min(finite)) / max(finite))
+
+    return {
+        "temperature_K": temperature,
+        "band_top_meV": band_top,
+        "etas_meV": [float(e) for e in etas],
+        "energy_steps_meV": [float(s) for s in steps],
+        "rows": rows,
+        "eta_zero_extrapolation": extrapolated,
+        "step_relative_spread": step_spread,
+        "production": {"eta_meV": float(thermal.negf.eta_meV),
+                       "energy_step_meV": float(thermal.negf.energy_step_meV)},
+    }
 
 
 @register
@@ -138,109 +371,31 @@ class ThermalAnalyzeStage(Stage):
         thermal = ctx.config.thermal
         temperature = thermal.resolved_temperature(ctx.config.transport.temperature)
 
-        k_dev = np.load(ctx.artifact("thermal_fc", "force_constants.npy"))
-        device_meta = json.loads(
-            ctx.artifact("thermal_device", "device_metadata.json").read_text(
-                encoding="utf-8"))
-        lead = load_lead_fc(_lead_fc_path(thermal.lead_fc))
-
-        n_atoms = int(device_meta["n_atoms"])
-        elements, positions = self._structure(ctx.artifact("thermal_fc", "geometry.in"))
-        if len(elements) != n_atoms:
-            raise StageError(
-                "thermal_analyze 的元素数(%d)与 device_metadata 的 n_atoms(%d) 不一致"
-                % (len(elements), n_atoms))
-        masses = masses_from_elements(elements)
-
-        device_indices = [int(i) for i in device_meta["device_indices"]]
-        lead_indices = [int(i) for i in device_meta["lead_indices"]]
-        layers = device_meta["layer_index"]
-        sides = device_meta["side"]
-        # 主层(principal layer)= 紧挨器件区的那一层;它外面还有一层用来给
-        # decimation 提供层间耦合 V_lead。**这两层**才是 lead 力常数要覆盖的
-        # 范围 —— lead_fc 存的是「两个主层」的块(18 原子 × 2 层 = 54 维),
-        # 而不是器件侧全部 4 层冻结 lead(36 原子)。传全部 36 个会让
-        # _place_lead_block 直接报「lead 区原子数 36 与 lead 力常数原子数 18 不符」。
-        left_pl = [i for i in lead_indices if layers[i] == 1 and sides[i] == "left"]
-        right_pl = [i for i in lead_indices if layers[i] == 1 and sides[i] == "right"]
-        left_outer = [i for i in lead_indices if layers[i] == 0 and sides[i] == "left"]
-        right_outer = [i for i in lead_indices if layers[i] == 0 and sides[i] == "right"]
-        if not (left_pl and right_pl and left_outer and right_outer):
-            raise StageError(
-                "thermal_analyze 找不到两侧的主层或最外层：layers=%s 时每侧至少需要 2 层"
-                % sorted(set(layers)))
-        left_block = left_pl + left_outer
-        right_block = right_pl + right_outer
-        if len(left_block) != lead.n_atoms or len(right_block) != lead.n_atoms:
-            raise StageError(
-                "lead 力常数覆盖 %d 个原子，但器件侧的主层+次外层是 %d 个（左）/%d 个（右）："
-                "两者必须一致，否则拼不出完整矩阵"
-                % (lead.n_atoms, len(left_block), len(right_block)))
-        meta = FullFCMeta(n_atoms=n_atoms, device_indices=device_indices,
-                          left_indices=left_block, right_indices=right_block)
-        full = assemble_full_fc(k_dev, lead, meta)
-        # D13:ASR 只在**器件区行**上判 —— lead 行来自被截断成两个主层的 lead
-        # 力常数,它们与第三层及更远的耦合不在矩阵里,行和按构造不可能闭合
-        # (实测 lead 块自身相对残差 0.6)。器件区的邻居集合是完整的,才可判。
-        centre = _dof_indices(device_indices)
-        residual = acoustic_sum_residual(full, rows=centre)
-        relative = acoustic_sum_relative_residual(full, rows=centre)
-        # symmetrize=False:器件↔lead 交叉块已由 assemble_full_fc 补了转置,
-        # 再走一次对称化只会把 lead 侧那两块按构造不闭合的行平均进器件行,
-        # 凭空造出 0.1% 的"合规则违反"(实测 2.6e-13 → 7.5e-2 eV/Å²)。
-        asr = asr_diagnostics(dynamical_matrix(full, masses, symmetrize=False),
-                              masses, threshold=MAX_ASR_RELATIVE, rows=centre)
-        dynamical = asr["dynamical"]
-        imag = imaginary_modes(dynamical)
-        # 虚频只报波数没有意义：把本征矢拆成「谁在动、动的是哪类键」。
-        # 区域划分是判断物理软模 vs lead 截断假象的第一道筛子。
-        molecule_indices = [int(i) for i in device_meta.get("molecule_indices") or []]
-        molecule_set = set(molecule_indices)
-        regions = {
-            "molecule": molecule_indices,
-            "device_au": [i for i in device_indices if i not in molecule_set],
-            "lead": lead_indices,
-        }
-        soft_modes = describe_soft_modes(dynamical, masses=masses, elements=elements,
-                                         positions=positions, regions=regions)
-
-        # D 是 3N×3N,按**自由度**编号。用原子下标去切会得到一个形状"看起来
-        # 差不多"的子块(例如 54 个原子的 54×54 恰好与 18 个原子的 3N=54
-        # 撞上),transmission 的形状检查照样通过,但结果是垃圾(2026-11-24
-        # 本地干跑时 T_ph 恒为 0 才发现)。
-        arrived = dynamical[np.ix_(centre, centre)]
-        expected = 3 * len(device_indices)
-        if arrived.shape != (expected, expected):
-            raise StageError(
-                "中心区动力学矩阵形状 %r,期望 (%d,%d);请检查自由度下标换算"
-                % (arrived.shape, expected, expected))
+        built = _build(
+            ctx.artifact("thermal_fc", "force_constants.npy"),
+            ctx.artifact("thermal_device", "device_metadata.json"),
+            ctx.artifact("thermal_fc", "geometry.in"),
+            thermal)
+        n_atoms = built['n_atoms']
+        device_indices = built['device_indices']
+        lead_indices = built['lead_indices']
+        left_pl, right_pl = built['left_pl'], built['right_pl']
+        left_outer, right_outer = built['left_outer'], built['right_outer']
+        centre = built['centre']
+        full = built['full']
+        dynamical = built['dynamical']
+        asr = built['asr']
+        residual = built['residual']
+        relative = built['relative']
+        imag = built['imag']
+        soft_modes = built['soft_modes']
 
         negf = thermal.negf
         band_top = float(negf.band_top_meV)
         step = float(negf.energy_step_meV)
-        n_points = int(round(band_top / step)) + 1
-        energy_mev = np.linspace(0.0, band_top * 1.25, max(n_points, 2))
-        omega = energy_mev * 1.0e-3
+        omega, energy_mev = _energy_grid(band_top, step)
         eta = float(negf.eta_meV) * 1.0e-3
-        dofs = _dof_indices
-
-        def transmission_curve(matrix) -> np.ndarray:
-            """给一份动力学矩阵，切块算整条 ``T_ph(ω)``。
-
-            抽成闭包是为了做一次「把虚频投影掉」的对照：软模对热导到底有没有
-            影响，只能靠同一套切块再算一遍来回答，不能凭"虚频不可传播"下断言。
-            """
-            return np.array([
-                transmission(float(w),
-                             matrix[np.ix_(centre, centre)],
-                             matrix[np.ix_(dofs(left_pl), dofs(left_pl))],
-                             matrix[np.ix_(dofs(right_pl), dofs(right_pl))],
-                             matrix[np.ix_(centre, dofs(left_pl))],
-                             matrix[np.ix_(centre, dofs(right_pl))],
-                             eta ** 2,
-                             v_lead_l=matrix[np.ix_(dofs(left_pl), dofs(left_outer))],
-                             v_lead_r=matrix[np.ix_(dofs(right_pl), dofs(right_outer))])
-                for w in omega])
+        transmission_curve = _curve_factory(built, omega, eta)
 
         t_ph = transmission_curve(dynamical)
         g_ph = thermal_conductance(omega, t_ph, temperature, band_top_mev=band_top)
@@ -322,6 +477,8 @@ class ThermalAnalyzeStage(Stage):
             # 力常数的对称性偏差：判据 ph_fc_symmetry 用它（M5-T2）。
             # 中心差分的力应当对称；明显不对称说明力噪声大或正负没配对。
             "fc_asymmetry": _fc_asymmetry(full),
+        # 跨 run 比较时要确认用的是同一份电极力常数(smj thermal-compare 会查)。
+        "lead_fc_sha256": built["lead"].sha256,
             "spectrum": {
                 "energy_meV": energy_mev.tolist(),
                 "transmission": t_ph.tolist(),
@@ -407,18 +564,6 @@ class ThermalAnalyzeStage(Stage):
             "g_ph_over_k_e": g_ph / k_e,
             "zt_total": zt_e / (1.0 + g_ph / k_e),
         }
-
-    @staticmethod
-    def _structure(geometry: Path) -> tuple[list[str], np.ndarray]:
-        """读 FHI-aims ``geometry.in`` 的元素序列与坐标（Å，只取 ``atom`` 行）。"""
-        elements: list[str] = []
-        coords: list[list[float]] = []
-        for line in Path(geometry).read_text(encoding="utf-8").splitlines():
-            parts = line.split()
-            if len(parts) >= 5 and parts[0] == "atom":
-                coords.append([float(parts[1]), float(parts[2]), float(parts[3])])
-                elements.append(parts[4])
-        return elements, np.asarray(coords, dtype=float)
 
     @staticmethod
     def _elements(geometry: Path) -> list[str]:

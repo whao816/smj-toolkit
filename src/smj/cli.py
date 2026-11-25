@@ -738,6 +738,93 @@ def _resolve_retry_slots(spec: str, stage_dir: Path) -> list[int]:
     return slots
 
 
+def cmd_thermal_compare(args: argparse.Namespace) -> int:
+    """多 run 热导比较：先比协议，再比数。"""
+    from .phonon.compare import compare, find_runs, load_run, render_markdown
+
+    try:
+        paths = find_runs([Path(p) for p in args.paths])
+        records = [load_run(path) for path in paths]
+    except (OSError, ValueError) as exc:
+        print("错误: %s" % exc, file=sys.stderr)
+        return EXIT_FAILED
+    result = compare(records)
+    markdown = render_markdown(result)
+    if args.json:
+        _emit_json({"consistent": result.consistent,
+                    "mismatches": result.mismatches,
+                    "rows": result.rows()})
+    else:
+        if args.out:
+            target = Path(args.out)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(markdown, encoding="utf-8", newline="\n")
+            print("已写 %s（%d 个 run）" % (target, len(records)))
+        else:
+            print(markdown)
+    if args.strict and not result.consistent:
+        return EXIT_FAILED
+    return EXIT_OK
+
+
+def _cmd_thermal_sensitivity(args, config, runner) -> int:
+    """扫 η 与能量步长：回答"这个数有多依赖正则化参数"。
+
+    不重跑 DFT —— 力常数已经在 `thermal_fc/force_constants.npy` 里，扫参只是
+    把同一份力常数用不同 η 再算一遍透射。没有这一步，横向比较很容易变成
+    "η 大的那次算低了"，而两次的差别可能比分子之间的真实差别还大。
+    """
+    from .stages.thermal_analyze import sensitivity
+
+    fc_dir = runner.layout.ensure_stage("thermal_fc")
+    if not (fc_dir / "force_constants.npy").is_file():
+        raise SmjError("没找到 thermal_fc/force_constants.npy；先跑完 thermal_fc 再扫参")
+    payload = sensitivity(
+        fc_dir / "force_constants.npy",
+        runner.layout.ensure_stage("thermal_device") / "device_metadata.json",
+        fc_dir / "geometry.in",
+        config.thermal,
+        temperature=config.thermal.resolved_temperature(
+            config.transport.temperature))
+    target = runner.layout.ensure_stage("thermal_analyze") / "sensitivity.json"
+    target.write_text(json.dumps(payload, indent=2, ensure_ascii=False,
+                                 allow_nan=False) + "\n", encoding="utf-8")
+    if args.json:
+        _emit_json(payload)
+        return EXIT_OK
+    production = payload["production"]
+    print("扫参（T = %.1f K，带顶 %.2f meV）：η 与步长都只改正则化，不改力常数"
+          % (payload["temperature_K"], payload["band_top_meV"]))
+    header = "  %-9s" % "η\\步长"
+    for step in payload["energy_steps_meV"]:
+        header += "%11s" % ("%.3f" % step)
+    print(header)
+    table: dict[float, dict[float, float | None]] = {}
+    for row in payload["rows"]:
+        table.setdefault(row["eta_meV"], {})[row["energy_step_meV"]] = \
+            row["g_ph_pw_per_k"]
+    for eta in payload["etas_meV"]:
+        line = "  %-9.3f" % eta
+        for step in payload["energy_steps_meV"]:
+            value = table.get(eta, {}).get(step)
+            line += "%11s" % ("—" if value is None else "%.3f" % value)
+        if eta == production["eta_meV"]:
+            line += "   ← 生产配置"
+        print(line)
+    extrapolated = payload.get("eta_zero_extrapolation")
+    if extrapolated:
+        print("  η→0 外推：%.3f pW/K（斜率 %.2f pW/K per meV，用 %d 个点）"
+              % (extrapolated["g_ph_pw_per_k"],
+                 extrapolated["slope_pw_per_k_per_meV"],
+                 extrapolated["n_points"]))
+    spread = payload.get("step_relative_spread") or {}
+    if spread:
+        print("  步长引起的相对变化最大 %.2f%%（梯形积分底噪，不是收敛趋势）"
+              % (100.0 * max(spread.values())))
+    print("  已写 %s" % target)
+    return EXIT_OK
+
+
 def _cmd_thermal_retry(args, config, runner, names) -> int:
     """只重跑 ``thermal_fc`` 数组作业里失败/未收敛的槽位。
 
@@ -813,6 +900,9 @@ def cmd_thermal(args: argparse.Namespace) -> int:
                        "或去掉 --dry-run" % action)
 
     runner = _make_runner(args, config)
+
+    if args.sensitivity:
+        return _cmd_thermal_sensitivity(args, config, runner)
 
     if args.retry is not None:
         return _cmd_thermal_retry(args, config, runner, names)
@@ -1720,6 +1810,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "SPEC 是逗号分隔的下标（如 17,203），"
                              "或 missing / not-converged（从 fc_summary.json 读）。"
                              "重跑后收尾步骤会自动重拼 forces_all.json"))
+    group.add_argument("--sensitivity", action="store_true",
+                       help=("用已有 force_constants.npy 扫 η 与能量步长"
+                             "（不碰集群），写 sensitivity.json 并给出 η→0 外推"))
     thermal_cmd.add_argument("--dry-run", action="store_true", help="只生成输入")
     thermal_cmd.add_argument("--force", action="store_true", help="允许重跑/覆盖")
     _add_common(thermal_cmd)
@@ -1899,6 +1992,20 @@ def build_parser() -> argparse.ArgumentParser:
     lead_fc.add_argument("--export", metavar="DIR", default=None,
                          help="把资产复制到 DIR（生成 lead_fc.npy + lead_fc.json）")
     lead_fc.set_defaults(handler=cmd_lead_fc)
+
+    compare_cmd = subparsers.add_parser(
+        "thermal-compare", help="把多个 run 的声子热导摆到一张表里",
+        description=("读各 run 的 thermal_analyze/thermal.json，输出 markdown 表。"
+                     "**先比协议再比数**：η、能量步长、温度、电极力常数任一不一致"
+                     "都会显式列出（D15：跨协议比较等于换方法）；--strict 时直接失败。"))
+    _add_common(compare_cmd, with_config=False)
+    compare_cmd.add_argument("paths", nargs="+", metavar="PATH",
+                             help="run 目录、其父目录（扫一层）或 thermal.json")
+    compare_cmd.add_argument("--out", metavar="FILE", default=None,
+                             help="把 markdown 表写到文件（默认打印到 stdout）")
+    compare_cmd.add_argument("--strict", action="store_true",
+                             help="协议不一致时返回非零退出码")
+    compare_cmd.set_defaults(handler=cmd_thermal_compare)
 
     return parser
 
