@@ -162,8 +162,11 @@ class ThermalAnalyzeStage(Stage):
         centre = _dof_indices(device_indices)
         residual = acoustic_sum_residual(full, rows=centre)
         relative = acoustic_sum_relative_residual(full, rows=centre)
-        asr = asr_diagnostics(dynamical_matrix(full, masses), masses,
-                              threshold=MAX_ASR_RELATIVE, rows=centre)
+        # symmetrize=False:器件↔lead 交叉块已由 assemble_full_fc 补了转置,
+        # 再走一次对称化只会把 lead 侧那两块按构造不闭合的行平均进器件行,
+        # 凭空造出 0.1% 的"合规则违反"(实测 2.6e-13 → 7.5e-2 eV/Å²)。
+        asr = asr_diagnostics(dynamical_matrix(full, masses, symmetrize=False),
+                              masses, threshold=MAX_ASR_RELATIVE, rows=centre)
         dynamical = asr["dynamical"]
         imag = imaginary_modes(dynamical)
 

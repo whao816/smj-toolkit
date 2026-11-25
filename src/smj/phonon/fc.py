@@ -402,6 +402,14 @@ def assemble_full_fc(k_dev: np.ndarray, lead: LeadFC, meta: FullFCMeta) -> np.nd
 
     lead 区四块来自冻结 lead 力常数;器件行随后被器件侧实测值**整体覆盖**
     (交界处优先信实测)。覆盖造成的差异用 :func:`lead_device_conflicts` 单独统计。
+
+    **器件↔lead 的交叉块必须补上转置**:器件行给出 ``K[device, lead]``,
+    而 lead 力常数只覆盖 lead 原子本身,``K[lead, device]`` 不会被填。
+    互易性要求两者互为转置;漏掉时矩阵不对称度约 8%,后果有两个:
+    ① ASR 残差从 1e-13 涨到 2.7 eV/Å²(看似"力常数不合声学求和规则",
+    实际是矩阵缺块);② ``dynamical_matrix(symmetrize=True)`` 把交叉块
+    平均成一半,``v_l``(器件↔主层耦合)直接少一半,透射按 ``|v|⁴`` 掉一个
+    数量级(2026-11-25 实测:补转置前 G_ph 偏低 4 倍)。
     """
     n = int(meta.n_atoms)
     matrix = np.zeros((3 * n, 3 * n), dtype=float)
@@ -414,7 +422,20 @@ def assemble_full_fc(k_dev: np.ndarray, lead: LeadFC, meta: FullFCMeta) -> np.nd
         raise ValueError("器件行形状应为 %r,得到 %r" % (expected, array.shape))
     for pos, atom in enumerate(meta.device_indices):
         matrix[3 * atom:3 * atom + 3, :] = array[3 * pos:3 * pos + 3, :]
+
+    lead_atoms = list(meta.left_indices) + list(meta.right_indices)
+    if lead_atoms:
+        device_dofs = _dofs(meta.device_indices)
+        lead_dofs = _dofs(lead_atoms)
+        matrix[np.ix_(lead_dofs, device_dofs)] = \
+            matrix[np.ix_(device_dofs, lead_dofs)].T
     return matrix
+
+
+def _dofs(atoms) -> np.ndarray:
+    """把原子下标展开成自由度下标 ``[3a, 3a+1, 3a+2]``。"""
+    return np.array([3 * int(a) + k for a in atoms for k in range(3)],
+                    dtype=int)
 
 
 def lead_device_conflicts(k_dev: np.ndarray, lead: LeadFC, meta: FullFCMeta,

@@ -129,6 +129,11 @@ def test_thermal_fc_prepare_renders_array_script(workdir):
     script = (fc_dir / "sub_thermal_fc.sh").read_text(encoding="utf-8")
     assert "--array=0-323%8" in script
     assert ".finalize.lock" in script
+    # 汇总数的是隐藏文件 .done。写成 ../*/done 会永远数到 0,哨兵和
+    # forces_all.json 都不产生(job 26560 实际踩过)。
+    assert "../*/.done 2>/dev/null | wc -l" in script
+    assert "../*/done" not in script
+    assert "concat_forces.py" in script
     assert "apply_displacement.py" in script
     assert "extract_forces.py" in script
     # 位移作业从零起算,不能带 restart(每次 291 MB × 324 次)

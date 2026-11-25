@@ -1076,7 +1076,7 @@ def _thermal_lead_match(run_dir: Path, cfg: Any) -> bool | None:
         return None
     spec = meta.get("spec") or {}
     checks = (
-        (lead.get("a_lattice_A"), spec.get("a_lattice")),
+        (lead.get("a_lattice_A"), spec.get("a_lattice_A")),
         (tuple(lead.get("in_plane") or ()), tuple(spec.get("in_plane") or ())),
     )
     for recorded, expected in checks:

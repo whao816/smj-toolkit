@@ -211,6 +211,41 @@ def test_assemble_full_fc_places_blocks(workdir):
     assert np.all(full[24:36, 18:24] == 0.0)
 
 
+def test_assemble_full_fc_fills_device_lead_transpose(workdir):
+    """器件↔lead 交叉块要补转置。
+
+    器件行给出 ``K[device, lead]``,lead 力常数只覆盖 lead 原子本身,
+    ``K[lead, device]`` 不会自己冒出来。漏掉时矩阵不对称度约 8%,
+    两类后果:① ``dynamical_matrix(symmetrize=True)`` 把交叉块平均成一半,
+    ``v_l`` 少一半、透射按 ``|v|⁴`` 掉一个量级;② 用 D 反推 K 得到的
+    ASR 残差从 1e-13 涨到 2.7 eV/Å²(2026-11-25 真实体系实测)。
+    """
+    lead = _lead(workdir)
+    meta = FullFCMeta(n_atoms=12, device_indices=(4, 5),
+                      left_indices=(0, 1, 2, 3), right_indices=(8, 9, 10, 11))
+    k_dev = np.arange(3 * 2 * 3 * 12, dtype=float).reshape(6, 36)
+    full = assemble_full_fc(k_dev, lead, meta)
+    device_dofs = np.arange(12, 18)
+    lead_dofs = np.concatenate([np.arange(0, 12), np.arange(24, 36)])
+    np.testing.assert_allclose(full[np.ix_(lead_dofs, device_dofs)],
+                               full[np.ix_(device_dofs, lead_dofs)].T)
+
+
+def test_assembled_full_fc_keeps_acoustic_sum_on_device_rows(workdir):
+    """器件行来自实测力差,行和必须闭合;补转置不该破坏它。"""
+    lead = _lead(workdir)
+    meta = FullFCMeta(n_atoms=12, device_indices=(4, 5),
+                      left_indices=(0, 1, 2, 3), right_indices=(8, 9, 10, 11))
+    k_dev = np.zeros((6, 36))
+    # 造一组行和为零的器件行(等价于"每个快照合力为零")
+    for row in range(6):
+        k_dev[row, row] = 5.0
+        k_dev[row, row + 6] = -5.0
+    full = assemble_full_fc(k_dev, lead, meta)
+    device_rows = full[12:18]
+    np.testing.assert_allclose(device_rows.sum(axis=1), 0.0, atol=1e-12)
+
+
 def test_lead_device_conflicts_counts_differences(workdir):
     lead = _lead(workdir)
     meta = FullFCMeta(n_atoms=12, device_indices=(4, 5),

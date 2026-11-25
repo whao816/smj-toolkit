@@ -12,7 +12,7 @@
 # 为什么用数组而不是 324 个独立作业:同一次 sbatch 提交、同一个 job id,
 # 排一次队;而且 collect 只需要数 fc/*/forces.json 的份数就能判完整。
 #
-# 目录约定:fc/NNNN/{{geometry.in, control.in, aims.out, forces.json}}
+# 目录约定:fc/NNNN/{{geometry.in, control.in, aims.out, forces.json, .done}}
 #   NNNN = 四位补零的数组下标,与 displacements.json 的 slot 一一对应。
 {module_load}
 {exe_define}
@@ -40,15 +40,17 @@ fi
 printf '%s %s\n' "$_rc" "$(date -Is)" > .done
 
 # --- 阶段级哨兵:最后一个完成的任务负责汇总 ---
-# 每个任务写完自己的 .done 后数一次 fc/*/done 的份数;数到 {count} 的那个
+# 每个任务写完自己的 .done 后数一次 fc/*/.done 的份数;数到 {count} 的那个
 # 任务再抢 .finalize.lock(原子性 mkdir),抢到的在锁内**重新数一次**并汇总退出码。
-_count=$(ls -1 ../*/done 2>/dev/null | wc -l)
+# 注意:数的是隐藏文件 .done。glob 里漏掉那个点(写成不带点的 done)会永远
+# 数到 0,哨兵与 forces_all.json 就都不会产生(2026-11-25 job 26560 实际踩过)。
+_count=$(ls -1 ../*/.done 2>/dev/null | wc -l)
 if [ "$_count" -ge {count} ]; then
     if mkdir ../.finalize.lock 2>/dev/null; then
-        _total=$(ls -1 ../*/done 2>/dev/null | wc -l)
+        _total=$(ls -1 ../*/.done 2>/dev/null | wc -l)
         _agg=0
         if [ "$_total" -ge {count} ]; then
-            for _f in ../*/done; do
+            for _f in ../*/.done; do
                 _v=$(cat "$_f" 2>/dev/null)
                 _v=${{_v%% *}}
                 case "$_v" in
