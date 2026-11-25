@@ -4,6 +4,27 @@
 
 ## 未发布
 
+### 新功能:热导的跨 run 比较与正则化扫参(2026-11-25)
+
+- 新增 `smj thermal-compare PATH...`：读各 run 的 `thermal_analyze/thermal.json`，
+  输出 markdown 表（`G_ph` / `N_eff` / `G_Q` / 温度 / η / 步长 / 虚频 / 判定）。
+  **先比协议再比数**——η、能量步长、温度、`lead_fc_sha256` 任一不一致都会在表前
+  列出不一致项；`--strict` 时直接返回非零。`PATH` 可以是 run 目录、其父目录
+  （扫一层）或 `thermal.json` 本身；`--out` 写文件，`--json` 给机器读。
+- 新增 `smj thermal --sensitivity`：用已有 `force_constants.npy` 扫 η（默认
+  0.3/0.2/0.1/0.05 meV）与能量步长（0.1/0.05/0.025 meV），写
+  `thermal_analyze/sensitivity.json`，并给出「η→0 外推」。**不碰集群**。
+  被带顶闸门拒绝的组合如实记成 `null` + `rejected`（拒绝本身就是结果）。
+- η→0 外推**只取生产步长下最小的两个 η**做渐近线性外推：实测 `G(η)` 是饱和的
+  （0.3/0.2/0.1/0.05 → 12.37/13.12/13.61/13.72），全局线性拟合会被低端陡坡拖出
+  13.67，反而**低于**最小 η 的实测值 13.72 —— 不合物理。nap-sh 的外推值为
+  13.82 pW/K（最小 η 实测 13.72）。
+- `thermal.json` 新增 `lead_fc_sha256`，供跨 run 比较时确认电极力常数一致。
+- `thermal_analyze` 的 NEGF 组装抽成 `_build` / `_energy_grid` / `_curve_factory`
+  / `sensitivity`，`collect` 与扫参走**同一套**矩阵与切块，避免两处各写一份
+  （2026-11-24 就栽在"原子下标当自由度下标切 D、形状恰好撞上、`T_ph` 恒为 0"
+  这种双实现分歧上）。重构后真实 run 复现 13.71663469845449 pW/K 逐位一致。
+
 ### 改进:热导数组作业的失败恢复(2026-11-25)
 
 - `thermal_fc` 收尾步骤改为 `--allow-missing --summary fc_summary.json`：槽位失败

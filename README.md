@@ -518,6 +518,41 @@ nap-sh 实测（arXiv 级标定，2026-11）：90 原子（Au 72 + 分子 18）�
 已知限制：简谐近似（非谐修正文献估计 ~15%）；线性响应给不出热整流；`ZT_total` 要求同一
 几何的电子透射，本链不提供（`thermal.json` 里 `zt.available = false` 并写明原因）。
 
+### 6.1.1 扫参与跨 run 比较
+
+`G_ph` 对正则化参数（η、能量步长）极其敏感，所以报告数字前先把「这个数有多依赖 η」
+量化出来，再谈分子之间的差别：
+
+```bash
+$ smj thermal --sensitivity -c smj.yaml     # 不碰集群：复用已有 force_constants.npy
+  η\步长           0.100      0.050      0.025
+  0.300         12.099     12.372          —
+  0.200         12.799     13.122     12.961
+  0.100         13.355     13.614     13.403
+  0.050         13.494     13.717     13.449   ← 生产配置
+  η→0 外推：13.819 pW/K
+  步长引起的相对变化最大 2.46%（梯形积分底噪，不是收敛趋势）
+```
+
+写 `thermal_analyze/sensitivity.json`。η→0 只用**生产步长下最小的两个 η** 做渐近
+线性外推——`G(η)` 是饱和的，全局拟合会被低端陡坡拖出比最小 η 还小的值。
+
+多个分子放一张表时用 `smj thermal-compare`，它**先比协议再比数**：
+
+```bash
+$ smj thermal-compare runs/            # 输出 markdown 表；--out 写文件，--json 给机器
+$ smj thermal-compare runs/ --strict   # 协议不一致直接返回非零
+```
+
+协议项为温度、η、能量步长、`band_top_meV`、`lead_fc_sha256`；任一不一致都会在表前
+点名（跨协议的 `G_ph` 互比等于换方法，见 D15）。
+
+数组作业掉点时不必重跑整批：
+
+```bash
+$ smj thermal --stage thermal_fc --retry missing            # 或 --retry 17,203
+```
+
 ## 7. 附带功能
 
 | 命令 | 作用 | 产物/输出 |
