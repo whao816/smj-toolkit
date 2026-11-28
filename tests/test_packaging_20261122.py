@@ -29,11 +29,15 @@ def test_version_reads_pyproject_and_matches_package():
 def test_metadata_extra_all_matches_pyproject():
     bw = _build_wheel_module()
     text = bw._metadata(bw._version())
-    assert "Provides-Extra: all" in text
-    assert "extra == \"all\"" in text
+    extras = bw._extras()
+    assert set(extras) == {"plot", "siesta", "dev", "all"}
+    for name in extras:
+        assert "Provides-Extra: %s" % name in text
+    assert 'Requires-Dist: netCDF4>=1.6; extra == "siesta"' in text
+    assert 'Requires-Dist: matplotlib>=3.7; extra == "dev"' in text
     pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
         encoding="utf-8")
-    assert "all = [" in pyproject
+    assert "siesta = [" in pyproject and "dev = [" in pyproject
 
 
 def test_sdist_includes_docs_and_demo_reference():
