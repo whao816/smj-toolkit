@@ -51,6 +51,18 @@ STAGE_ORDER: tuple[str, ...] = (
 #: ``smj stage thermal_xxx`` / ``--run`` 时使用；按设计 DECISIONS D12，
 #: 它不出现在 ``smj status`` / ``smj plan`` 的默认阶段序列里，因此不进
 #: :data:`STAGE_ORDER`，:func:`stage_index` 对它显式报错。
+SIESTA_STAGE_ORDER = ("molecule_opt", "siesta_electrode", "siesta_junction_relax",
+                      "transiesta_scf", "tbtrans_te", "junction_analyze")
+
+
+def electronic_stages(backend: str) -> tuple[str, ...]:
+    if backend == "transiesta":
+        return SIESTA_STAGE_ORDER
+    if backend == "aitranss":
+        return STAGE_ORDER
+    raise SmjError(f"未知电子输运路线 {backend!r}")
+
+
 THERMAL_STAGE_ORDER: tuple[str, ...] = (
     "thermal_device",
     "thermal_relax",
@@ -147,7 +159,7 @@ def normalize_stage(name: str) -> str:
         raise SmjError("阶段名不能为空")
     key = str(name).strip().lower().replace(" ", "_")
     key = re.sub(r"_+", "_", key)
-    if key in STAGE_ORDER or key in LEGACY_STAGES or key in THERMAL_STAGE_ORDER:
+    if key in STAGE_ORDER or key in SIESTA_STAGE_ORDER or key in LEGACY_STAGES or key in THERMAL_STAGE_ORDER:
         return key
     if key in _ALIASES:
         return _ALIASES[key]
@@ -189,13 +201,21 @@ def previous_stage(name: str) -> str | None:
     return STAGE_ORDER[idx - 1] if idx > 0 else None
 
 
-def stage_range(start: str | None = None, end: str | None = None) -> list[str]:
+def stage_range(start: str | None = None, end: str | None = None, *, backend: str = "aitranss") -> list[str]:
     """``--from/--to`` -> 阶段列表（含端点，按执行顺序）。"""
-    lo = 0 if start is None else stage_index(start)
-    hi = len(STAGE_ORDER) - 1 if end is None else stage_index(end)
+    order = electronic_stages(backend)
+    if backend == "transiesta":
+        try:
+            lo = order.index(normalize_stage(start)) if start else 0
+            hi = order.index(normalize_stage(end)) if end else len(order) - 1
+        except ValueError as exc:
+            raise SmjError("所选阶段不属于 SIESTA 路线") from exc
+    else:
+        lo = 0 if start is None else stage_index(start)
+        hi = len(order) - 1 if end is None else stage_index(end)
     if lo > hi:
         raise SmjError("--from %s 在 --to %s 之后，区间为空" % (start, end))
-    return list(STAGE_ORDER[lo:hi + 1])
+    return list(order[lo:hi + 1])
 
 
 # --------------------------------------------------------------------------- #
@@ -283,8 +303,14 @@ class RunState:
     warnings: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
+    backend: str = "aitranss"
+
+    @property
+    def order(self) -> tuple[str, ...]:
+        return electronic_stages(self.backend)
+
     def __post_init__(self) -> None:
-        for stage in STAGE_ORDER:
+        for stage in self.order:
             self.stages.setdefault(stage, StageState())
 
     # -- 查询 -------------------------------------------------------------- #
@@ -305,7 +331,7 @@ class RunState:
         return self.stage(name).status
 
     def statuses(self) -> dict[str, str]:
-        return {name: self.stages[name].status for name in STAGE_ORDER}
+        return {name: self.stages[name].status for name in self.order}
 
     def is_done(self, name: str) -> bool:
         return self.status(name) in DONE_STATUSES
@@ -314,7 +340,7 @@ class RunState:
         return self.status(name) == "failed"
 
     def first_incomplete(self) -> str | None:
-        for name in STAGE_ORDER:
+        for name in self.order:
             if self.status(name) not in DONE_STATUSES:
                 return name
         return None
@@ -356,13 +382,14 @@ class RunState:
 
     # -- 持久化 ------------------------------------------------------------ #
     def to_dict(self) -> dict[str, Any]:
-        ordered = list(STAGE_ORDER)
+        ordered = list(self.order)
         ordered += [name for name in LEGACY_STAGES if name in self.stages]
         # 热导链按需出现：不参与 stage_range/plan/status 的默认展示，
         # 但 prepare/collect 的状态必须落盘，否则 --submit 会认不出 --prepare(D12)。
         ordered += [name for name in THERMAL_STAGE_ORDER if name in self.stages]
         return {
             "schema": "smj.state.v1",
+            **({"backend": self.backend} if self.backend != "aitranss" else {}),
             "run": self.run,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -383,9 +410,10 @@ class RunState:
                     stages[normalize_stage(name)] = StageState.from_dict(payload)
                 except SmjError:
                     continue
-        known = {"schema", "run", "created_at", "updated_at", "stages", "results", "warnings"}
+        known = {"schema", "run", "created_at", "updated_at", "stages", "results", "warnings", "backend"}
         state = cls(
             run=str(data.get("run") or run),
+            backend=str(data.get("backend", "aitranss")),
             path=path,
             created_at=str(data.get("created_at") or now_iso()),
             updated_at=str(data.get("updated_at") or now_iso()),
@@ -397,17 +425,20 @@ class RunState:
         return state
 
     @classmethod
-    def load(cls, path: str | Path, *, run: str = "") -> "RunState":
+    def load(cls, path: str | Path, *, run: str = "", backend: str | None = None) -> "RunState":
         p = Path(path)
         if not p.exists():
-            return cls(run=run or p.parent.name, path=p)
+            return cls(run=run or p.parent.name, path=p, backend=backend or "aitranss")
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise SmjError("state.json 读取失败 (%s): %s" % (p, exc)) from exc
         if not isinstance(data, Mapping):
             raise SmjError("state.json 顶层应为对象: %s" % p)
-        return cls.from_dict(data, run=run or p.parent.name, path=p)
+        state = cls.from_dict(data, run=run or p.parent.name, path=p)
+        if backend is not None and state.backend != backend:
+            raise SmjError(f"运行目录已绑定 {state.backend}，当前配置为 {backend}，请使用独立 run.name")
+        return state
 
     def save(self, path: str | Path | None = None) -> Path:
         target = Path(path) if path else self.path

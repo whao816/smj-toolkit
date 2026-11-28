@@ -237,13 +237,20 @@ def _make_runner(args: argparse.Namespace, config: RunConfig) -> StageRunner:
 
 def _state_for(config: RunConfig) -> tuple[RunLayout, RunState]:
     layout = RunLayout(config.run_dir)
-    state = RunState.load(layout.state_path, run=config.name)
+    state = RunState.load(layout.state_path, run=config.name, backend=config.transport.backend)
     return layout, state
 
 
 # --------------------------------------------------------------------------- #
 # 阶段元数据（plan / audit 用；stages 缺失时退回静态表）
 # --------------------------------------------------------------------------- #
+def _route_getter(config, args):
+    if config.transport.backend == "transiesta":
+        from .siesta import get_stage
+        return getattr(args, "stage_getter", None) or get_stage
+    return getattr(args, "stage_getter", None)
+
+
 def _fallback_meta(name: str) -> dict[str, Any]:
     index = STAGE_ORDER.index(name)
     return {
@@ -398,6 +405,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         config_path = target / DEFAULT_CONFIG_NAME
         base = target
     name = args.name or _slug(base.resolve().name or "my-run")
+    if args.mode == "slurm-ssh" and not args.name:
+        name = re.sub(r"[^a-z0-9]+", "-", name)[:40].strip("-") or "my-run"
     path = write_default_config(
         config_path, name=name, xyz=args.xyz, mode=args.mode, overwrite=args.force)
     print("已写入配置: %s" % path)
@@ -564,10 +573,11 @@ def cmd_plan(args: argparse.Namespace) -> int:
     config = _load_config(args)
     layout, state = _state_for(config)
     rows = []
-    for name in STAGE_ORDER:
-        meta = _stage_meta(name, getattr(args, "stage_getter", None))
+    getter = _route_getter(config, args)
+    for name in state.order:
+        meta = _stage_meta(name, getter)
         script = meta["script"] or "-"
-        if name == "molecule_opt":
+        if name == "molecule_opt" and config.transport.backend == "aitranss":
             # 脚本名由引擎声明（缺省引擎 aims），不再在这里写引擎分支。
             script = engine_for_config(config).script
         rows.append({
@@ -765,6 +775,36 @@ def cmd_thermal_compare(args: argparse.Namespace) -> int:
         else:
             print(markdown)
     if args.strict and not result.consistent:
+        return EXIT_FAILED
+    return EXIT_OK
+
+
+def cmd_siesta_kconv(args: argparse.Namespace) -> int:
+    """Compare two collected TranSIESTA runs on different transverse k meshes."""
+    from .siesta.kconv import compare, render_markdown
+
+    try:
+        payload = compare(args.base, args.refined, tolerance=args.tolerance)
+    except (OSError, ValueError) as exc:
+        print("错误: %s" % exc, file=sys.stderr)
+        return EXIT_FAILED
+    markdown = render_markdown(payload)
+    if args.out:
+        target = Path(args.out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(markdown + "\n", encoding="utf-8", newline="\n")
+        print("已写 %s" % target)
+    if args.json_out:
+        target = Path(args.json_out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(_jsonable(payload), ensure_ascii=False, indent=2) + "\n",
+                          encoding="utf-8", newline="\n")
+        print("已写 %s" % target)
+    if args.json:
+        _emit_json(payload)
+    elif not args.out:
+        print(markdown)
+    if args.strict and not payload["passed"]:
         return EXIT_FAILED
     return EXIT_OK
 
@@ -1004,7 +1044,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     config = _load_config(args)
     start = args.from_stage or args.stage
     end = args.to_stage or args.stage
-    names = stage_range(start, end)  # 提前校验，避免跑一半才发现区间非法
+    names = stage_range(start, end, backend=config.transport.backend)  # 提前校验，避免跑一半才发现区间非法
 
     keep_going: bool | None = None
     if args.keep_going:
@@ -1030,7 +1070,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if all(outcome.ok for outcome in outcomes):
         if not args.json:
             print("\n完成：%s" % ", ".join(names))
-            if "junction_analyze" in names:
+            if "junction_analyze" in names and config.transport.backend == "aitranss":
                 print("出图: junction_analyze/T_E.png + T_E.pdf（统一版式 style %s）；"
                       "换尺寸/叠加用 smj plot -c %s"
                       % (_style_version(), args.config))
@@ -1080,7 +1120,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def _status_rows(state: RunState) -> list[dict[str, Any]]:
     rows = []
-    for name in STAGE_ORDER:
+    for name in state.order:
         stage = state.stage(name)
         rows.append({
             "stage": name,
@@ -1199,6 +1239,30 @@ def cmd_pdos(args: argparse.Namespace) -> int:
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     config = _load_config(args)
+    if config.transport.backend == "transiesta":
+        from shutil import copyfile
+        from .siesta.io import read_json
+        runner = _make_runner(args, config)
+        stage = "junction_analyze"
+        target = Path(args.plot).resolve() if args.plot else None
+        if target and target.suffix.lower() != ".png":
+            raise SmjError("TranSIESTA 的 --plot 路径需要 .png 扩展名")
+        if runner.state.status(stage) != "collected" or args.force:
+            runner.prepare(stage, force=args.force)
+            runner.collect(stage)
+        else:
+            runner.run(stage, stage)
+        outputs = runner.state.stage(stage).outputs_sha256
+        files = {Path(n).name: runner.layout.artifact(stage, n) for n in outputs}
+        data = read_json(files["results.json"])
+        if target and target != files["T_E.png"].resolve():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            copyfile(files["T_E.png"], target)
+        if args.json:
+            _emit_json(data)
+        else:
+            _print_mapping(data, title="analyze: %s" % config.name)
+        return EXIT_OK
     module = _optional_module(_AUX_MODULES["analyze"][0], "analyze（透射谱分析）")
     func = _find_callable(module, _AUX_MODULES["analyze"][1])
     plot = None if args.plot is None else (True if args.plot == "" else args.plot)
@@ -1270,6 +1334,8 @@ def cmd_plot(args: argparse.Namespace) -> int:
 def cmd_review(args: argparse.Namespace) -> int:
     config = _load_config(args)
 
+    if config.transport.backend == "transiesta" and getattr(args, "approve", False):
+        raise SmjError("--approve 仅适用于 AITRANSS 的连接核对")
     # 2026-11-15：A2 人工确认更名为「连接核对」（connection check），默认自动登记。
     # --approve 是手工补签/重签路径（fail-closed），签完在同一条命令里看门过没过。
     if getattr(args, "approve", False):
@@ -1329,7 +1395,12 @@ def cmd_review(args: argparse.Namespace) -> int:
         _print_issues(data.get("issues") or data.get("problems"))
     _print_mapping(
         {k: v for k, v in data.items() if k not in ("issues", "problems", "ok")})
-    print("结论: %s" % ("通过" if ok else "未通过"))
+    if config.transport.backend == "transiesta":
+        verdict = data.get("physics_verdict") or (data.get("siesta") or {}).get(
+            "physics_verdict") or "inconclusive"
+        print("工程检查%s；物理判定 %s" % ("通过" if ok else "未通过", verdict))
+    else:
+        print("结论: %s" % ("通过" if ok else "未通过"))
     return EXIT_OK if ok else EXIT_FAILED
 
 
@@ -1406,9 +1477,10 @@ def cmd_audit(args: argparse.Namespace) -> int:
                             "run_spec.protocol_sha256=%s 与当前配置=%s 不一致"
                             % (str(stored)[:12], current[:12]))
 
-    for name in STAGE_ORDER:
+    getter = _route_getter(config, args)
+    for name in state.order:
         stage = state.stage(name)
-        meta = _stage_meta(name, getattr(args, "stage_getter", None))
+        meta = _stage_meta(name, getter)
         if (config.mode == "slurm-ssh" and stage.status in ("submitted", "waiting")
                 and not stage.job_id):
             add("error", "missing-job-id",
@@ -2008,6 +2080,26 @@ def build_parser() -> argparse.ArgumentParser:
     compare_cmd.add_argument("--strict", action="store_true",
                              help="协议不一致时返回非零退出码")
     compare_cmd.set_defaults(handler=cmd_thermal_compare)
+
+    kconv_cmd = subparsers.add_parser(
+        "siesta-kconv", help="比较两个 TranSIESTA run 的横向 k 点收敛性",
+        description=("读两个 run 的 junction_analyze/results.json，比较 E_F 处 "
+                     "G/G0 的相对变化；默认容差 1%。这是数值收敛检查，"
+                     "不构成实验有效性证据。"))
+    _add_common(kconv_cmd, with_config=False)
+    kconv_cmd.add_argument("base", metavar="BASE",
+                           help="较粗 k 网格的 run 目录或 results.json")
+    kconv_cmd.add_argument("refined", metavar="REFINED",
+                           help="较密 k 网格的 run 目录或 results.json")
+    kconv_cmd.add_argument("--tolerance", type=float, default=0.01,
+                           help="允许的 |ΔG/G|（默认 0.01，即 1%%）")
+    kconv_cmd.add_argument("--out", metavar="FILE", default=None,
+                           help="把 markdown 表写到文件")
+    kconv_cmd.add_argument("--json-out", metavar="FILE", default=None,
+                           help="把比较结果写到 JSON（报告据此升级判定）")
+    kconv_cmd.add_argument("--strict", action="store_true",
+                           help="未通过容差时返回非零退出码")
+    kconv_cmd.set_defaults(handler=cmd_siesta_kconv)
 
     return parser
 

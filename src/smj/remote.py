@@ -227,6 +227,9 @@ class RemoteSession:
         """删除上一轮残留；失败即拒绝提交（陈旧哨兵会污染完成判定）。"""
         remote_dir = self.stage_dir(stage)
         names = stale_names(script)
+        if script == "sub_siesta.sh":
+            from .siesta import remote_outputs
+            names += tuple(shlex.quote(n) for n in remote_outputs(self.ctx, stage))
         command = "cd %s && rm -f %s" % (
             shlex.quote(remote_dir), " ".join(names))
         result = self._run(command)
@@ -246,7 +249,11 @@ class RemoteSession:
         if not directory.is_dir():
             raise StageError("阶段目录不存在: %s（先跑 prepare）" % directory)
 
-        if stage == "aitranss_te":
+        if script == "sub_siesta.sh":
+            inputs = self.ctx.state.stage(stage).extra.get("inputs", [])
+            uploaded = sorted({Path(p).name for p in inputs if Path(p).parent.resolve() == directory.resolve()})
+            skipped = []
+        elif stage == "aitranss_te":
             # 只上传三个 TE 输入，在 aims_scf 的远端目录里跑。
             uploaded = [n for n in SMJ_AITRANSS_UPLOADS if (directory / n).is_file()]
             skipped = [n for n in SMJ_AITRANSS_UPLOADS if n not in uploaded]

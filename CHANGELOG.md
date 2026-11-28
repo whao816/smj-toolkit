@@ -2,6 +2,49 @@
 
 本项目遵循语义化版本（0.x 阶段：次版本可含不兼容变更；rc 视为发布候选）。
 
+## 0.3.0rc1 (2026-11-28)
+
+### 新功能:SIESTA/TranSIESTA 零偏压电子输运路线(2026-11-27)
+
+- 新增 `transport.backend: transiesta` 的六阶段路线 `molecule_opt →
+  siesta_electrode → siesta_junction_relax → transiesta_scf → tbtrans_te →
+  junction_analyze`，与 FHI-aims 路线共用 `smj plan/run/status/report/review`；
+  阶段表、协议摘要、状态机和上游摘要按 backend 记录，旧配置继续按 AIMS 解释。
+- `siesta.*` 配置覆盖 PBE GGA、300 Ry 网格、0.025 eV 展宽、DZP 基组、PSML/PSF
+  赝势、`flat`/`adatom`/`trimer`/`pyramid` 接触和 `unpolarized`/`collinear` 自旋；
+  `siesta.electrode_reuse` 允许不同分子复用同一份已收敛电极，复用时核对晶格、
+  主层、赝势/基组摘要与电极 k 点。
+- TBtrans 读取 `device.TBT.nc`，生成标准化 `transmission.tsv` 与 `spectrum.json`；
+  `junction_analyze` 在本地按 Landauer 积分，输出 `results.json` 和 `T_E.png`，
+  并保留自旋简并/共线通道的归一化约定。
+- `smj report`/`smj review` 对 transiesta 走独立证据链：逐阶段核对协议、上游
+  摘要和产物 sha256，接触、电荷偏差、屏蔽 profile 和输运结果都写进 `manifest.json`。
+- 新增 `siesta.reuse_relax_from`：换横向 k 网格时复用已采集的结区几何，只重建电极
+  与器件 SCF；复用记录核对 `opt.xyz`、电极几何摘要和接触通过标记，不重跑 relax。
+- 新增 `siesta.reuse_scf_from`：只加密 TBtrans 横向 k 点时复用已收敛的器件 SCF
+  （`device.TS.HSX` 等），核对自旋、结几何、接触和电极 HSX 摘要，只重建 TBtrans
+  输入；`scf.json` 的 `reused_from` 记录来源，使 TBtrans-only 扫描可由 YAML 复现。
+- 电极与器件 FDF 打开 `WriteMullikenPop 1`；器件 SCF 按 Au 层解析 Mulliken 电荷，
+  以电极中间体相层为参考，输出左右最外两层 Δq 与电极层间 spread。判据为
+  最外两层 |Δq|≤0.05 e 且电极层 spread≤0.05 e，状态写入 `scf.json` 的 `screening`。
+- 新增 `smj siesta-kconv BASE REFINED`：比较两个 run 的 `G/G0`，默认容差 1%，
+  `--json-out` 写 `kconv.json`；报告和复核读该文件与 `screening` 状态，两项都
+  通过才给 `passed`，否则保留 `inconclusive` 或给 `failed`，并明确数值收敛不构成
+  实验有效性证据。
+- 新增 `[siesta]` 可选依赖（`netCDF4>=1.6`、`matplotlib>=3.7`）、
+  [示例配置](demo/siesta-au111/smj.yaml)、
+  [设计文档](docs/siesta-zero-bias-transport-design.md) 和 36 个测试函数
+  （几何、预检、阶段、谱解析、报告与路由）。
+- 2026-11-27 在 gpu1 上用 bpy/ppd 两套平坦 Au(111) 接触贯通六阶段：bpy
+  `G/G₀=1.814×10⁻³`、ppd `0.444`；两例 `smj report` 工程核对通过，物理判定
+  `inconclusive`。数值、边界与复现命令见
+  [验证记录](docs/validation-siesta-2026-11-27.md)。
+- 2026-11-28 完成横向 k 与屏蔽验证：bpy 3×3→5×5 变化 +22.853%、5×5→7×7
+  TBtrans 变化 +5.646%，均未达 1% 判据，旧 3×3 值只能视为未收敛；ppd
+  3×3→5×5 为 −0.726%，通过。两套 5×5 运行的屏蔽均 `passed`（最外两层
+  |Δq| 在 10⁻³ e 以下）。bpy 判定 `failed`、ppd 判定 `passed`（仅数值判据），
+  详见 [k 点验证记录](docs/validation-siesta-kconv-2026-11-28.md)。
+
 ## 未发布
 
 ### 修正:Au lead 层序与截断轴的面内最小像(2026-11-25)

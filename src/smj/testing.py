@@ -46,6 +46,9 @@ class FakeTransport(Transport):
         result = self.on_run(command, cwd, timeout)
         if result is not None:
             return result
+        if command.startswith("home=$(cd -P"):
+            suffix = command.split('dir="$home"/', 1)[1].split(" &&", 1)[0]
+            return CommandResult(self.default_rc, "/home/u/" + suffix, command=command)
         return CommandResult(self.default_rc, "", "", command=command)
 
     def put(self, local: str | Path, remote: str) -> CommandResult:

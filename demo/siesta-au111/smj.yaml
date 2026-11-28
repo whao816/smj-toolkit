@@ -1,0 +1,37 @@
+# Copy and point the pseudopotentials at your local PBE datasets before running.
+run:
+  name: azulene-siesta-flat
+  dir: runs
+  mode: dry-run
+molecule:
+  xyz: ../azulene-26-dithiol/molecule.xyz
+  charge: 0
+  multiplicity: 1
+electrode:
+  left_anchor: S
+  right_anchor: S
+  strip_thiol_h: true
+transport:
+  backend: transiesta
+  temperature: 300
+  energy_window: [-1.0, 0.005, 1.0]   # min, step, max relative to EF (eV)
+siesta:
+  spin: unpolarized
+  basis: {Au: DZP, C: DZP, H: DZP, S: DZP}
+  pseudopotentials:
+    Au: pseudos/Au.psml
+    C: pseudos/C.psml
+    H: pseudos/H.psml
+    S: pseudos/S.psml
+  electrode: {in_plane: [3, 3], principal_layers: 3, slab_layers: 5, movable_layers: 1}
+  contact:
+    left: {motif: flat, site: fcc}
+    right: {motif: flat, site: fcc}
+  electrode_kgrid: [3, 3, 12]
+  device_kgrid: [3, 3, 1]
+  tbtrans_kgrid: [5, 5, 1]
+cluster:
+  host: gpu-outside
+  partition: main
+  ntasks: 4
+  gres: gpu:1

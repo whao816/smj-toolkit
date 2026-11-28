@@ -193,12 +193,19 @@ def config_to_dict(config: Any) -> dict[str, Any]:
         "paths": _jsonable(config.paths),
         "review": _jsonable(config.review),
     }
+    if config.transport.backend == "transiesta":
+        data["siesta"] = _jsonable(config.siesta)
+    else:
+        data["transport"].pop("backend", None)
     # 输运窗同时保留"用户写的三元组"和"实际生效的窗口"（ener/estep/eend 覆盖）。
     try:
         data["transport"]["energy_window"] = list(config.transport.energy_window)
         data["transport"]["resolved_window"] = list(config.transport.resolved_window())
         # 2026-11-20 复核 P2-1：resolved_window 恒为 Ha 绝对能量，标注单位避免误读。
         data["transport"]["resolved_window_unit"] = "Hartree"
+        if config.transport.backend == "transiesta":
+            data["transport"]["resolved_window"] = list(config.transport.relative_window())
+            data["transport"]["resolved_window_unit"] = "eV relative to common chemical potential"
     except Exception:  # noqa: BLE001 - 兼容手写/旧配置对象
         pass
     # 分子路径按绝对路径入档；实际文件哈希在 spec["molecule"] 里。
@@ -327,6 +334,8 @@ def _execution_config(config: Any) -> dict[str, Any]:
     paths = getattr(config, "paths", None)
     env = getattr(cluster, "env", None)
     env = env if isinstance(env, Mapping) else {}
+    if getattr(config.transport, "backend", "aitranss") == "transiesta":
+        return {"module": "siesta/5.4.2-gpu-netcdf", "version": "5.4.2"}
     species_raw = (getattr(cluster, "species_dir", None)
                    or getattr(paths, "species_defaults", None))
     templates_raw = getattr(paths, "templates", None)
@@ -408,6 +417,13 @@ def _protocol_config(config: Any) -> dict[str, Any]:
     # 额外输出只决定"多存哪些证据文件"，不改 SCF/输运的任何求解参数；与
     # require_te_out 同理不进 protocol，否则给老 run 打开开关就会集体判为漂移。
     transport.pop("extra_outputs", None)
+    if transport.get("backend") == "transiesta":
+        settings = _jsonable(config.siesta)
+        pseudos = settings.get("pseudopotentials", {})
+        settings["pseudopotential_sha256"] = {element: sha256_file(config.resolve(path))
+                                              for element, path in pseudos.items()}
+        return {"molecule": molecule, "electrode": electrode, "transport": transport, "siesta": settings}
+    transport.pop("backend", None)
     return {"molecule": molecule, "electrode": electrode, "transport": transport}
 
 
@@ -688,6 +704,9 @@ def run_spec_payload(config: Any, run_dir: str | Path, *,
         "electrode_library": _electrode_library_info(config),
         "software": _software_info(config),
     }
+    if getattr(config.transport, "backend", "aitranss") == "transiesta":
+        spec.pop("electrode_library", None)
+        spec["software"] = {"backend": "transiesta", "target_version": "5.4.2"}
     if reason:
         spec["reason"] = reason
     if reconstructed:

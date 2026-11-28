@@ -20,6 +20,7 @@ from typing import Any, Mapping
 import yaml
 
 from .errors import ConfigError
+from .cluster_paths import validate_run_name
 from .electrode_library import DEFAULT_CLUSTER
 from .junction.electrode import FCC_LATTICE_A
 
@@ -230,6 +231,7 @@ class TransportConfig:
     自动判定），两种口径最终都在 ``aitranss_te`` 里化成 aitranss 需要的 Ha 绝对值。
     """
 
+    backend: str = field(default="aitranss", kw_only=True)
     temperature: float = 300.0
     #: [起点, 步长, 终点]，单位见 ``energy_window_unit``。默认 eV 且以 E_F 为参考：
     #: E − E_F ∈ [−2, +2] eV、步长 5 meV（801 点）。换金属后 E_F 会移动，但相对
@@ -417,7 +419,7 @@ class ClusterConfig:
     user: str | None = None
     port: int = 22
     key: str | None = None                # 私钥路径（None = ssh 默认）
-    remote_root: str | None = None        # 远端 run 根，如 /scratch/$USER/smj
+    remote_root: str | None = None        # 默认远端登录账户的 ~/smj-runs
     partition: str | None = None
     ntasks: int | None = None             # 覆盖 Gaussian/aims 的并行度（None = 自动）
     gres: str | None = None               # 如 gpu:1
@@ -526,6 +528,7 @@ class RunConfig:
     electrode: ElectrodeConfig = field(default_factory=ElectrodeConfig)
     transport: TransportConfig = field(default_factory=TransportConfig)
     thermal: ThermalConfig = field(default_factory=ThermalConfig)
+    siesta: dict[str, Any] = field(default_factory=dict, kw_only=True)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     review: ReviewConfig = field(default_factory=ReviewConfig)
@@ -572,7 +575,7 @@ class RunConfig:
 # --------------------------------------------------------------------------- #
 # 解析
 # --------------------------------------------------------------------------- #
-_KNOWN_SECTIONS = {"run", "molecule", "electrode", "transport", "thermal",
+_KNOWN_SECTIONS = {"siesta", "run", "molecule", "electrode", "transport", "thermal",
                    "cluster", "paths", "review"}
 
 _RUN_KEYS = {"name", "dir", "mode", "clean", "keep_going"}
@@ -589,7 +592,7 @@ _ELECTRODE_KEYS = {
     "source", "library_dir", "library_cluster", "element", "a_lattice",
     "relax", "relax_force_threshold", "relax_freeze",
 }
-_TRANSPORT_KEYS = {"temperature", "energy_window", "energy_window_unit",
+_TRANSPORT_KEYS = {"backend", "temperature", "energy_window", "energy_window_unit",
                    "ener", "estep", "eend", "require_te_out", "allow_single_channel",
                    "extra_outputs", "occupation_width", "charge_mix_param",
                    "n_max_pulay"}
@@ -849,6 +852,7 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
             "transport.energy_window 跨度 %.1f eV 偏大（默认 ±2 eV）；太宽会让 aitranss "
             "点数暴涨且远离 E_F 的透射没有意义" % (eend - ener))
     cfg = TransportConfig(
+        backend=_as_choice(data.get("backend", "aitranss"), ("aitranss", "transiesta"), "transport.backend"),
         temperature=_as_float(data.get("temperature", 300.0), "transport.temperature"),
         energy_window=(ener, estep, eend),
         energy_window_unit=unit,
@@ -866,7 +870,7 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
                                    "transport.charge_mix_param"),
         n_max_pulay=_as_int(data.get("n_max_pulay", 10), "transport.n_max_pulay"),
     )
-    if cfg.temperature <= 0:
+    if not math.isfinite(cfg.temperature) or cfg.temperature < 0 or (cfg.temperature == 0 and cfg.backend != "transiesta"):
         raise ConfigError("transport.temperature 应 > 0 K，实际是 %s" % cfg.temperature)
     if not 0.0 < cfg.occupation_width <= 0.5:
         raise ConfigError("transport.occupation_width 应在 (0, 0.5] eV，实际是 %s"
@@ -1065,7 +1069,7 @@ def _parse_cluster(data: Mapping[str, Any], warnings: list[str]) -> ClusterConfi
         user=(_as_str(data["user"], "cluster.user") if data.get("user") else None),
         port=_as_int(data.get("port", 22), "cluster.port", minimum=1),
         key=(_as_str(data["key"], "cluster.key") if data.get("key") else None),
-        remote_root=(_as_str(data["remote_root"], "cluster.remote_root") if data.get("remote_root") else None),
+        remote_root=data.get("remote_root"),  # 在 SSH 登录节点解析 ~ 和 $HOME
         partition=(_as_str(data["partition"], "cluster.partition") if data.get("partition") else None),
         ntasks=(_as_int(data["ntasks"], "cluster.ntasks", minimum=1) if data.get("ntasks") is not None else None),
         gres=(_as_str(data["gres"], "cluster.gres") if data.get("gres") else None),
@@ -1153,6 +1157,7 @@ def load_config(path: str | Path | None = None) -> RunConfig:
         molecule=_parse_molecule(_section(raw, "molecule", "config", warnings), warnings),
         electrode=_parse_electrode(_section(raw, "electrode", "config", warnings), warnings),
         transport=_parse_transport(_section(raw, "transport", "config", warnings), warnings),
+        siesta=dict(_section(raw, "siesta", "config", warnings)),
         thermal=_parse_thermal(_section(raw, "thermal", "config", warnings), warnings),
         cluster=_parse_cluster(_section(raw, "cluster", "config", warnings), warnings),
         paths=_parse_paths(_section(raw, "paths", "config", warnings), warnings),
@@ -1165,11 +1170,25 @@ def load_config(path: str | Path | None = None) -> RunConfig:
     if config.mode == "slurm-ssh":
         if not config.cluster.host:
             raise ConfigError("run.mode=slurm-ssh 时必须设置 cluster.host（SSH 别名/主机名）")
-        if not config.cluster.remote_root:
-            raise ConfigError("run.mode=slurm-ssh 时必须设置 cluster.remote_root（远端 run 根目录）")
         if not config.cluster.partition:
             raise ConfigError("run.mode=slurm-ssh 时必须设置 cluster.partition（Slurm 分区）")
-    if config.mode == "local" and not config.cluster.species_dir and not config.paths.species_defaults:
+    if config.transport.backend == "transiesta":
+        from .siesta.stages import validate_settings
+        from .siesta.stages import DEFAULTS
+        known = set(DEFAULTS) | {"electrode", "contact", "pseudopotentials", "basis",
+                                 "tbtrans_kgrid", "electrode_reuse", "device_mixing_weight",
+                                 "reuse_relax_from", "reuse_scf_from"}
+        unknown = config.siesta.keys() - known
+        if unknown:
+            raise ConfigError(f"未知 siesta 配置字段: {', '.join(sorted(unknown))}")
+        validate_settings(config.siesta)
+    if config.siesta and config.transport.backend != "transiesta":
+        raise ConfigError("siesta 配置需要 transport.backend: transiesta")
+    if config.transport.backend == "transiesta" and any(getattr(config.transport, n) is not None for n in ("ener", "eend", "estep")):
+        raise ConfigError("SIESTA 能窗请用相对化学势的 transport.energy_window")
+    if config.transport.backend == "transiesta" and config.transport.energy_window_unit != "eV":
+        raise ConfigError("TBtrans 能窗采用相对共同化学势的 eV")
+    if config.mode == "local" and config.transport.backend == "aitranss" and not config.cluster.species_dir and not config.paths.species_defaults:
         # 只有本地真跑 AIMS 时才需要 species；这里只给 warning，不阻断 plan/prepare。
         warnings.append("未配置 cluster.species_dir / paths.species_defaults：本地真跑 AIMS 阶段会失败")
 
@@ -1254,7 +1273,7 @@ cluster:
   user: null
   port: 22
   key: null
-  remote_root: null         # 如 /scratch/$USER/smj
+  remote_root: ~/smj-runs   # 远端登录用户的工作根，可省略
   partition: null           # 如 normal
   ntasks: null              # 覆盖并行度；null = 按体系/阶段自动估算
   gres: null
@@ -1286,6 +1305,8 @@ def default_config_text(name: str = "my-run", xyz: str = "molecule.xyz", mode: s
         raise ConfigError("未知 mode: %r（可选 %s）" % (mode, "/".join(MODES)))
     if not _RUN_NAME_RE.match(name):
         raise ConfigError("run 名只允许字母/数字/._-: %r" % name)
+    if mode == "slurm-ssh":
+        validate_run_name(name)
     return DEFAULT_CONFIG_TEMPLATE.format(name=name, xyz=xyz, mode=mode)
 
 

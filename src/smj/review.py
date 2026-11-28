@@ -90,6 +90,7 @@ class ReviewResult(Mapping):
     accepted: bool = False
     review_path: str | None = None
     written: bool = False
+    siesta: dict | None = None
 
     @property
     def ok(self) -> bool:
@@ -133,6 +134,7 @@ class ReviewResult(Mapping):
                 or str(i.get("code", "")).startswith("provenance_")
                 or str(i.get("code", "")).startswith("ph_")
                 or str(i.get("code", "")).startswith("thermal_")
+                or str(i.get("code", "")).startswith("siesta_")
                 or i.get("code") in ("geometry_missing", "geometry_metadata_missing",
                                      "geometry_metadata_unreadable", "geometry_check_failed",
                                      "open_shell_uncalibrated", "spin_channels_missing"))
@@ -163,6 +165,8 @@ class ReviewResult(Mapping):
             "structure": self.structure,
             "spin": self.spin,
             "thermal": self.thermal,
+            **({"backend": "transiesta", "siesta": self.siesta,
+                "physics_verdict": self.siesta["physics_verdict"]} if self.siesta is not None else {}),
             "review_path": self.review_path,
             "written": self.written,
         }
@@ -970,6 +974,42 @@ def review_run(target: Any, *, force: bool = True,
                                   accept_deviation=float(accept_deviation))
 
     result = ReviewResult(run_id=getattr(cfg, "name", None) or run_dir.name)
+    backend = getattr(getattr(cfg, "transport", None), "backend", None)
+    recorded, _ = _load_json(run_dir / "state.json")
+    if not backend and not recorded:
+        snapshot = load_run_spec(run_dir) or {}
+        backend = ((snapshot.get("config") or {}).get("transport") or {}).get("backend")
+    if backend == "transiesta" or (recorded or {}).get("backend") == "transiesta":
+        from .siesta.report import _verdict_reason, evidence
+        from .state import RunState
+        state = RunState.load(run_dir / "state.json", run=result.run_id, backend=backend)
+        audit = evidence(run_dir, state, cfg)
+        result.siesta = {"physics_verdict": audit["physics_verdict"],
+                         "engineering_passed": not audit["issues"], "stages": audit["stages"],
+                         "contacts": audit["contacts"], "transport": audit["transport"],
+                         "kconv": audit.get("kconv")}
+        for name, issue in audit["issues"].items():
+            result.add("error", "siesta_stage", f"{name}: {issue}", stage=name)
+        verdict = audit["physics_verdict"]
+        if verdict == "failed":
+            result.add("error", "siesta_convergence",
+                       "物理判定 failed：横向 k 点或屏蔽的数值判据未通过")
+        elif verdict == "passed":
+            result.add("info", "siesta_numeric_scope",
+                       "横向 k 点与屏蔽的数值判据通过；不构成实验有效性证据")
+        else:
+            reason = _verdict_reason(audit.get("scf"), audit.get("kconv"))
+            result.add("warning", "siesta_convergence",
+                       f"物理判定 inconclusive：{reason}")
+        result.finalize()
+        target_path = Path(output) if output else run_dir / "review.json"
+        previous, _ = _load_json(target_path)
+        result.review_path = str(target_path)
+        result.written = (force or not previous or previous.get("siesta") != result.siesta
+                          or previous.get("issues") != result.issues)
+        if result.written:
+            _write_json(result.to_dict(), target_path)
+        return result
     build_dir = None
     if stage:
         candidate = Path(stage)

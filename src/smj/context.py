@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from .config import RunConfig
+from .cluster_paths import checked_directory
 from .errors import SmjError, StageBlocked
 from .resources import estimate_smj_resources
 from .state import (RunLayout, RunState, normalize_stage, previous_stage,
@@ -170,14 +171,18 @@ class StageContext:
     def remote_stage_dir(self, stage: str) -> str:
         """远端阶段目录；``aitranss_te`` 与 ``aims_scf`` 共用（Aitranss 读 SCF 产物）。"""
         stage = normalize_stage(stage)
-        root = self.config.cluster.remote_root or ""
-        if not root:
-            raise SmjError("run.mode=slurm-ssh 需要 cluster.remote_root")
+        if self.transport is None:
+            raise SmjError("需要远端连接以确认登录用户家目录")
         physical = "aims_scf" if stage == "aitranss_te" else stage
         if stage == "molecule_opt" and self.layout.stage_dir(stage).name == "gaussian_opt":
             # 旧 run 的远端目录仍叫 gaussian_opt；继续沿用，避免半途换目录。
             physical = "gaussian_opt"
-        return remote_join(root, self.config.run.name, physical)
+        directory = checked_directory(self.transport, self.config.cluster.remote_root,
+                                      self.config.run.name, physical)
+        saved = self.state.stage(stage).remote_dir
+        if saved and saved != directory:
+            raise SmjError("历史作业目录 %s 与本次目录 %s 不一致，请核对原作业" % (saved, directory))
+        return directory
 
     def remote_run(self, command: str, *, timeout: float | None = None,
                    cwd: str | Path | None = None) -> CommandResult:

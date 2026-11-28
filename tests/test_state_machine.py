@@ -33,7 +33,7 @@ def _runner(workdir: Path, transport: FakeTransport | None = None,
     config = RunConfig(
         run=RunInfo(name="t", dir=str(workdir / "run"), mode="slurm-ssh"),
         cluster=ClusterConfig(
-            host="h", user="u", remote_root="/remote/runs",
+            host="h", user="u", remote_root="/home/u/smj-runs",
             poll_seconds=1.0, timeout_hours=0.5),
     )
     return StageRunner(

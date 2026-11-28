@@ -1,5 +1,8 @@
 # smj — 单分子结输运计算链（独立包）
 
+零偏压电子输运也可选择 SIESTA 5.4.2、TranSIESTA 和 TBtrans，默认组装平坦 Au(111) 接触（`pip install -e ".[siesta]"`）。[六阶段使用说明](docs/siesta-zero-bias-transport-design.md) · [示例配置](demo/siesta-au111/smj.yaml) · [2026-11-27 验证记录](docs/validation-siesta-2026-11-27.md) · [k 点/屏蔽验证记录](docs/validation-siesta-kconv-2026-11-28.md)
+
+
 > 从**分子结构**到**透射谱**的端到端自动化：FHI-aims 分子优化 → FHI-aims 加针尖/弛豫 →
 > 构建电极（本地三角岛或 FHI-aims 电极库；默认 Au(111)）→ FHI-aims 静态 SCF → aitranss 透射 → Landauer 分析。
 > 整链可一把跑完，也可**逐阶段独立运行**；每个阶段的输入/产物都落在
@@ -116,7 +119,7 @@ python -m pip install -e .
 # 或构建 wheel 后安装（产物在 dist/）
 python scripts/gen_junction_provenance.py           # 先刷新内核台账（PROVENANCE.json 随 wheel 分发）
 python scripts/build_wheel.py --check       # 只用标准库，不需要 setuptools/build；--check 按 RECORD 校验
-python -m pip install dist/smj_toolkit-0.2.2rc2-py3-none-any.whl
+python -m pip install dist/smj_toolkit-0.3.0rc1-py3-none-any.whl
 ```
 
 可选依赖：
@@ -171,7 +174,7 @@ smj run --dry-run
 下一阶段（该阶段标 `failed`，阻塞原因写进 note，`smj run` 退出码 1）——这是刻意的
 fail-closed 语义，不是缺陷。
 
-真跑把 `run.mode` 改成 `slurm-ssh`，补齐 `cluster.host/remote_root/partition` 与
+真跑把 `run.mode` 改成 `slurm-ssh`，补齐 `cluster.host/partition` 与
 `cluster.env`，然后（仍在 `smj-demo/` 下）：
 
 ```bash
@@ -281,7 +284,11 @@ smj stage junction_analyze --run --te /data/te/TE.dat --config smj.yaml
 ## 4. Slurm 配置
 
 `cluster` 段只在 `run.mode: slurm-ssh` 时必需；`dry-run` / `local` 下可留空。
-`slurm-ssh` 至少要求 `host`、`remote_root`、`partition`，缺一直接报配置错误。
+`slurm-ssh` 需要 `host` 和 `partition`。集群工作目录统一为 **`~/smj-runs/<任务名>/<阶段名>`**，例如 `~/smj-runs/tpm-b-rad/aims_scf`。家目录由 SSH 登录账号在集群上解析。`cluster.remote_root` 可省略，已有绝对路径配置须与该账号的 `~/smj-runs` 完全对应。
+
+`run.name` 按“分子简称-异构体或协议”命名。限 1–40 个 ASCII 字母、数字，词段用单个连字符连接，可保留分子缩写的大小写。同一账号下，不同计算使用不同任务名。阶段名由工作流生成，AITRANSS 复用同一任务的 `aims_scf` 目录。
+
+提交前会核对真实路径。如果已有阶段目录含符号链接，工作流会在上传和清理前停止。历史结果仍可在本地审阅。重跑旧版 Gaussian 作业需重新执行 `--prepare`，以便在阶段目录内创建临时文件。
 
 ```yaml
 run:
@@ -296,7 +303,7 @@ cluster:
   user: yourname
   port: 22
   key: ~/.ssh/id_ed25519
-  remote_root: /data/yourname/smj
+  remote_root: ~/smj-runs
   partition: main
   ntasks: 4
   gres: ""
@@ -397,7 +404,7 @@ config = load_config("smj.yaml")               # 在 run 配置所在目录执�
 # 不想改文件时可在内存里改（下面的 host 等只用于通过字段检查）：
 config.run.mode = "slurm-ssh"
 config.cluster.host = "fake-cluster"
-config.cluster.remote_root = "/tmp/smj-fake"
+config.cluster.remote_root = "~/smj-runs"
 config.cluster.partition = "main"
 runner = StageRunner(config, transport=transport, dry_run=False)
 runner.prepare("molecule_opt")
@@ -599,6 +606,7 @@ $ smj thermal --stage thermal_fc --retry missing            # 或 --retry 17,203
 | `smj preflight` | 提交前检查：分子可读/原子重叠、species 覆盖、建结几何闸门、资源上限；非 `dry-run` 时再加集群/SSH 连通、远端目录可写、二进制/许可 | 结构化 issues（error/warning/info），有 error 退出 1 |
 | `smj status` | 读 `state.json`，打印阶段/状态/job id/远端目录/耗时/备注 | 终端表格（`--json` 机器可读） |
 | `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（9 节：概览/判定/结构复核/阶段状态/输入摘要/资源/输运/失败原因/产物清单）；缺 `TE.dat` 时物理判定为「无法判定」而不是通过 | 报告文件；默认跳过已存在文件，`--force` 重写，`--no-checks` 不算判定，`--strict` 在判定失败/阻断时退出 1 |
+| `smj siesta-kconv` | 比较两个已采集 SIESTA run 在 E_F 处的 $G/G_0$，判断横向 $k$ 点的相对变化是否在容差内；读 `junction_analyze/results.json` | markdown 表或 `--json`；`--json-out kconv.json` 供 `smj report`/`smj review` 升级物理判定，`--strict` 未通过退出 1 |
 | `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；`--plot` 可顺手按统一版式出 `T_E_plot.png`（`[plot]` extra） | `analysis.json`（含 `independent` 独立复核结果） |
 | `smj plot` | 按**统一版式**画 T(E)（四边框/刻度朝内/E_F 虚线/log 纵轴/固定配色，见 `docs/plot_style.md`）；可给 TE.dat、run 目录或逗号标签叠加多条 | `T_E.png` + `T_E.pdf`（默认 PNG+PDF 同源导出，600 dpi） |
 | `smj pdos` | 分组 PDOS：读 `aims_scf` 的 `mos.aims`（开壳层 `alpha.aims`/`beta.aims`，按 `$uhfmo_*` 头行判通道）与 `basis-indices.out`，按 `--groups molecule=1-20,left=21-52` 把原子分组投影到 α/β，占据数取 `aims.out` 的 `State Occupation` 表（闭壳层只取最后一张；开壳层取末两张分别给 α/β，行数允许不同，但与通道波函数态数不符时显式报错而不是按索引截断），落在 `TE.dat` 的 E − E_F 网格上（与 T(E) 同一能量轴）；权重按每态 `Σc²` 归一（NAO 非正交，真正 Mulliken 需要 `omat.aims` 重叠矩阵，本地只有表头）；`--plot` 出上下两栏共享 x 轴的图。默认回取只抓 `mos.aims` 表头，本地没有完整本征向量时会**显式失败**并提示用 `--fetch` 按清单整取 | 终端摘要或 `--json`；`-o` 写 `smj.pdos.v1` JSON；缺完整本征向量时退出 1 |

@@ -482,13 +482,15 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         system = getattr(getattr(config, "molecule", None), "family", None)
     layout = RunLayout(run_dir)
     rid = run_id or (getattr(config, "name", None) if config is not None else None) or run_dir.name
-    state = state or RunState.load(layout.state_path, run=rid)
+    run_spec = load_run_spec(run_dir)
+    saved_backend = ((run_spec or {}).get("config", {}).get("transport") or {}).get("backend")
+    backend = getattr(getattr(config, "transport", None), "backend", None) or saved_backend
+    state = state or RunState.load(layout.state_path, run=rid, backend=backend)
     warnings: list[str] = list(state.warnings)
 
     # 2026-11 P0-1：manifest 绑定 run_spec（配置快照 + 文件哈希）。没有 run_spec
     # 的旧 run 允许用当前配置重建，但必须显式标 reconstructed 并告警，不能假装
     # 这份 manifest 能证明原始参数。
-    run_spec = load_run_spec(run_dir)
     provenance: dict[str, Any] = {
         "path": None,
         "run_spec_sha256": None,
@@ -515,6 +517,9 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         provenance["protocol_sha256"] = run_spec.get("protocol_sha256")
 
     spec_data = dict(spec or {}) or dict((run_spec or {}).get("config") or {})
+    if state.backend == "transiesta":
+        from .siesta.report import manifest
+        return manifest(run_dir, state, config, rid, spec_data, run_spec, provenance, include_checks, warnings)
     input_summary = _input_summary(run_dir, spec_data, warnings, run_spec=run_spec)
     inventory = _inventory(run_dir, stages if stages is not None
                            else discover_stages(run_dir))
@@ -1060,6 +1065,9 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
 def render_report(manifest: Mapping[str, Any]) -> str:
     """manifest -> Markdown 报告（机械可生成部分，不写文件）。"""
     man = dict(manifest or {})
+    if man.get("backend") == "transiesta":
+        from .siesta.report import render
+        return render(man)
     rid = man.get("run_id", "?")
     state = man.get("state") or {}
     totals = man.get("totals") or {}
@@ -1485,7 +1493,20 @@ def generate_report(target: Any, *, run_id: str | None = None,
     warnings: list[str] = []
     existing = read_manifest(run_dir)
     stale_reason: str | None = None
-    if existing is not None and not force:
+    if manifest.get("backend") == "transiesta" and not force:
+        # These are derived reports. Reuse only the same verified output chain,
+        # including its current run status, protocol and requested checks.
+        comparable = ("backend", "state", "stages", "stage_issues", "contacts", "scf",
+                      "transport", "warnings", "provenance", "verdict")
+        if layout.manifest_path.is_file() and not existing:
+            stale_reason = "SIESTA manifest 无法解析"
+        elif existing and any(existing.get(k) != manifest.get(k) for k in comparable):
+            stale_reason = "SIESTA 阶段状态、协议或已采集证据发生变化"
+        elif layout.report_path.is_file() and (
+                not existing or layout.report_path.read_text(encoding="utf-8", errors="replace")
+                != render_report(existing)):
+            stale_reason = "SIESTA 报告与已核实记录不符"
+    elif existing is not None and not force:
         previous = existing.get("judgment")
         previous_sha = previous.get("sha256") if isinstance(previous, dict) else None
         current_sha = (manifest.get("judgment") or {}).get("sha256")
@@ -1504,9 +1525,10 @@ def generate_report(target: Any, *, run_id: str | None = None,
         # 2026-11-22 复审 P0-1：判定逻辑变了，旧 manifest 不能原样复用。
         # 重建 manifest 的同时必须重写 report.md——否则人读报告仍是旧结论。
         warnings.append("manifest 已过期（%s），已按当前判据重建" % stale_reason)
-        manifest.setdefault("warnings", []).append(
-            "manifest 曾过期（%s）：本次按当前判据重建，旧判定不再复用"
-            % stale_reason)
+        if manifest.get("backend") != "transiesta":
+            manifest.setdefault("warnings", []).append(
+                "manifest 曾过期（%s）：本次按当前判据重建，旧判定不再复用"
+                % stale_reason)
         write_manifest(manifest, layout.manifest_path)
         written.append(str(layout.manifest_path))
         effective = manifest

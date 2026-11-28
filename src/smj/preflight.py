@@ -23,13 +23,16 @@ vendored 模块全部 lazy import；本模块 import 不触网、不做真实计
 from __future__ import annotations
 
 import os
+import re
 import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from .engines import engine_for_config
+from .cluster_paths import DEFAULT_ROOT, checked_directory, validate_root, validate_run_name
 from .errors import SmjError
 from .resources import MEM_CAP_GIB, WALLTIME_CAP_S, check_smj_budget, estimate_smj_resources
 from .state import RunLayout
@@ -423,8 +426,12 @@ def _cluster_check(result: PreflightResult, config: Any, transport: Any,
                    "run.mode=%s：无集群提交，未执行 SSH/远端目录检查" % mode)
         return
     missing = []
-    if not getattr(cluster, "remote_root", None):
-        missing.append("remote_root")
+    try:
+        validate_root(cluster.remote_root)
+        validate_run_name(config.run.name)
+    except SmjError as exc:
+        result.add("error", "cluster_path_invalid", str(exc))
+        return
     if not getattr(cluster, "host", None):
         missing.append("host")
     if not getattr(cluster, "partition", None):
@@ -434,7 +441,7 @@ def _cluster_check(result: PreflightResult, config: Any, transport: Any,
                    "slurm-ssh 模式缺 cluster 配置: %s" % ", ".join(missing))
         return
     target = getattr(cluster, "ssh_target", None) or getattr(cluster, "host", "")
-    result.notes.append("远端目标: %s；工作根: %s" % (target, cluster.remote_root))
+    result.notes.append("远端目标: %s；工作根: %s" % (target, cluster.remote_root or DEFAULT_ROOT))
     if transport is None:
         severity = "error" if require_remote else "warning"
         result.add(severity, "ssh_skipped",
@@ -448,19 +455,19 @@ def _cluster_check(result: PreflightResult, config: Any, transport: Any,
                    "SSH 连通性检查失败 (rc=%s): %s"
                    % (probe.code, (probe.err or probe.out).strip()[:300]))
         return
-    root = shlex.quote(str(cluster.remote_root))
-    exists = transport.run("test -d %s" % root, timeout=timeout)
-    if not exists.ok:
-        result.add("error", "remote_dir_missing",
-                   "远端工作根不存在: %s" % cluster.remote_root)
+    try:
+        directory = checked_directory(transport, cluster.remote_root, config.run.name, timeout=timeout)
+    except SmjError as exc:
+        result.add("error", "cluster_path_invalid", str(exc))
         return
-    writable = transport.run("test -w %s" % root, timeout=timeout)
+    command = ('dir=%s; while ! test -e "$dir"; do dir=${dir%%/*}; done; '
+               'test -d "$dir" && test -w "$dir" && test -x "$dir"') % shlex.quote(directory)
+    writable = transport.run(command, timeout=timeout)
     if not writable.ok:
         result.add("error", "remote_dir_not_writable",
-                   "远端工作根不可写: %s" % cluster.remote_root)
+                   "远端工作目录不可创建或不可写: %s" % directory)
         return
-    result.add("info", "remote_dir_ok", "SSH 连通、远端工作根存在且可写: %s"
-               % cluster.remote_root)
+    result.add("info", "remote_dir_ok", "已核对远端工作目录: %s" % directory)
 
 
 def _needs_gaussian_check(config: Any) -> bool:
@@ -470,6 +477,123 @@ def _needs_gaussian_check(config: Any) -> bool:
     阻断预检（真实 BDT run 曾被这条误伤）。
     """
     return "gaussian" in engine_for_config(config).probes
+
+
+def _siesta_binaries(result, config, stage, transport, timeout):
+    from .siesta.io import VERSION
+    from .siesta.stages import MODULE
+    from .transport import LocalTransport
+
+    try:
+        if transport is None:
+            if config.mode != "local":
+                return
+            transport = LocalTransport()
+        prefix = ("set -e; module load " + shlex.quote(MODULE)
+                  + "; ulimit -s unlimited; command -v mpirun >/dev/null; ")
+        if config.mode == "slurm-ssh":
+            prefix += ("command -v sbatch >/dev/null; scontrol show partition "
+                       + shlex.quote(config.cluster.partition) + " >/dev/null; ")
+        # Both executables' -v mode prints build information and exits before input processing.
+        names = ["siesta", "tbtrans"] if stage is None else ["tbtrans" if stage == "tbtrans_te" else "siesta"]
+        for name in names:
+            command = "bash -lc " + shlex.quote(prefix + f"{name} -v")
+            probe = transport.run(command, timeout=timeout)
+            output = probe.out + "\n" + probe.err
+            version = re.search(r"(?im)^\s*Version\s*:\s*(\S+)\s*$", output)
+            if not probe.ok or not version or version[1] != VERSION:
+                result.add("error", "siesta_binary_invalid",
+                           f"{name} -v 未确认版本 {VERSION} 或作业环境不可用",
+                           detail=output.strip()[-500:])
+                return
+            if name == "tbtrans" and not re.search(r"(?im)^\s*NetCDF-4 support\s*$", output):
+                result.add("error", "siesta_binary_invalid", "TBtrans 编译信息未确认 NetCDF-4 support")
+                return
+        result.add("info", "siesta_binaries_ok", f"{MODULE} 已核对 {' / '.join(names)} {VERSION}")
+    except (SmjError, OSError) as exc:
+        result.add("error", "siesta_binary_invalid", str(exc))
+
+
+def _siesta_preflight(result, config, stage, transport, *, elements, check_structure,
+                      check_env, check_resources, effective_dry, require_remote, timeout):
+    from .siesta.geometry import build_device, build_electrode
+    from .siesta.stages import pseudo_paths, slurm_directives, validate_settings
+    from .stages._helpers import resolve_anchor_indices_atoms
+    from .state import SIESTA_STAGE_ORDER
+
+    if stage and stage not in SIESTA_STAGE_ORDER:
+        result.add("error", "siesta_stage_invalid", f"{stage} 不属于 TranSIESTA 输运路线")
+        return result
+    needs_mol = stage in (None, "molecule_opt", "siesta_junction_relax", "transiesta_scf")
+    atoms = _molecule_check(result, config, elements) if needs_mol else None
+    species = {a.element for a in atoms or []} | set(elements or [])
+    if stage not in ("molecule_opt", "tbtrans_te", "junction_analyze"):
+        species.add("Au")
+    result.elements = sorted(species)
+    ctx = SimpleNamespace(config=config, resolve=config.resolve)
+    try:
+        validate_settings(config.siesta)
+    except (SmjError, ValueError, TypeError) as exc:
+        result.add("error", "siesta_settings_invalid", str(exc))
+    else:
+        if stage not in ("junction_analyze", "tbtrans_te"):
+            try:
+                paths = pseudo_paths(ctx, result.elements)
+                for name, path in paths.items():
+                    with path.open("rb") as stream:
+                        if not stream.read(1):
+                            raise ValueError(f"empty {name} pseudopotential: {path}")
+                result.add("info", "siesta_pseudos_ok", "已核对元素赝势", elements=list(paths))
+            except (SmjError, ValueError, OSError) as exc:
+                result.add("error", "siesta_pseudos_invalid", str(exc))
+    if check_structure and stage not in ("tbtrans_te", "junction_analyze"):
+        try:
+            if stage != "molecule_opt":
+                lead = build_electrode(config.siesta)
+            if atoms:
+                ec = config.electrode
+                anchors = resolve_anchor_indices_atoms(atoms, ec.left_anchor, ec.right_anchor,
+                                                      stage="siesta_junction_relax")
+                if stage == "molecule_opt":
+                    result.add("info", "siesta_geometry_ok", "已核对原始分子和锚点编号", anchors=anchors)
+                else:
+                    strip = ec.strip_thiol_h
+                    if strip is None:
+                        strip = all(atoms[i-1].element == "S" for i in anchors)
+                    geometry = build_device(atoms, anchors, lead, config.siesta, strip_h=strip)
+                    result.add("info", "siesta_geometry_ok", "已从输入分子核对两侧接触初始几何",
+                               anchors=anchors, atoms=len(geometry["elements"]))
+            elif stage == "siesta_electrode":
+                result.add("info", "siesta_geometry_ok", "已核对 Au(111) 周期电极", atoms=len(lead["elements"]))
+        except (SmjError, ValueError, TypeError, KeyError, AttributeError) as exc:
+            result.add("error", "siesta_geometry_invalid", str(exc))
+    if check_env:
+        modules = []
+        if stage in (None, "tbtrans_te"):
+            modules.append("netCDF4")
+        if stage in (None, "junction_analyze"):
+            modules.append("matplotlib")
+        from importlib import import_module
+        for mod in modules:
+            try:
+                import_module(mod)
+            except (ImportError, OSError) as exc:
+                result.add("error", "siesta_analysis_dependency",
+                           f"本地阶段需要 {mod}，请安装 smj-toolkit[siesta] ({exc})")
+    if stage != "junction_analyze":
+        _cluster_check(result, config, transport, require_remote=require_remote, timeout=timeout)
+        if check_resources:
+            try:
+                directives = slurm_directives(ctx, stage or "molecule_opt")
+                result.add("info", "siesta_resources", "已核对阶段的 Slurm 参数", directives=directives)
+            except SmjError as exc:
+                result.add("error", "siesta_resources_invalid", str(exc))
+            result.notes.append("SIESTA 使用配置的 Slurm 资源，没有经过标定的运行时长估计")
+        if check_env and effective_dry:
+            result.add("info", "siesta_binary_skipped", "dry-run 未核对目标机上的 SIESTA / TBtrans 程序")
+        elif check_env and (config.mode == "local" or "remote_dir_ok" in result.codes()):
+            _siesta_binaries(result, config, stage, transport, timeout)
+    return result
 
 
 def _env_check(result: PreflightResult, config: Any, mode: str,
@@ -537,6 +661,12 @@ def run_preflight(config: Any, *, transport: Any = None, stage: str | None = Non
         from .state import normalize_stage
         requested_stage = normalize_stage(stage)
         result.notes.append("仅检查阶段: %s" % requested_stage)
+
+    if getattr(getattr(config, "transport", None), "backend", None) == "transiesta":
+        return _siesta_preflight(result, config, requested_stage, transport, elements=elements,
+                                 check_structure=check_structure, check_env=check_env,
+                                 check_resources=check_resources, effective_dry=effective_dry,
+                                 require_remote=require_remote, timeout=timeout)
 
     atoms = _molecule_check(result, config, elements)
     if elements is None and atoms:
