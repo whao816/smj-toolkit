@@ -792,13 +792,11 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   `smj report` 的 §4.1 加"自旋分布（Hirshfeld，μB）"表：分子 / 接触区（距锚原子
   ≤3.0 Å 的电极原子）/ 电极的份额与占比。总磁矩守恒**不能**说明自由基还在分子上：
   `runs/ttf-cation` 实测总矩 1.0000 μB 里分子只占 0.0056（0.56%），`smj review` 会记
-  `spin_localized_off_molecule`（info）。分区只陈述数字，不设阈值判定；Hirshfeld 段名
-  在但解析不出 `| Atom N:` 行会拒绝 `collected`。
-- **单列 TE 默认阻断（2026-11-21，S3）**：开壳层 TE.dat 只剩一列时，aitranss 已经把
-  α/β 合并成均值，自旋极化不可恢复——`aitranss_te.collect` 现在直接 `StageError`，
-  并提示检查 `$uhfmo_alpha/$uhfmo_beta`、SCF 是否真开壳层、nsaos 是否非零。外部/历史
-  数据确知只能单列时显式设 `transport.allow_single_channel: true` 放行，结果里记
-  `single_channel_allowed: true` 与 note。
+  `spin_localized_off_molecule`（info）。定位提示用逐原子磁矩绝对值求和，避免分子内
+  正负磁矩抵消造成误判。逐原子数据不完整时，报告会标出缺失的证据。
+- **TE.dat 自旋通道校验**要求各能量点的透射列数一致，并核对文件中声明的通道数。
+  缺列、坏值或非有限数会报出行号。整份单通道历史谱可通过
+  `transport.allow_single_channel: true` 显式采集；只凭该谱无法确定开壳层的自旋极化率。
 - **自旋分辨热输运（2026-11-21，S2）**：`analyze_te_spin` 现在每通道也积 L1/L2，
   `results.json` 的 `spin` 块多出 `S_alpha_uV_per_K` / `S_beta_uV_per_K` /
   `S_total_uV_per_K` / `k_e_*` / `ZT_*` / `spin_polarization_S`；`smj report` §4.1
@@ -809,7 +807,10 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   （相对 1e-6）；旧 `spin` 块（只有 L0）只标"不适用"，不误判故障。
   `runs/ifs-bs` 实测 Sα=+6.1560、Sβ=+6.1589 μV/K（相对差 4.8e-4），P_S=−2.4e-4，
   与 P(E_F)=−1.8e-5 同号且可忽略。
-- **破缺对称（BS）单重态的证据（2026-11-21，S4）**：FHI-aims 单行列式 BS 近似不给
+- **破缺对称（BS）单重态候选**使用 `multiplicity: 1`、`broken_symmetry: true` 和反号初矩。
+  省略 `fixed_spin_moment` 或设为 `false` 时释放净磁矩，显式设为 `true` 时写
+  `fixed_spin_moment 0`。两种协议均保留共线自旋自由度，末态局域磁矩可直接从
+  Hirshfeld 分区核对。FHI-aims 单行列式 BS 近似不给
   ⟨S²⟩/NOON，能拿到的第一手证据是 Hirshfeld 局部自旋矩。`spin_partition.summarize`
   现在给出分子组内的正/负计数与净矩，正负共存、单个原子 ≥0.05 μB 且
   `|net| < 0.05·max_abs` 时标 `localized_antiparallel: true`（0.05 μB 下限挡住数值

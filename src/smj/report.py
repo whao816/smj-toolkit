@@ -35,7 +35,9 @@ from .provenance import (
     run_spec_sha256,
 )
 from .resources import check_smj_budget, estimate_smj_resources
-from .spin_summary import SPIN_CAVEAT, normalize as normalize_spin, percent as spin_percent
+from .spin_partition import molecular_evidence_text, partition_evidence, read_partition
+from .spin_summary import (SPIN_CAVEAT, normalize as normalize_spin,
+                           percent as spin_percent, recorded_bs_constraint)
 from .state import STAGE_ORDER, RunLayout, RunState, now_iso
 from .verdict import JUDGMENT_SCHEMA, judgment_fingerprint
 
@@ -261,7 +263,8 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
     if broken_sym:
         # M=1 的 BS 单重态：单看 multiplicity 会被读成闭壳层，必须显式标注。
         spin_meta["broken_symmetry"] = True
-        spin_meta["fixed_spin_moment"] = None
+        spin_meta["fixed_spin_moment"] = recorded_bs_constraint(
+            run_dir, run_spec, molecule_cfg.get("fixed_spin_moment"))
     if molecule_cfg.get("initial_moments"):
         spin_meta["initial_moments"] = molecule_cfg.get("initial_moments")
     # 分子结构：优先 molecule_opt/opt.xyz（旧 run 回退 gaussian_opt），否则 run 根的 xyz。
@@ -371,20 +374,23 @@ def _spin_block(spin: Any, molecule: Mapping[str, Any]) -> dict | None:
     )
 
 
-def _spin_partition_block(state: RunState) -> dict | None:
+def _spin_partition_block(state: RunState, run_dir: Path) -> dict | None:
     """``aims_scf`` 写下的 Hirshfeld 自旋分区（S1）；缺失时返回 None。
 
     分区来自 FHI-aims 的 Hirshfeld 分析：总磁矩守恒不能说明自由基还在分子上，
     必须把分子/接触区/电极的份额分开报。这里只搬运展示数据，不参与判定。
     """
+    sidecar = read_partition(run_dir)
     try:
         recorded = state.stage("aims_scf").results or {}
     except (KeyError, AttributeError):
-        return None
+        return sidecar
     inner = recorded.get("aims_scf") if isinstance(recorded, Mapping) else None
     if not isinstance(inner, Mapping):
-        return None
+        return sidecar
     block = inner.get("spin_partition")
+    if sidecar:
+        return {**(block if isinstance(block, Mapping) else {}), **sidecar}
     return dict(block) if isinstance(block, Mapping) else None
 
 
@@ -398,6 +404,7 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
     两者都没有时再从 ``aitranss_te/TE.dat`` 现算（开壳层顺带解析双通道）。
     """
     molecule = dict(molecule or {})
+    te = run_dir / "aitranss_te" / "TE.dat"
     for name in ("results.json", "analysis.json"):
         candidate = run_dir / "junction_analyze" / name
         if not candidate.is_file():
@@ -409,16 +416,22 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
             continue
         if not isinstance(payload, dict):
             continue
+        if te.is_file():
+            from .junction.landauer import read_te_channels
+            try:
+                read_te_channels(te)
+            except (OSError, ValueError) as exc:
+                warnings.append("原始 TE.dat 不可用，无法核实已保存的输运结果：%s" % exc)
+                return None
         transport = {"source": str(candidate),
                      **{k: payload.get(k) for k in _TRANSPORT_KEYS}}
         spin = _spin_block(payload.get("spin"), molecule)
         if spin is not None:
             transport["spin"] = spin
-        partition = _spin_partition_block(state)
+        partition = _spin_partition_block(state, run_dir)
         if partition is not None:
             transport["spin_partition"] = partition
         return transport
-    te = run_dir / "aitranss_te" / "TE.dat"
     if not te.is_file():
         return None
     try:
@@ -443,7 +456,7 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
         else:
             if spin is not None:
                 payload["spin"] = spin
-    partition = _spin_partition_block(state)
+    partition = _spin_partition_block(state, run_dir)
     if partition is not None:
         payload["spin_partition"] = partition
     return payload
@@ -710,7 +723,7 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
     fixed = spin.get("fixed_spin_moment")
     if fixed is not None:
         lines.append("| 总自旋约束 | %s |" % (
-            "fixed_spin_moment（钉住 2S = M−1）" if fixed
+            "fixed_spin_moment（固定 Nα−Nβ = M−1）" if fixed
             else "未钉住（release 解，自旋可离域到电极）"))
     lines.append("| TE.dat 通道数 | %s |" % _cell(spin.get("channels")))
     lines.append("| Tα(E_F) / Tβ(E_F) [G0] | %s / %s |" % (
@@ -740,11 +753,12 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
     if spin.get("note"):
         lines.append("- 数据提示：%s" % _cell(spin.get("note")))
     if isinstance(partition, Mapping) and isinstance(partition.get("groups"), Mapping):
+        partition = partition_evidence(partition)
         groups = partition["groups"]
         lines.append("")
         lines.append("**自旋分布（Hirshfeld，μB）**")
         lines.append("")
-        lines.append("| 区域 | 原子数 | 自旋矩 (μB) | 占比 |")
+        lines.append("| 区域 | 原子数 | 净磁矩 (μB) | 逐原子绝对矩和 (μB) |")
         lines.append("|---|---|---|---|")
         for name, label in (("molecule", "分子"), ("contact", "接触区"),
                             ("electrode", "电极")):
@@ -754,23 +768,13 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
             lines.append("| %s | %s | %s | %s |" % (
                 label, _cell(data.get("atoms")),
                 _fmt(data.get("spin_moment"), "%+.4f"),
-                spin_percent(data.get("fraction"))))
+                _fmt(data.get("sum_abs"), "%.4f")))
         lines.append("")
         lines.append("- 接触区 = 距锚原子 ≤3.0 Å 的电极原子；自旋分布只陈述 "
                      "FHI-aims 的 Hirshfeld 分配，不参与判定。")
-        if spin.get("broken_symmetry"):
-            localized = partition.get("localized_antiparallel")
-            if localized is True:
-                tag = "局部反平行"
-            elif localized is False:
-                tag = "未满足局部反平行判据（净矩/幅度）"
-            else:
-                tag = "分区数据不完整"
-            lines.append(
-                "- 破缺对称证据：分子内 + / − 自旋矩各 %s / %s 个，净矩 %s μB（%s）。"
-                % (_cell(partition.get("molecule_n_positive")),
-                   _cell(partition.get("molecule_n_negative")),
-                   _fmt(partition.get("molecule_net"), "%+.4f"), tag))
+        evidence_label = "破缺对称证据" if spin.get("broken_symmetry") else "分子局部矩"
+        lines.append("- %s：%s。" % (evidence_label, molecular_evidence_text(
+            partition, broken_symmetry=bool(spin.get("broken_symmetry")))))
     if spin.get("broken_symmetry"):
         lines.append("")
         lines.append("- FHI-aims 单行列式不提供 ⟨S²⟩/NOON；上行的局部自旋矩是"

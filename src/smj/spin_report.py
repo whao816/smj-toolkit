@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from .landauer_spin import analyze_te_spin
+from .spin_partition import molecular_evidence_text, off_molecule_share, read_partition
 from .spin_summary import (
     FIXED_CONSTRAINT_CAVEAT,
     SINGLE_CHANNEL_CAVEAT,
@@ -26,6 +27,7 @@ from .spin_summary import (
     findings as spin_findings,
     normalize,
     percent,
+    recorded_bs_constraint,
 )
 
 _SPIN_CODE_PREFIXES = ("open_shell", "spin_", "broken_symmetry")
@@ -54,14 +56,17 @@ def _te_path(run: Path) -> Path | None:
     return None
 
 
-def _molecule_block(spec: Mapping[str, Any]) -> dict[str, Any]:
+def _molecule_block(run: Path, spec: Mapping[str, Any]) -> dict[str, Any]:
     config = spec.get("config") or {}
     molecule = config.get("molecule") or {}
+    broken = bool(molecule.get("broken_symmetry", False))
+    fixed = (recorded_bs_constraint(run, spec, molecule.get("fixed_spin_moment"))
+             if broken else molecule.get("fixed_spin_moment", True))
     return {
         "multiplicity": molecule.get("multiplicity"),
         "charge": molecule.get("charge"),
-        "fixed_spin_moment": molecule.get("fixed_spin_moment", True),
-        "broken_symmetry": bool(molecule.get("broken_symmetry", False)),
+        "fixed_spin_moment": fixed,
+        "broken_symmetry": broken,
         "family": molecule.get("family"),
     }
 
@@ -81,14 +86,7 @@ def _temperature(spec: Mapping[str, Any], spin: Mapping[str, Any] | None,
     return 300.0
 
 
-def _partition(run: Path) -> dict[str, Any] | None:
-    payload = _load_json(run / "aims_scf" / "spin_partition.json")
-    if not isinstance(payload, Mapping) or not isinstance(payload.get("groups"), Mapping):
-        return None
-    return dict(payload)
-
-
-def _review_codes(run: Path) -> list[dict[str, Any]]:
+def _review_codes(run: Path, *, off_molecule: bool) -> list[dict[str, Any]]:
     review = _load_json(run / "review.json")
     if not isinstance(review, Mapping):
         return []
@@ -97,6 +95,8 @@ def _review_codes(run: Path) -> list[dict[str, Any]]:
         if not isinstance(issue, Mapping):
             continue
         code = str(issue.get("code") or "")
+        if code == "spin_localized_off_molecule" and not off_molecule:
+            continue  # 旧版复核可能仅由净矩抵消推断自旋转移。
         if code.startswith(_SPIN_CODE_PREFIXES):
             codes.append({"severity": issue.get("severity"),
                           "code": code, "message": issue.get("message")})
@@ -115,7 +115,7 @@ def build_spin_report(run_dir: str | Path, *, temperature: float | None = None) 
 
     spec = _load_json(run / "run_spec.json")
     spec = spec if isinstance(spec, Mapping) else {}
-    molecule = _molecule_block(spec)
+    molecule = _molecule_block(run, spec)
     open_shell = bool(molecule["broken_symmetry"]) or bool(
         molecule["multiplicity"] and int(molecule["multiplicity"]) > 1)
 
@@ -123,13 +123,9 @@ def build_spin_report(run_dir: str | Path, *, temperature: float | None = None) 
     spin_source = None
     raw_spin = None
     if te is not None:
-        try:
-            raw_spin = analyze_te_spin(
-                te, temperature=_temperature(spec, None, temperature))
-            spin_source = "TE.dat"
-        except Exception:  # 谱坏了就退回 results.json 的 spin 块
-            raw_spin = None
-    if raw_spin is None:
+        raw_spin = analyze_te_spin(te, temperature=_temperature(spec, None, temperature))
+        spin_source = "TE.dat"
+    else:
         results = _load_json(run / "junction_analyze" / "results.json")
         if isinstance(results, Mapping) and isinstance(results.get("spin"), Mapping):
             raw_spin = dict(results["spin"])
@@ -146,7 +142,7 @@ def build_spin_report(run_dir: str | Path, *, temperature: float | None = None) 
     if summary is not None and raw_spin is not None:
         summary.setdefault("temperature_K", raw_spin.get("temperature_K"))
 
-    partition = _partition(run)
+    partition = read_partition(run)
     findings = spin_findings(
         summary,
         multiplicity=molecule["multiplicity"],
@@ -173,7 +169,8 @@ def build_spin_report(run_dir: str | Path, *, temperature: float | None = None) 
         "spin": summary,
         "partition": partition,
         "findings": findings,
-        "review_codes": _review_codes(run),
+        "review_codes": _review_codes(run, off_molecule=off_molecule_share(
+            partition, broken_symmetry=molecule["broken_symmetry"]) is not None),
         "caveats": caveats,
     }
 
@@ -209,7 +206,7 @@ def _spin_lines(payload: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def _partition_lines(partition: Mapping[str, Any] | None) -> list[str]:
+def _partition_lines(partition: Mapping[str, Any] | None, *, broken_symmetry: bool) -> list[str]:
     if not isinstance(partition, Mapping):
         return ["自旋分布: 未采集（aims_scf/spin_partition.json 不存在；"
                 "开壳层重跑 aims_scf 会自动生成）。"]
@@ -221,22 +218,15 @@ def _partition_lines(partition: Mapping[str, Any] | None) -> list[str]:
         group = groups.get(name)
         if not isinstance(group, Mapping):
             continue
-        parts.append("%s %s (%s)" % (
+        parts.append("%s 净矩 %s（Σ|mᵢ| %s）" % (
             {"molecule": "分子", "contact": "接触区", "electrode": "电极"}[name],
             _number(group.get("spin_moment"), "%+.4f"),
-            percent(group.get("fraction"))))
+            _number(group.get("sum_abs"), "%.4f")))
     if parts:
         head += "；" + "；".join(parts)
     lines = [head]
-    if partition.get("molecule_n_positive") is not None:
-        verdict = partition.get("localized_antiparallel")
-        tag = ("局部反平行（正负共存且净矩很小）" if verdict is True
-               else "未满足局部反平行判据" if verdict is False
-               else "分区数据不完整")
-        lines.append("分子内 +/− 自旋矩: %s / %s；净矩 %s μB（%s）" % (
-            partition.get("molecule_n_positive"),
-            partition.get("molecule_n_negative"),
-            _number(partition.get("molecule_net"), "%+.4f"), tag))
+    if isinstance(groups.get("molecule"), Mapping):
+        lines.append(molecular_evidence_text(partition, broken_symmetry=broken_symmetry))
     return lines
 
 
@@ -251,7 +241,8 @@ def render_spin_report(payload: Mapping[str, Any]) -> str:
                  molecule.get("fixed_spin_moment"),
                  molecule.get("broken_symmetry"))]
     lines.extend(_spin_lines(payload))
-    lines.extend(_partition_lines(payload.get("partition")))
+    lines.extend(_partition_lines(payload.get("partition"),
+                                  broken_symmetry=bool(molecule.get("broken_symmetry"))))
 
     review_codes = payload.get("review_codes") or []
     findings = payload.get("findings") or []

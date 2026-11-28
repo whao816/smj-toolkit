@@ -48,7 +48,9 @@ from .provenance import (
     sha256_file,
 )
 from .errors import SmjError
-from .spin_summary import findings as spin_findings, normalize as normalize_spin
+from .spin_partition import molecular_evidence_text, off_molecule_share, read_partition
+from .spin_summary import (findings as spin_findings, normalize as normalize_spin,
+                           recorded_bs_constraint)
 from .state import RunLayout, normalize_stage, now_iso
 
 REVIEW_SCHEMA = "smj.review.v1"
@@ -707,6 +709,8 @@ def _schema_shape_drift(spec: dict, config: Any) -> dict | None:
         return None
     stored = {key: stored_config.get(key) or {}
               for key in ("molecule", "electrode", "transport")}
+    if stored["molecule"].get("broken_symmetry") and (spec.get("protocol_schema") or 0) < 3:
+        stored["molecule"] = dict(stored["molecule"], fixed_spin_moment=False)
     try:
         current = protocol_components(config)
     except Exception:  # noqa: BLE001 - 复核不应因配置对象异常崩掉
@@ -790,26 +794,6 @@ def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None
                         run_spec_protocol=stored, current_protocol=current)
 
 
-def _count_text(value: Any) -> str:
-    """整数计数 -> 文本；缺失/坏值显示 ``—``（复核信息里不伪造 0）。"""
-    try:
-        return "%d" % int(value)
-    except (TypeError, ValueError):
-        return "—"
-
-
-def _spin_partition(run_dir: Path) -> dict | None:
-    """``aims_scf/spin_partition.json``（Hirshfeld 自旋分区，S1）; 缺失返回 None。"""
-    path = Path(run_dir) / "aims_scf" / "spin_partition.json"
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return payload if isinstance(payload, Mapping) else None
-
-
 def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     """开壳层的可读性：多重度、是否钉住总自旋、α/β 通道是否还在。
 
@@ -821,8 +805,9 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     charge = getattr(molecule, "charge", None)
     fixed = getattr(molecule, "fixed_spin_moment", None)
     broken = getattr(molecule, "broken_symmetry", None)
+    run_spec = load_run_spec(run_dir)
+    spec_mol = ((run_spec or {}).get("config") or {}).get("molecule") or {}
     if multiplicity is None or charge is None:
-        spec_mol = ((load_run_spec(run_dir) or {}).get("config") or {}).get("molecule") or {}
         if multiplicity is None:
             multiplicity = spec_mol.get("multiplicity")
         if charge is None:
@@ -837,9 +822,8 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
         multiplicity = None
     broken = bool(broken)
     if broken:
-        # 破缺对称单重态不写 fixed_spin_moment（M−1=0 会把态压成闭壳层），
-        # 因此不能沿用 MoleculeConfig 的默认 True，否则报告会谎称"已固定总自旋"。
-        fixed = None
+        fixed = recorded_bs_constraint(run_dir, run_spec,
+                                       spec_mol.get("fixed_spin_moment", fixed))
     elif fixed is None:
         # provenance 把默认值 True 省掉了，缺省即按 True 解释。
         fixed = True
@@ -851,11 +835,11 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
             from .landauer_spin import read_te_channels
             _, channels = read_te_channels(te)
         except (OSError, ValueError) as exc:
-            result.add("info", "spin_te_unreadable",
+            result.add("error", "spin_te_unreadable",
                        "TE.dat 自旋通道不可读，自旋占比不可得: %s" % exc)
     raw: Any = None
     results_path = run_dir / "junction_analyze" / "results.json"
-    if results_path.is_file():
+    if (not te_present or channels is not None) and results_path.is_file():
         try:
             payload = json.loads(results_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -877,51 +861,24 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
         extra = {k: v for k, v in item.items()
                  if k not in ("severity", "code", "message")}
         result.add(item["severity"], item["code"], item["message"], **extra)
-    # 2026-11-21 自由基支线 S1：总磁矩守恒不等于"自旋还在分子上"。Hirshfeld
-    # 分区（aims_scf 侧车）若显示分子份额 < 1%，必须提示——否则 fixed_spin_moment
-    # 的"磁矩保持"会被误读成自由基存活。只出 info，不改任何数值判定。
-    partition = _spin_partition(run_dir)
+    # 位置证据使用逐原子绝对矩，防止分子内正负局部矩相消后误报电极局域。
+    partition = read_partition(run_dir)
     if partition is not None and ((multiplicity or 1) > 1 or broken):
         groups = partition.get("groups")
         molecule_group = groups.get("molecule") if isinstance(groups, Mapping) else None
-        if isinstance(molecule_group, Mapping):
-            fraction = molecule_group.get("fraction")
-            try:
-                fraction_value = float(fraction) if fraction is not None else None
-            except (TypeError, ValueError):
-                fraction_value = None
-            if fraction_value is not None and abs(fraction_value) < 0.01:
-                moment = molecule_group.get("spin_moment")
-                result.add(
-                    "info", "spin_localized_off_molecule",
-                    "分子自旋矩 %+.4f μB（占比 %.2f%%）；开壳层自旋主要在电极侧，"
-                    "不能把总磁矩保持解读为自由基在分子上存活"
-                    % (float(moment or 0.0), 100.0 * abs(fraction_value)),
-                    spin_partition=dict(partition))
-    # 2026-11-21 批次 C（S4）：破缺对称单重态的证据。FHI-aims 的单行列式 BS
-    # 近似不提供 ⟨S²⟩/NOON，能拿到的第一手证据就是"分子内正负自旋矩共存、
-    # 净矩近零"。这里只报数并说明证据强度，不改任何判据结论。
-    if broken and partition is not None:
-        groups = partition.get("groups")
-        molecule_group = groups.get("molecule") if isinstance(groups, Mapping) else None
-        net = partition.get("molecule_net")
-        if net is None and isinstance(molecule_group, Mapping):
-            net = molecule_group.get("net", molecule_group.get("spin_moment"))
-        try:
-            net_value = float(net) if net is not None else None
-        except (TypeError, ValueError):
-            net_value = None
-        localized = partition.get("localized_antiparallel")
-        message = ("分子内 + / − 自旋矩各 %s / %s 个，净矩 %s μB（%s）；"
-                   "FHI-aims 单行列式不提供 ⟨S²⟩/NOON，这是局部证据而非严格反平行证明"
-                   % (_count_text(partition.get("molecule_n_positive")),
-                      _count_text(partition.get("molecule_n_negative")),
-                      "—" if net_value is None else "%+.4f" % net_value,
-                      "局部反平行" if localized is True
-                      else ("未满足局部反平行判据（净矩/幅度）" if localized is False
-                            else "分区数据不完整")))
-        result.add("info", "broken_symmetry_local_moments", message,
-                   spin_partition=dict(partition))
+        message = molecular_evidence_text(partition, broken_symmetry=broken)
+        if broken:
+            result.add("info", "broken_symmetry_local_moments",
+                       message + "。FHI-aims 单行列式不提供 ⟨S²⟩/NOON。",
+                       spin_partition=partition)
+        elif isinstance(molecule_group, Mapping):
+            share = off_molecule_share(partition, broken_symmetry=broken)
+            if share is not None:
+                result.add("info", "spin_localized_off_molecule",
+                           message + "。分子占全结逐原子绝对磁矩和的 %.2f%%。" % (100 * share),
+                           spin_partition=partition)
+            else:
+                result.add("info", "spin_molecular_moments", message, spin_partition=partition)
 
 
 # --------------------------------------------------------------------------- #
@@ -1098,42 +1055,35 @@ def _thermal_relax_evidence(run_dir: Path) -> tuple[float | None, str | None]:
 
 
 def _thermal_lead_match(run_dir: Path, cfg: Any) -> bool | None:
-    """比对冻结 lead FC 的胞参数与本次器件配置；无法比对时返回 None。"""
-    meta_path = run_dir / "thermal_device" / "device_metadata.json"
-    lead_path = getattr(getattr(cfg, "thermal", None), "lead_fc", None)
-    if not meta_path.is_file() or not lead_path:
+    """用分析阶段的资产、几何与冻结层分区检查匹配。"""
+    from .phonon.assets import lead_boundary, read_device_structure, resolve_lead_fc_path
+    from .phonon.fc import load_lead_fc
+
+    thermal = getattr(cfg, "thermal", None)
+    if thermal is None:
         return None
-    from pathlib import Path as _Path
-    lead_dir = _Path(str(lead_path))
-    if lead_dir.is_dir():
-        lead_dir = lead_dir / "lead_fc.json"
-    if not lead_dir.is_file():
-        return None
+    geometry = run_dir / "thermal_fc" / "geometry.in"
+    if not geometry.is_file():
+        geometry = run_dir / "thermal_device" / "geometry.in"
     try:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        lead = json.loads(lead_dir.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    spec = meta.get("spec") or {}
-    checks = (
-        (lead.get("a_lattice_A"), spec.get("a_lattice_A")),
-        (tuple(lead.get("in_plane") or ()), tuple(spec.get("in_plane") or ())),
-    )
-    for recorded, expected in checks:
-        if recorded is None or expected is None:
-            return None
-        if isinstance(recorded, (int, float)) and isinstance(expected, (int, float)):
-            if abs(float(recorded) - float(expected)) > 1.0e-6:
+        lead = load_lead_fc(resolve_lead_fc_path(thermal.lead_fc))
+        archived = run_dir / "thermal_analyze" / "thermal.json"
+        if archived.is_file():
+            used = json.loads(archived.read_text(encoding="utf-8")).get("lead_fc_sha256")
+            if used is not None and used != lead.sha256:
                 return False
-        elif recorded != expected:
-            return False
-    # 层数不做相等比较：lead FC 只存 decimation 需要的**前两个主层**
-    # （V₁/V₂ 所在的两层），器件侧可以是 4 层或 6 层。只要求够两层——
-    # 少于一层的 FC 拿不出层间耦合，NEGF 起不来。
-    layers = lead.get("layers")
-    if layers is None:
+        meta_file = run_dir / "thermal_device" / "device_metadata.json"
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        elements, _, lattice = read_device_structure(geometry)
+        lead_boundary(lead, meta, elements, lattice, thermal.fc.cutoff)
+    except (OSError, KeyError):
         return None
-    return int(layers) >= 2
+    except (IndexError, TypeError, ValueError):
+        return False
+    spec = meta.get("spec") or {}
+    if not (lattice or meta.get("lattice") or {"in_plane", "a_lattice_A"} <= spec.keys()):
+        return None
+    return True
 
 
 def _thermal_review(result: ReviewResult, run_dir: Path, cfg: Any) -> None:

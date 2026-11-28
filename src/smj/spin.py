@@ -25,9 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-#: 开壳层结的初始自旋密度默认值（μB/原子）：只影响收敛路径，总自旋由
-#: ``fixed_spin_moment`` 强制。自由基中心仍建议在 molecule_opt 里用
-#: ``molecule.initial_moments`` 指定，交给 SCF 自洽。
+#: 开壳层结的初始磁矩默认值（μB/原子）。净磁矩约束由 fixed_spin_moment 单独控制。
 DEFAULT_INITIAL_MOMENT = 0.1
 
 
@@ -37,12 +35,9 @@ class SpinState:
 
     multiplicity: int
     charge: int
-    #: 是否写 ``fixed_spin_moment``（=M−1）。False = 解除总自旋约束的对照解：
-    #: 只保留 ``spin collinear`` + 初始磁矩，让 SCF 自己找自旋态。
-    fix_spin_moment: bool = True
-    #: M=1 的破缺对称单重态（``molecule.broken_symmetry``）：物理上开壳层，但总
-    #: 自旋为 0。它同样需要 ``spin collinear`` 与两套自旋通道；``fixed_spin_moment``
-    #: 必须不写（M−1=0 等于把体系钉回闭壳层）。
+    #: 是否约束 N↑−N↓=M−1。默认普通开壳层固定，BS 释放。
+    fix_spin_moment: bool | None = None
+    #: M=1 的破缺对称初猜使用共线自旋和反号局域磁矩。
     broken_symmetry: bool = False
 
     def __post_init__(self) -> None:
@@ -50,10 +45,8 @@ class SpinState:
             raise ValueError(
                 "broken_symmetry 只适用于 multiplicity=1 的开壳层单重态，"
                 "当前 multiplicity=%d" % self.multiplicity)
-        if self.broken_symmetry and self.fix_spin_moment:
-            # 配置可以照旧写 fixed_spin_moment: true，但 BS 解在 FHI-aims 里不能钉
-            # 总自旋（2S=0），这里统一强制成"不写"，避免模板把体系压回闭壳层。
-            object.__setattr__(self, "fix_spin_moment", False)
+        if self.fix_spin_moment is None:
+            object.__setattr__(self, "fix_spin_moment", not self.broken_symmetry)
 
     @property
     def open_shell(self) -> bool:
@@ -66,7 +59,7 @@ class SpinState:
 
     @property
     def fixed_spin_moment(self) -> float:
-        """``fixed_spin_moment`` = N↑−N↓ = 2S = M−1（不是多重度本身）。"""
+        """固定时 N↑−N↓ 的目标值；BS 初猜对应 0，允许非零局域自旋密度。"""
         return float(self.multiplicity - 1)
 
 
@@ -75,10 +68,17 @@ def spin_state(config: Any) -> SpinState:
     molecule = getattr(config, "molecule", None)
     multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
     charge = int(getattr(molecule, "charge", 0) or 0)
-    fix = bool(getattr(molecule, "fixed_spin_moment", True))
+    fix = getattr(molecule, "fixed_spin_moment", None)
     broken = bool(getattr(molecule, "broken_symmetry", False))
     return SpinState(multiplicity=multiplicity, charge=charge,
                      fix_spin_moment=fix, broken_symmetry=broken)
+
+
+def describe_spin_constraint(moment: float | None) -> str:
+    """说明共线自旋的净磁矩约束；0 与释放有不同的物理含义。"""
+    if moment is None:
+        return "释放净磁矩约束，N↑−N↓ 由 SCF 自洽决定"
+    return "fixed_spin_moment %g（固定 N↑−N↓，局域磁矩可自洽变化）" % moment
 
 
 def spin_control_lines(state: SpinState, *, with_fixed_spin_moment: bool,

@@ -89,7 +89,7 @@ def test_open_shell_report_has_spin_section(workdir: Path) -> None:
         include_checks=False)
     text = render_report(manifest)
     assert "| 电荷 / 多重度 | 1 / 2 |" in text
-    assert "fixed_spin_moment（钉住 2S = M−1）" in text
+    assert "fixed_spin_moment（固定 Nα−Nβ = M−1）" in text
     assert "### 4.1 自旋通道（开壳层）" in text
     assert "| P(E_F) = (Tα−Tβ)/(Tα+Tβ) | +48.97% |" in text
     assert "| P(L0) 积分极化 | +50.00% |" in text
@@ -164,3 +164,48 @@ def test_review_two_channel_without_multiplicity_is_called_out(workdir: Path) ->
     assert "spin_channels_undeclared" in codes
     assert "spin_block_unexpected" not in codes
     assert "open_shell_uncalibrated" not in codes
+
+
+@pytest.mark.parametrize("schema,scf_moment,expected", [
+    (2, None, False), (3, None, True), (3, "released", False), (2, "0", True),
+])
+def test_bs_constraint_agrees_in_all_reports(workdir, schema, scf_moment, expected):
+    from smj.spin_report import build_spin_report
+
+    run = workdir / "bs"
+    _results(run, spin=_SPIN)
+    molecule = {"multiplicity": 1, "charge": 0, "broken_symmetry": True,
+                "fixed_spin_moment": True}
+    (run / "run_spec.json").write_text(json.dumps(
+        {"protocol_schema": schema, "config": {"molecule": molecule}}), encoding="utf-8")
+    if scf_moment is not None:
+        scf = run / "aims_scf"
+        scf.mkdir()
+        control = "spin collinear\n"
+        if scf_moment != "released":
+            control += f"fixed_spin_moment {scf_moment}\n"
+        (scf / "control.in").write_text(control, encoding="utf-8")
+    manifest = build_manifest(run, include_checks=False)
+    assert manifest["inputs"]["molecule"]["fixed_spin_moment"] is expected
+    assert manifest["transport"]["spin"]["fixed_spin_moment"] is expected
+    assert build_spin_report(run)["molecule"]["fixed_spin_moment"] is expected
+    review = review_run(run, force=True)
+    assert review.spin["fixed_spin_moment"] is expected
+    assert ("spin_fixed_constraint" in review.codes()) is expected
+
+
+def test_invalid_te_cannot_reinstate_cached_spin(workdir, capsys):
+    from smj.cli import main, EXIT_FAILED
+
+    run = workdir / "damaged"
+    _te(run)
+    (run / "aitranss_te" / "TE.dat").write_text("0 0 .1 .2\n.01 .1 .4\n", encoding="utf-8")
+    _results(run, spin=_SPIN)
+    assert main(["spin", str(run), "--json"]) == EXIT_FAILED
+    assert "TE.dat" in capsys.readouterr().err
+    review = review_run(run, force=True)
+    assert "spin_te_unreadable" in review.codes()
+    assert review.spin is None
+    manifest = build_manifest(run, include_checks=False)
+    assert manifest["transport"] is None
+    assert any("TE.dat" in w for w in manifest["warnings"])

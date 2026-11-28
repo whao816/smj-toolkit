@@ -1416,7 +1416,7 @@ def cmd_spin(args: argparse.Namespace) -> int:
         run = _load_config(args).run_dir
     try:
         payload = build_spin_report(run, temperature=args.temperature)
-    except FileNotFoundError as exc:
+    except (OSError, ValueError) as exc:
         _error(str(exc), debug=bool(getattr(args, "debug", False)))
         return EXIT_FAILED
     if args.json:

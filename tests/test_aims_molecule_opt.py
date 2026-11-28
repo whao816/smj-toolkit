@@ -407,6 +407,22 @@ def test_gaussian_prepare_uses_gaussian_engine_files(workdir):
     assert "opt freq b3lyp/6-31g(d)" in route
 
 
+@pytest.mark.parametrize("mode", ["slurm-ssh", "local"])
+def test_gaussian_scratch_location_matches_execution_mode(workdir, mode):
+    ctx = _ctx(workdir, engine="gaussian")
+    ctx.config.mode = mode
+    ctx.stage_env = lambda *args: {"g16_module": "Gaussian", "g16_scratch": "/data/tmp/g16"}
+    stage_dir = workdir / "run" / "molecule_opt"
+    MoleculeOptStage().prepare(ctx, stage_dir)
+
+    script = (stage_dir / "sub_g16.sh").read_text(encoding="utf-8")
+    if mode == "slurm-ssh":
+        assert "/data/tmp/g16" not in script
+        assert 'mktemp -d -- "${SLURM_SUBMIT_DIR:?}/scratch.XXXXXXXX"' in script
+    else:
+        assert "export GAUSS_SCRDIR=/data/tmp/g16" in script
+
+
 def _fake_gaussian_log(monkeypatch, geometry: str):
     """把 parse_gaussian_log 换掉：只验证 collect 的几何闸门接线，不碰真日志。"""
     from smj.engines import gaussian as module

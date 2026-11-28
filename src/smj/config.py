@@ -141,17 +141,13 @@ class MoleculeConfig:
     multiplicity: int = 1
     #: 开壳层初始磁矩（**1-based 原子序号 -> μB**）。``spin collinear`` 下 FHI-aims
     #: 要求给出初始自旋密度，否则默认初猜可能收敛到错误自旋分布（甚至更慢）。
-    #: 只影响收敛路径/落到哪个解，不改变 ``fixed_spin_moment``（=M−1）约束的总自旋；
-    #: 各分量之和不必等于 M−1，但引擎会在 notes 里提示。闭壳层设了会被拒绝。
+    #: 初猜影响收敛路径。普通开壳层的初矩之和可偏离 M−1，BS 要求合计为零。
     initial_moments: dict[int, float] | None = None
-    #: 是否写 ``fixed_spin_moment``（=M−1）把总自旋钉住。False = 解除约束的对照解：
-    #: 只写 ``spin collinear`` + 初始磁矩，让 SCF 自己决定自旋态（与固定解比较）。
-    fixed_spin_moment: bool = True
+    #: 开壳层结是否固定净磁矩 N↑−N↓=M−1。缺省时普通开壳层固定，BS 释放。
+    fixed_spin_moment: bool | None = None
     #: 破缺对称（broken-symmetry, BS）开壳层单重态：M=1，但写 ``spin collinear`` +
-    #: 两个自由基中心**反号**的 ``initial_moments``，且**不写** ``fixed_spin_moment``
-    #: （2S=M−1=0 会把它直接压回闭壳层）。要求 ``multiplicity: 1``、初矩合计 0、
-    #: 至少一正一负。FHI-aims 的单行列式只能给出 BS 近似解，且不打印 ⟨S²⟩：
-    #: 是否真的落到开壳层单重态，必须由自旋密度/自然轨道占据数另行确认。
+    #: 反号且合计为零的局域初始磁矩。显式固定净磁矩为零时，两套自旋密度仍可不同。
+    #: 收敛后的局域磁矩和自旋密度用于判断是否获得了 BS 解。
     broken_symmetry: bool = False
     method: str = "b3lyp"          # 仅 opt_engine=gaussian
     basis: str = "6-31g(d)"        # 仅 opt_engine=gaussian
@@ -165,6 +161,10 @@ class MoleculeConfig:
     #: 仅 Gaussian 分支：开壳层优化加 ``Stable=Opt``（先做波函数稳定性检查再优化），
     #: 用于怀疑当前解不是最低能量自旋态时。默认关闭——它让每次优化多一遍稳定性分析。
     stable_check: bool = False
+
+    def __post_init__(self) -> None:
+        if self.fixed_spin_moment is None:
+            self.fixed_spin_moment = not self.broken_symmetry
 
 
 @dataclass
@@ -689,13 +689,13 @@ def _parse_initial_moments(value: Any) -> dict[int, float] | None:
 def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeConfig:
     _warn_unknown("molecule", data, _MOLECULE_KEYS, warnings)
     xyz = data.get("xyz")
+    fixed = data.get("fixed_spin_moment")
     cfg = MoleculeConfig(
         xyz=_as_str(xyz, "molecule.xyz", allow_empty=True) or None,
         charge=_as_int(data.get("charge", 0), "molecule.charge"),
         multiplicity=_as_int(data.get("multiplicity", 1), "molecule.multiplicity", minimum=1),
         initial_moments=_parse_initial_moments(data.get("initial_moments")),
-        fixed_spin_moment=_as_bool(
-            data.get("fixed_spin_moment", True), "molecule.fixed_spin_moment"),
+        fixed_spin_moment=None if fixed is None else _as_bool(fixed, "molecule.fixed_spin_moment"),
         broken_symmetry=_as_bool(
             data.get("broken_symmetry", False), "molecule.broken_symmetry"),
         method=_as_str(data.get("method") or "b3lyp", "molecule.method"),
@@ -729,8 +729,7 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
             "molecule.opt_force_threshold 应在 (0, 0.1] eV/Å（FHI-aims 的 relax_geometry "
             "判据是最大力分量，不是 Hartree/Bohr），实际是 %r" % cfg.opt_force_threshold)
     if cfg.broken_symmetry:
-        # BS 单重态的四条硬前提：M=1、有初矩、合计 0（N↑=N↓）、正负都要有
-        # （否则 SCF 从处处同号/为零的初猜出发只会落回闭壳层解）。
+        # BS 初猜约定：M=1，有反号局域磁矩，初矩合计为零。
         if cfg.multiplicity != 1:
             raise ConfigError(
                 "molecule.broken_symmetry=true 只适用于 multiplicity=1 的开壳层单重态，"
@@ -746,12 +745,12 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         if abs(total) > 1e-6:
             raise ConfigError(
                 "molecule.broken_symmetry=true 时 molecule.initial_moments 的合计应为 0"
-                "（BS 单重态 N↑=N↓），当前合计 %g μB" % total)
+                "（反号局域磁矩初猜），当前合计 %g μB" % total)
         if not (any(v > 0 for v in moments.values())
                 and any(v < 0 for v in moments.values())):
             raise ConfigError(
                 "molecule.broken_symmetry=true 时 molecule.initial_moments 至少要有一个"
-                "正、一个负分量；全同号的初猜收敛到的是固定自旋的另一种解")
+                "正、一个负分量，以提供反号局域磁矩初猜")
     return cfg
 
 
@@ -1226,8 +1225,8 @@ molecule:
   charge: 0
   multiplicity: 1
   initial_moments: null     # 开壳层初始磁矩 {{1-based 原子序号: μB}}，如 {{7: 1.0}}；null = 不写 initial_moment
-  fixed_spin_moment: true   # 开壳层结是否钉住总自旋（M−1）；false = 解除约束的对照解
-  broken_symmetry: false    # M=1 的 BS 单重态：spin collinear + 反号 initial_moments，不写 fixed_spin_moment（需 initial_moments 合计 0）
+  fixed_spin_moment: null   # 净磁矩 N↑−N↓：true 固定为 M−1，false 释放；缺省普通开壳层固定，BS 释放
+  broken_symmetry: false    # M=1 的 BS 初猜使用 spin collinear 和反号且合计为零的 initial_moments
   opt_engine: aims          # aims = 与 tip/SCF 同为 FHI-aims PBE/NAO（推荐）；gaussian = 旧口径
   opt_functional: pbe       # 仅 opt_engine=aims
   opt_basis: light          # 仅 opt_engine=aims；实际 species 由 cluster.species_dir 决定

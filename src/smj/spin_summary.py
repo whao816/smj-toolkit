@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 #: 判据族未针对开壳层校准——这条提示必须跟着自旋数字一起出现。
@@ -51,6 +52,21 @@ def percent(value: Any) -> str:
     if number is None:
         return "—"
     return "%+.2f%%" % (100.0 * number)
+
+
+def recorded_bs_constraint(run_dir: Path, run_spec: Mapping | None,
+                           configured: bool | None) -> bool:
+    """Read the actual SCF constraint. Pre-v3 BS snapshots could record an ignored True."""
+    control = run_dir / "aims_scf" / "control.in"
+    if control.is_file():
+        with control.open(encoding="utf-8", errors="replace") as stream:
+            for line in stream:
+                if line.split()[:1] == ["fixed_spin_moment"]:
+                    return True  # A literal 0 is an active constraint.
+        return False
+    if run_spec and (run_spec.get("protocol_schema") or 0) < 3:
+        return False
+    return bool(configured)
 
 
 def normalize(

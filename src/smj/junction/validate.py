@@ -14,6 +14,7 @@ import math
 from pathlib import Path
 
 from .criteria import AU_S_BOND_BAND
+from .landauer import read_te_channels
 
 
 def _ok(name: str, value, detail: str) -> dict:
@@ -218,9 +219,11 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
             checks.append(_ok('aims_scf', True, 'aims.out 存在且无失败标记(SCF 完成)'))
     te = _find_artifact(run_dir, 'TE.dat')
     if te is not None:
-        rows = [l for l in te.read_text(encoding='utf-8', errors='ignore').splitlines()
-                if l.strip() and not l.lstrip().startswith('#')]
-        if len(rows) >= 2:
+        try:
+            rows, _ = read_te_channels(te)
+        except (OSError, ValueError) as exc:
+            checks.append(_err('aitranss_te', None, 'TE.dat 无法解析: %s' % exc))
+        else:
             checks.append(_ok('aitranss_te', len(rows), 'TE.dat 含 %d 数据行' % len(rows)))
             # efermi 解析纪律: TE.dat 表头优先(24 章 §4/§5)
             header = te.read_text(encoding='utf-8', errors='ignore').splitlines()[:5]
@@ -236,8 +239,6 @@ def validate_junction_run(run_dir, task_card=None, results=None, system=None,
                 checks.append(_ok('efermi_source', efermi, 'efermi 取自 TE.dat 表头(aitranss 实际使用值)'))
             else:
                 checks.append(_warn('efermi_source', None, 'TE.dat 表头无 efermi; 应回退 aims.out(仍缺失则 fail-closed)'))
-        else:
-            checks.append(_err('aitranss_te', len(rows), 'TE.dat 数据行不足(<2): 透射未完成'))
     # 7 点样本免责与 _like 语义(结果**若由示例数据产生**)。
     # P0-17(2026-10-24, 真跑缺口 #11 附带): 旧判据"results 里有 junction 就 warn"会把**真实**
     # 输运结果(1501 点 TE.dat 走管线)也当成 7 点示例 —— 实测 C4 真跑被挂上一条假告警,

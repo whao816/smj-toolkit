@@ -20,10 +20,10 @@ from ..provenance import (
     sha256_file,
     verify_parent_geometry,
 )
-from ..spin import (DEFAULT_INITIAL_MOMENT, insert_control_lines, map_molecule_moments,
-                    record_initial_charge, record_junction_spin, remove_control_lines,
-                    spin_control_lines, spin_state, write_initial_charges,
-                    write_initial_moments)
+from ..spin import (DEFAULT_INITIAL_MOMENT, describe_spin_constraint, insert_control_lines,
+                    map_molecule_moments, record_initial_charge, record_junction_spin,
+                    remove_control_lines, spin_control_lines, spin_state,
+                    write_initial_charges, write_initial_moments)
 from ..spin_partition import (contact_atoms, default_groups, parse_hirshfeld_text,
                               read_geometry, summarize)
 from ._aims_artifacts import probe, problem
@@ -43,8 +43,7 @@ class AimsScfStage(Stage):
     # -- prepare ----------------------------------------------------------- #
     def prepare(self, ctx, stage_dir: Path) -> Prepared:
         stage_dir = Path(stage_dir)
-        # 结级自旋：SCF 必须与 tip 弛豫同一套 spin/charge/fixed_spin_moment，
-        # 否则弛豫出的自旋态在 SCF 里被重新投影成闭壳层。
+        # 结级 SCF 延续 tip 弛豫所用的 spin/charge 和净磁矩约束。
         state = spin_state(ctx.config)
         upstream = ctx.upstream(
             self.name, "geometry.in", override=ctx.override_path("geometry"))
@@ -124,7 +123,7 @@ class AimsScfStage(Stage):
         if not state.fix_spin_moment and state.open_shell:
             # scf 模板没有"不写 fixed_spin_moment"的开关：写完后把这一行拿掉。
             remove_control_lines(control, ("fixed_spin_moment",))
-        if inserted or written_moments or not state.fix_spin_moment:
+        if inserted or written_moments or not state.fix_spin_moment or state.broken_symmetry:
             record_junction_spin(stage_dir / "input_summary.json", state,
                                  default_initial_moment=default_moment,
                                  initial_moments=written_moments)
@@ -134,13 +133,8 @@ class AimsScfStage(Stage):
                 record_initial_charge(
                     stage_dir / "input_summary.json", float(state.charge), per_atom)
         if state.open_shell:
-            if state.broken_symmetry:
-                constraint = ("破缺对称单重态（M=1，不写 fixed_spin_moment；"
-                              "N↑=N↓ 由反号初猜与 SCF 自洽决定）")
-            elif state.fix_spin_moment:
-                constraint = "fixed_spin_moment %g" % state.fixed_spin_moment
-            else:
-                constraint = "无 fixed_spin_moment（解除总自旋约束，对照解）"
+            constraint = describe_spin_constraint(
+                state.fixed_spin_moment if state.fix_spin_moment else None)
             guess = ("default_initial_moment %g" % default_moment
                      if default_moment is not None else "per-atom initial_moment")
             notes.append(

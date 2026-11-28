@@ -1,4 +1,4 @@
-"""自旋极化 ``TE.dat`` 的双通道解析（不改 vendored ``landauer``）。
+"""自旋极化 ``TE.dat`` 的双通道积分。
 
 aitranss 在 ``nspin == 2`` 时把 ``TE.dat`` 写成两列透射（α 与 β 通道），而
 vendored ``landauer.read_te`` 为了保持旧口径对两列取均值——总 G/S 不错，但
@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .junction.landauer import (
-    energy_order, minus_fermi_derivative, sort_by_energy, transport_moments, trapz)
+    energy_order, minus_fermi_derivative, read_te_channels, sort_by_energy, transport_moments, trapz)
 
 #: ``P_S = (Sα−Sβ)/(Sα+Sβ)`` 的分母相对下限（2026-11-22 复审 P2）。
 #: 分母是两通道 Seebeck 之差：Sα≈−Sβ 时比值对数值噪声极端敏感——实测
@@ -20,39 +20,6 @@ from .junction.landauer import (
 #: 判据不是"分母严格等于 0"，而是"分母相对通道尺度近抵消"，故用 max(|Sα|,|Sβ|)
 #: 作尺度；低于该阈值时 P_S 不可定义（None），并把原因写进 result。
 SPIN_POLARIZATION_RTOL = 1e-6
-
-
-def read_te_channels(path: str | Path) -> tuple[list[tuple[float, float, float, float]], int]:
-    """``TE.dat`` -> ``[(E_Ha, E−E_F_eV, T_alpha, T_beta)]`` 与通道数（1 或 2）。
-
-    单列文件里 α=β，通道数记 1；两列文件通道数记 2。非数据行（表头/空行）跳过。
-    """
-    rows: list[tuple[float, float, float, float]] = []
-    channels = 1
-    for line in Path(path).read_text(encoding="utf-8", errors="ignore").splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        fields = line.split()
-        if len(fields) < 3:
-            continue
-        try:
-            energy = float(fields[0].replace("D", "E"))
-            relative = float(fields[1].replace("D", "E"))
-            alpha = float(fields[2].replace("D", "E"))
-        except ValueError:
-            continue
-        beta = alpha
-        if len(fields) >= 4:
-            try:
-                beta = float(fields[3].replace("D", "E"))
-            except ValueError:
-                beta = alpha
-            else:
-                channels = 2
-        rows.append((energy, relative, alpha, beta))
-    if len(rows) < 2:
-        raise ValueError("Not enough TE data in %s" % path)
-    return rows, channels
 
 
 def _max_transmission(rows, index: int) -> dict:
@@ -85,8 +52,12 @@ def analyze_te_spin(path: str | Path, temperature: float = 300.0) -> dict:
     l1_beta = trapz([e * t * w for e, t, w in zip(e_ev, beta, weights)], e_ev)
     l2_alpha = abs(trapz([e * e * t * w for e, t, w in zip(e_ev, alpha, weights)], e_ev))
     l2_beta = abs(trapz([e * e * t * w for e, t, w in zip(e_ev, beta, weights)], e_ev))
-    moments_alpha = transport_moments(l0_alpha, l1_alpha, l2_alpha, temperature)
-    moments_beta = transport_moments(l0_beta, l1_beta, l2_beta, temperature)
+    # transport_moments uses spin-degenerate moments. Each single spin carries
+    # half their weight in G0 units; S and ZT are ratios and retain their values.
+    moments_alpha = transport_moments(
+        0.5 * l0_alpha, 0.5 * l1_alpha, 0.5 * l2_alpha, temperature)
+    moments_beta = transport_moments(
+        0.5 * l0_beta, 0.5 * l1_beta, 0.5 * l2_beta, temperature)
     moments_total = transport_moments(
         0.5 * (l0_alpha + l0_beta),
         0.5 * (l1_alpha + l1_beta),

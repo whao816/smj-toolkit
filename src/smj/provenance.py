@@ -47,7 +47,7 @@ RUN_SPEC_PREVIOUS = "run_spec.previous.json"
 
 #: 协议指纹的"形状版本"。新增/移除只影响记录方式的配置键时递增；老 run 的
 #: ``protocol_sha256`` 会因此不同，但物理参数没变，不该判成漂移。
-PROTOCOL_SCHEMA = 2
+PROTOCOL_SCHEMA = 3  # BS 从此区分固定零磁矩与释放约束。
 
 #: 单文件哈希上限。超过这个大小只记 path/size，不把 GB 级 ``mos.aims`` 读进内存。
 MAX_HASH_BYTES = 128 * 1024 * 1024
@@ -371,9 +371,8 @@ def _protocol_config(config: Any) -> dict[str, Any]:
     # 所以只在非空时才入协议，避免历史 run_spec 集体判为漂移。
     if not molecule.get("initial_moments"):
         molecule.pop("initial_moments", None)
-    # fixed_spin_moment=True 是旧行为（模板一直写 M−1）；默认值不入协议，
-    # 只有显式解除约束（false）才需要触发漂移检查。
-    if molecule.get("fixed_spin_moment") is True:
+    # 普通开壳层沿用旧哈希；BS 显式记录约束，区分释放和固定 Nα−Nβ=0。
+    if molecule.get("fixed_spin_moment") is True and not molecule.get("broken_symmetry"):
         molecule.pop("fixed_spin_moment", None)
     # broken_symmetry=False 是旧行为（没有 BS 途径）；同 fixed_spin_moment，只在
     # 显式开启时入协议，避免历史 run_spec 集体判为漂移。
@@ -795,7 +794,20 @@ def ensure_run_spec(config: Any, run_dir: str | Path, *,
 
     stored = existing.get("protocol_sha256")
     stored_exec = existing.get("execution_sha256")
-    if stored != current:
+    matches = stored == current
+    if (not matches and (existing.get("protocol_schema") or 0) < 3
+            and config.molecule.broken_symmetry and not config.molecule.fixed_spin_moment):
+        # 旧 BS 无论配置 true/false 都释放约束。旧 true 的哈希省略了该键；
+        # 比对完整旧形状，只接受其余参数逐项相同的 run。
+        legacy = protocol_components(config)
+        snapshot = existing.get("config") or {}
+        if (snapshot.get("molecule") or {}).get("fixed_spin_moment", True):
+            legacy["molecule"].pop("fixed_spin_moment", None)
+        if ("allow_single_channel" not in (snapshot.get("transport") or {})
+                and legacy["transport"].get("allow_single_channel") is False):
+            legacy["transport"].pop("allow_single_channel")
+        matches = sha256_text(canonical_json(legacy)) == stored
+    if not matches:
         if not force:
             raise ConfigError(
                 "run_spec 与当前配置不一致（protocol_sha256: run=%s, 当前=%s）。"

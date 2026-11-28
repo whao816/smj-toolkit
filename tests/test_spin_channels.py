@@ -81,6 +81,8 @@ def test_identical_channels_have_no_seebeck_polarization(workdir: Path):
     assert spin["S_total_uV_per_K"] == pytest.approx(total["S_uV_per_K"], abs=1e-9)
     assert spin["spin_polarization_S"] in (None,) or abs(spin["spin_polarization_S"]) < 1e-6
     assert spin["spin_polarization_L0"] == pytest.approx(0.0, abs=1e-12)
+    for channel in ("alpha", "beta"):
+        assert spin[f"k_e_{channel}_pW_per_K"] == pytest.approx(total["k_e_pW_per_K"] / 2)
 
 
 def test_unsorted_channels_give_the_same_per_channel_seebeck(workdir: Path):
