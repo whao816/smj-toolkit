@@ -45,6 +45,16 @@
   |Δq| 在 10⁻³ e 以下）。bpy 判定 `failed`、ppd 判定 `passed`（仅数值判据），
   详见 [k 点验证记录](docs/validation-siesta-kconv-2026-11-28.md)。
 
+### 改进:自旋通道校验与破缺对称初矩语义(2026-11-28)
+
+- `molecule.fixed_spin_moment` 缺省改为 `null`：普通开壳层结仍固定 `M−1`，
+  `broken_symmetry: true` 的 BS 单重态默认释放净磁矩；显式 `true`/`false`
+  仍可覆盖，报告按实际约束记录。
+- TE.dat 采集核对每个能量点的通道数一致，并与文件声明通道数比对；缺列、
+  坏值或非有限数会报出行号。历史单通道谱仍可
+  `transport.allow_single_channel: true` 显式放行，但报告不再把它当成可恢复的
+  自旋极化证据。
+
 ### 验证:Linux 全量测试(2026-11-28)
 
 - 在 gpu1 登录节点（Python 3.12.12、pytest 9.0.3）以
@@ -52,8 +62,6 @@
   2 deselected**，无 failed/error；2 个 skip 均因环境未安装 `rdkit`。
 - 同一快照 `smj verify` 全部通过；Windows 上的 10 failed/26 errors 确认是
   DSH 沙箱与 Git Bash 的环境限制，不是产品回归。
-
-## 未发布
 
 ### 修正:Au lead 层序与截断轴的面内最小像(2026-11-25)
 
