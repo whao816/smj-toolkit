@@ -45,6 +45,14 @@
   |Δq| 在 10⁻³ e 以下）。bpy 判定 `failed`、ppd 判定 `passed`（仅数值判据），
   详见 [k 点验证记录](docs/validation-siesta-kconv-2026-11-28.md)。
 
+### 修复:发布包元数据与 CI 依赖(2026-11-28)
+
+- wheel 的 `METADATA` 改为从 `pyproject.toml` 读取全部 `optional-dependencies`；
+  补齐此前缺失的 `[siesta]` extra，以及 `dev` 的 `netCDF4`、`matplotlib`。
+  打包测试锁定四个 extra 与关键依赖，避免 wheel 与 pyproject 再次漂移。
+- `dev` extra 加入 `matplotlib>=3.7`，与 `junction_analyze` 出图及全量测试的依赖一致；
+  修复 GitHub Actions 在干净环境里因缺 matplotlib 导致 `test_siesta_route` 失败。
+
 ### 改进:自旋通道校验与破缺对称初矩语义(2026-11-28)
 
 - `molecule.fixed_spin_moment` 缺省改为 `null`：普通开壳层结仍固定 `M−1`，
