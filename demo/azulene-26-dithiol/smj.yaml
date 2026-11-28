@@ -38,7 +38,7 @@ cluster:
   user: haow
   port: 22
   key: null
-  remote_root: /home/haow/smj-demo-runs
+  remote_root: ~/smj-runs
   partition: main
   ntasks: 4
   gres: gpu:0

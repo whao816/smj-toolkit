@@ -33,6 +33,22 @@ THY = {'doi': '10.1016/j.chemphys.2005.05.032'}
 JAC = {'doi': '10.1016/j.susc.2009.01.022'}
 WID = {'doi': '10.1021/nl203634m'}
 
+# 热导(声子)判据的源。2026-11-23 新增, 三条都已核到一手文献。
+#   LYN: fcc-Au 声子色散(非弹性中子散射), L 点最高支 4.71 THz = 19.5 meV ——
+#        这是声子带顶的唯一实验锚点; 项目里曾把德拜温度 165 K 的 14.2 meV
+#        误当带顶, 两者不是一回事(见方案附录 A-7)。
+#   SCH: 单通道量子热导 G_Q = pi^2 kB^2 T / 3h 的标准引用。
+#   KLO: 同族工作里显式检查过"力常数无虚频"再算声子输运的做法。
+LYN = {'doi': '10.1103/PhysRevB.8.3493'}
+SCH = {'doi': '10.1038/35010065'}
+KLO = {'doi': '10.1103/PhysRevB.96.245419'}
+
+#: Au 声子带顶(meV)。全 BZ 最高支在 L 点, 4.71 THz = 19.5 meV。
+AU_PHONON_BAND_TOP_MEV = 19.5
+
+#: 虚频判据的噪声容限(cm^-1): 只把 < -10 cm^-1 当真实软模。
+PH_IMAGINARY_TOL_CM1 = -10.0
+
 #: Au–S 硫醇盐有源带（Å）：Jackson 2009 S–Au=2.42±0.02 Å 的一手实验锚点。
 #: 2026-11-22 复审 P2：这是**判据带**的唯一来源；建结搜索用的 2.40–2.49 Å
 #: 是目标带（contacts.TARGET_BAND_A），两者不得在文案里混用。
@@ -147,6 +163,74 @@ CRITERIA = [
              'S_total == (L0α·Sα+L0β·Sβ)/(L0α+L0β)（相对 1e-6）。不自洽说明'
              '分通道积分与总口径脱节，或 results.json 被改坏；这是程序语义'
              '(engineering)，说明"分通道数不可信"，不构成对 H0 的否证'},
+
+    # ------------------------------------------------------------------
+    # 2026-11-23: 热导(声子)判据。命名铁律 —— 不得叫 `ph_te_present`:
+    # `te` 在本仓专指电子侧的 TE.dat(aitranss_te 阶段产物), 热导侧没有这个
+    # 文件, 声子透射谱写在 thermal.json 的 spectrum(或 transmission_ph.csv)。
+    # 这十条只在 thermal.json 存在时生效; 缺 thermal.json 的热导 run 由
+    # review 出 unavailable, 不是 pass(方案 §11)。
+    {'name': 'ph_transmission_present', 'kind': 'engineering', 'gate': 'error',
+     'implemented': True, 'band': None, 'source': None,
+     'note': 'thermal.json 及其 spectrum 段存在且可解析(程序语义); 缺失时其余'
+             '九条无法评估, 不得判 passed。刻意不含 te 字样'},
+
+    {'name': 'ph_relax_converged', 'kind': 'engineering', 'gate': 'error',
+     'implemented': True, 'band': [None, 1.0e-2], 'source': None,
+     'note': '力常数精度的上游闸门: thermal_relax 的 max|F| <= 1e-2 eV/A, 且 '
+             'control.in 里 sc_accuracy_forces 已显式设置。几何没收敛时后面 6N '
+             '个位移全部白算, 不能用 scf_converged 顶替(后者只管 SCF 残差)'},
+
+    {'name': 'ph_band_top_zero', 'kind': 'physical', 'gate': 'error',
+     'implemented': True, 'band': [None, 1.0e-6],
+     'source': dict(LYN, locator='fcc-Au 声子色散, L 点最高支 4.71 THz'),
+     'note': 'Au 声子带顶 4.71 THz = 19.5 meV(全 BZ 最高)之上不许有透射: '
+             '须有带顶以上采样，且 T_ph(hw > 带顶) ≤ 1e-6。分子内 100-400 meV 高频模在带顶之上'
+             '弹性透射严格为零, 若出现非零值是电极 FC 或自能接错了(不是物理)'},
+
+    {'name': 'ph_quantum_bound', 'kind': 'physical', 'gate': 'error',
+     'implemented': True, 'band': None,
+     'source': dict(SCH, locator='单通道量子热导 G_Q = pi^2 kB^2 T / 3h'),
+     'note': '每个传输通道最多贡献 G_Q(T)。默认三通道协议采用 G_ph ≤ 3*G_Q(T)，'
+             '多模电极须根据全谱传输通道数及横向归一化选取上限。'},
+
+    {'name': 'ph_acoustic_limit', 'kind': 'physical', 'gate': 'error',
+     'implemented': True, 'band': [None, 3.0],
+     'source': dict(SCH, locator='每通道 G_Q = pi^2 kB^2 T / 3h; 线性响应'),
+     'note': 'T_ph(w->0) <= 3(**k 平均口径**)。Gamma 点折叠的 3x3 超胞里三条'
+             '声学支给 3, 不是 3*N_k; 若求和未除 N_k 会得 3*9=27, 这条就是'
+             '抓它的。物理上限: 每个声学支在 w->0 恰好 1'},
+
+    {'name': 'ph_asr_residual', 'kind': 'engineering', 'gate': 'warn',
+     'implemented': True, 'band': [None, 1.0e-3], 'source': None,
+     'note': '对三个刚性平移方向，完整器件行与互易输运分区的投影前相对残差都须 ≤ 1e-3。'
+             '输运分区只保留器件到主层的接触耦合。缺分区证据时标记为未定。'},
+
+    {'name': 'ph_fc_symmetry', 'kind': 'engineering', 'gate': 'warn',
+     'implemented': True, 'band': [None, 5.0e-2], 'source': None,
+     'note': '力常数对称性 ||K-K^T||/||K|| < 5%。中心差分与有限收敛的力应当'
+             '对称; 明显不对称说明力噪声大或正负位移没配对'},
+
+    {'name': 'ph_imaginary_modes', 'kind': 'physical', 'gate': 'warn',
+     'implemented': True, 'band': [PH_IMAGINARY_TOL_CM1, None],
+     'source': dict(KLO, locator='声子输运前检查无虚频(同族做法)'),
+     'note': '器件区动力学矩阵不得有 < -10 cm^-1 的虚频(-10 cm^-1 是数值噪声'
+             '容限, 见调研报告 §6 陷阱④)。有虚频说明构型不稳, 该 run 只能'
+             'inconclusive: 热导数值仍报, 但不作为定量结论'},
+
+    {'name': 'ph_lead_cell_match', 'kind': 'engineering', 'gate': 'error',
+     'implemented': True, 'band': None, 'source': None,
+     'note': '冻结 lead FC 的面内胞(n_atoms_per_layer/in_plane/a_lattice)必须与'
+             '本次器件配置一致; 不一致时自能来自另一套几何, G_ph 无意义'},
+
+    {'name': 'ph_grid_independence', 'kind': 'engineering', 'gate': 'warn',
+     'implemented': True, 'band': [0.05, None], 'source': None,
+     'note': '能量网格步长减半后 G_ph 相对变化 < 5%(声子侧对应电子链的 '
+             'grid_independence)。只对同一 force_constants.npy 重算, 不重跑 DFT。'
+             '(D14, 2026-11-25) 门限由 1% 重标为 5%: 本方法的被积函数在峰宽'
+             '~eta 上求和, 梯形积分的求积噪声实测在 2.0%-2.5%(eta=0.05/0.1/'
+             '0.2/0.3 meV 各测一遍均如此), 与 1% 门限同量级, 加密网格压不下去; '
+             '真正的收敛控制量是 eta 而不是步长'},
 ]
 
 # 已登记缺口(ratchtet): 只允许这些无源/未实现的 physical 判据存在, 新增即 lint 失败

@@ -1,0 +1,38 @@
+################################################################################
+# FHI-aims geometry relaxation before the force-constant scan
+################################################################################
+  xc                 {xc}{vdw_line}
+  spin               {spin}
+  fixed_spin_moment  {fixed_spin_moment}
+  relativistic       atomic_zora scalar
+  charge             {charge}
+
+  occupation_type    gaussian {occupation_width}
+  mixer              pulay
+  # Kerker damps the long-wavelength charge sloshing that a metal slab plus
+  # vacuum produces; plain Pulay stalled at 4.5e-3 (job 26372). The keyword
+  # takes the q_0 screening wavevector as its second argument.
+  preconditioner     kerker 1.5
+  n_max_pulay        {n_max_pulay}
+  charge_mix_param   {charge_mix_param}
+  sc_accuracy_rho    {sc_accuracy_rho}
+  sc_accuracy_eev    1E-3
+  sc_accuracy_etot   1E-6
+  sc_accuracy_forces {sc_accuracy_forces}
+  sc_iter_limit      {sc_iter_limit}
+
+  compute_forces .true.
+  final_forces_cleaned .true.
+
+  relax_geometry bfgs {force_threshold}
+  aggregated_energy_tolerance 1.0e-1
+
+  # 2D-periodic slab: in-plane sampling only (kz stays 1 with ~20 Ang vacuum).
+  k_grid {kx} {ky} {kz}
+
+  # No output aitranss, no output mulliken, and no restart keyword: this stage
+  # only produces the relaxed geometry that the force-constant scan starts from.
+################################################################################
+# Species blocks appended below
+################################################################################
+{species_blocks}

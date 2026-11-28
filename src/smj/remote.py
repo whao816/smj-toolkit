@@ -68,6 +68,7 @@ SMJ_STALE_UPLOADS: dict[str, tuple[str, ...]] = {
     "sub_g16.sh": ("mol.log",),
     "sub_aims.sh": ("aims.out", "geometry.in.next_step"),
     "sub_te.sh": ("TE.dat", "te.out"),
+    "sub_thermal_fc.sh": ("forces_all.json", "fc_summary.json", "force_constants.npy"),
 }
 
 #: 完成哨兵（jobwait 与本模块共用）
@@ -91,11 +92,22 @@ def stage_script(stage: str) -> str | None:
     return SMJ_STAGE_SCRIPTS.get(key)
 
 
-def stale_names(script: str | None) -> tuple[str, ...]:
+def stale_names(script: str | None, sbatch_args: Sequence[str] = ()) -> tuple[str, ...]:
     """重提交前要 ``rm -f`` 的远端残留（含 ``slurm-*.out`` 通配符）。"""
     names = (DONE_SENTINEL, *_REMOTE_STALE_GLOBS)
     if script:
         names += SMJ_STALE_UPLOADS.get(script, ())
+    if script == "sub_thermal_fc.sh":
+        directories = ["fc/*"]
+        if sbatch_args:
+            # thermal --retry supplies this same selection to cleanup and Slurm.
+            array = re.fullmatch(r"--array=([0-9]+(?:,[0-9]+)*)(?:%[0-9]+)?",
+                                 sbatch_args[0])
+            if len(sbatch_args) != 1 or array is None:
+                raise StageError("thermal_fc 重试请使用 --array=槽位列表[%并发数]")
+            directories = ["fc/%04d" % int(i) for i in array[1].split(",")]
+        names += tuple(f"{directory}/{name}" for directory in directories
+                       for name in (".done", "forces.json", "aims.out"))
     return names
 
 
@@ -223,10 +235,14 @@ class RemoteSession:
         return remote_dir
 
     # -- 清理 / 上传 ------------------------------------------------------- #
-    def clean_stale(self, stage: str, script: str | None) -> list[str]:
+    def clean_stale(self, stage: str, script: str | None,
+                    sbatch_args: Sequence[str] = ()) -> list[str]:
         """删除上一轮残留；失败即拒绝提交（陈旧哨兵会污染完成判定）。"""
         remote_dir = self.stage_dir(stage)
-        names = stale_names(script)
+        names = stale_names(script, sbatch_args)
+        if script == "sub_siesta.sh":
+            from .siesta import remote_outputs
+            names += tuple(shlex.quote(n) for n in remote_outputs(self.ctx, stage))
         command = "cd %s && rm -f %s" % (
             shlex.quote(remote_dir), " ".join(names))
         result = self._run(command)
@@ -246,7 +262,11 @@ class RemoteSession:
         if not directory.is_dir():
             raise StageError("阶段目录不存在: %s（先跑 prepare）" % directory)
 
-        if stage == "aitranss_te":
+        if script == "sub_siesta.sh":
+            inputs = self.ctx.state.stage(stage).extra.get("inputs", [])
+            uploaded = sorted({Path(p).name for p in inputs if Path(p).parent.resolve() == directory.resolve()})
+            skipped = []
+        elif stage == "aitranss_te":
             # 只上传三个 TE 输入，在 aims_scf 的远端目录里跑。
             uploaded = [n for n in SMJ_AITRANSS_UPLOADS if (directory / n).is_file()]
             skipped = [n for n in SMJ_AITRANSS_UPLOADS if n not in uploaded]
@@ -278,7 +298,8 @@ class RemoteSession:
 
     # -- 提交 -------------------------------------------------------------- #
     def submit(self, stage: str, stage_dir: str | Path | None = None,
-               *, script: str | None = None) -> Submission:
+               *, script: str | None = None,
+               sbatch_args: Sequence[str] = ()) -> Submission:
         """清理 → 上传 → sbatch，返回 :class:`Submission`。"""
         stage = normalize_stage(stage)
         if getattr(self.ctx, "dry_run", False):
@@ -291,13 +312,35 @@ class RemoteSession:
         if not script:
             raise StageError("阶段 %s 没有作业脚本（本地阶段无需提交）" % stage)
 
+        if sbatch_args and script != "sub_thermal_fc.sh":
+            raise StageError("仅 thermal_fc 数组重试可指定 sbatch_args")
+        if script == "sub_g16.sh":
+            from .junction.inputs import SLURM_G16_SCRATCH
+            gaussian_script = Path(stage_dir) / script
+            try:
+                body = gaussian_script.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                raise StageError("Gaussian 作业脚本 %s 无法读取，请重新 --prepare" % script) from exc
+            scratch_lines = [line for line in body.splitlines() if "GAUSS_SCRDIR" in line]
+            if scratch_lines != SLURM_G16_SCRATCH.splitlines() or (
+                SLURM_G16_SCRATCH + '\nsrun g16 "$1"' not in body
+            ):
+                raise StageError("Gaussian 作业脚本缺少阶段目录内的 scratch 设置，请重新 --prepare 后提交")
+
         remote_dir = self.stage_dir(stage)
         self.ensure_dir(remote_dir)
-        cleaned = self.clean_stale(stage, script)
+        cleaned = self.clean_stale(stage, script, sbatch_args)
         uploaded, skipped = self.upload_inputs(stage, stage_dir, script)
 
         args = list(SMJ_SCRIPT_ARGS.get(script, ()))
-        command = "cd %s && sbatch %s" % (shlex.quote(remote_dir), shlex.quote(script))
+        # sbatch_args 用于"只重跑数组作业里失败的槽位":命令行 --array=... 会
+        # 覆盖脚本里的 #SBATCH --array 行,所以不必重写脚本。
+        extra = " ".join(shlex.quote(str(a)) for a in sbatch_args)
+        log = "slurm-%A_%a.out" if script == "sub_thermal_fc.sh" else "slurm-%j.out"
+        command = "cd %s && sbatch --chdir=%s --output=%s --error=%s%s %s" % (
+            shlex.quote(remote_dir), shlex.quote(remote_dir), log, log,
+            (" " + extra) if extra else "",
+            shlex.quote(script))
         if args:
             command += " " + " ".join(shlex.quote(str(a)) for a in args)
         result = self._run(command, timeout=120)

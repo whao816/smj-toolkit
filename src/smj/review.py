@@ -48,7 +48,9 @@ from .provenance import (
     sha256_file,
 )
 from .errors import SmjError
-from .spin_summary import findings as spin_findings, normalize as normalize_spin
+from .spin_partition import molecular_evidence_text, off_molecule_share, read_partition
+from .spin_summary import (findings as spin_findings, normalize as normalize_spin,
+                           recorded_bs_constraint)
 from .state import RunLayout, normalize_stage, now_iso
 
 REVIEW_SCHEMA = "smj.review.v1"
@@ -85,10 +87,12 @@ class ReviewResult(Mapping):
     connection_check: dict | None = None
     structure: dict | None = None
     spin: dict | None = None
+    thermal: dict | None = None
     run_id: str | None = None
     accepted: bool = False
     review_path: str | None = None
     written: bool = False
+    siesta: dict | None = None
 
     @property
     def ok(self) -> bool:
@@ -130,6 +134,9 @@ class ReviewResult(Mapping):
                 str(i.get("code", "")).startswith("connection_check_")
                 or str(i.get("code", "")).startswith("a2_")
                 or str(i.get("code", "")).startswith("provenance_")
+                or str(i.get("code", "")).startswith("ph_")
+                or str(i.get("code", "")).startswith("thermal_")
+                or str(i.get("code", "")).startswith("siesta_")
                 or i.get("code") in ("geometry_missing", "geometry_metadata_missing",
                                      "geometry_metadata_unreadable", "geometry_check_failed",
                                      "open_shell_uncalibrated", "spin_channels_missing"))
@@ -159,6 +166,9 @@ class ReviewResult(Mapping):
             "connection_check": self.connection_check,
             "structure": self.structure,
             "spin": self.spin,
+            "thermal": self.thermal,
+            **({"backend": "transiesta", "siesta": self.siesta,
+                "physics_verdict": self.siesta["physics_verdict"]} if self.siesta is not None else {}),
             "review_path": self.review_path,
             "written": self.written,
         }
@@ -699,6 +709,8 @@ def _schema_shape_drift(spec: dict, config: Any) -> dict | None:
         return None
     stored = {key: stored_config.get(key) or {}
               for key in ("molecule", "electrode", "transport")}
+    if stored["molecule"].get("broken_symmetry") and (spec.get("protocol_schema") or 0) < 3:
+        stored["molecule"] = dict(stored["molecule"], fixed_spin_moment=False)
     try:
         current = protocol_components(config)
     except Exception:  # noqa: BLE001 - 复核不应因配置对象异常崩掉
@@ -782,26 +794,6 @@ def _provenance_review(result: ReviewResult, run_dir: Path, config: Any) -> None
                         run_spec_protocol=stored, current_protocol=current)
 
 
-def _count_text(value: Any) -> str:
-    """整数计数 -> 文本；缺失/坏值显示 ``—``（复核信息里不伪造 0）。"""
-    try:
-        return "%d" % int(value)
-    except (TypeError, ValueError):
-        return "—"
-
-
-def _spin_partition(run_dir: Path) -> dict | None:
-    """``aims_scf/spin_partition.json``（Hirshfeld 自旋分区，S1）; 缺失返回 None。"""
-    path = Path(run_dir) / "aims_scf" / "spin_partition.json"
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return payload if isinstance(payload, Mapping) else None
-
-
 def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     """开壳层的可读性：多重度、是否钉住总自旋、α/β 通道是否还在。
 
@@ -813,8 +805,9 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
     charge = getattr(molecule, "charge", None)
     fixed = getattr(molecule, "fixed_spin_moment", None)
     broken = getattr(molecule, "broken_symmetry", None)
+    run_spec = load_run_spec(run_dir)
+    spec_mol = ((run_spec or {}).get("config") or {}).get("molecule") or {}
     if multiplicity is None or charge is None:
-        spec_mol = ((load_run_spec(run_dir) or {}).get("config") or {}).get("molecule") or {}
         if multiplicity is None:
             multiplicity = spec_mol.get("multiplicity")
         if charge is None:
@@ -829,9 +822,8 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
         multiplicity = None
     broken = bool(broken)
     if broken:
-        # 破缺对称单重态不写 fixed_spin_moment（M−1=0 会把态压成闭壳层），
-        # 因此不能沿用 MoleculeConfig 的默认 True，否则报告会谎称"已固定总自旋"。
-        fixed = None
+        fixed = recorded_bs_constraint(run_dir, run_spec,
+                                       spec_mol.get("fixed_spin_moment", fixed))
     elif fixed is None:
         # provenance 把默认值 True 省掉了，缺省即按 True 解释。
         fixed = True
@@ -843,11 +835,11 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
             from .landauer_spin import read_te_channels
             _, channels = read_te_channels(te)
         except (OSError, ValueError) as exc:
-            result.add("info", "spin_te_unreadable",
+            result.add("error", "spin_te_unreadable",
                        "TE.dat 自旋通道不可读，自旋占比不可得: %s" % exc)
     raw: Any = None
     results_path = run_dir / "junction_analyze" / "results.json"
-    if results_path.is_file():
+    if (not te_present or channels is not None) and results_path.is_file():
         try:
             payload = json.loads(results_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -869,51 +861,24 @@ def _spin_review(result: ReviewResult, run_dir: Path, config: Any) -> None:
         extra = {k: v for k, v in item.items()
                  if k not in ("severity", "code", "message")}
         result.add(item["severity"], item["code"], item["message"], **extra)
-    # 2026-11-21 自由基支线 S1：总磁矩守恒不等于"自旋还在分子上"。Hirshfeld
-    # 分区（aims_scf 侧车）若显示分子份额 < 1%，必须提示——否则 fixed_spin_moment
-    # 的"磁矩保持"会被误读成自由基存活。只出 info，不改任何数值判定。
-    partition = _spin_partition(run_dir)
+    # 位置证据使用逐原子绝对矩，防止分子内正负局部矩相消后误报电极局域。
+    partition = read_partition(run_dir)
     if partition is not None and ((multiplicity or 1) > 1 or broken):
         groups = partition.get("groups")
         molecule_group = groups.get("molecule") if isinstance(groups, Mapping) else None
-        if isinstance(molecule_group, Mapping):
-            fraction = molecule_group.get("fraction")
-            try:
-                fraction_value = float(fraction) if fraction is not None else None
-            except (TypeError, ValueError):
-                fraction_value = None
-            if fraction_value is not None and abs(fraction_value) < 0.01:
-                moment = molecule_group.get("spin_moment")
-                result.add(
-                    "info", "spin_localized_off_molecule",
-                    "分子自旋矩 %+.4f μB（占比 %.2f%%）；开壳层自旋主要在电极侧，"
-                    "不能把总磁矩保持解读为自由基在分子上存活"
-                    % (float(moment or 0.0), 100.0 * abs(fraction_value)),
-                    spin_partition=dict(partition))
-    # 2026-11-21 批次 C（S4）：破缺对称单重态的证据。FHI-aims 的单行列式 BS
-    # 近似不提供 ⟨S²⟩/NOON，能拿到的第一手证据就是"分子内正负自旋矩共存、
-    # 净矩近零"。这里只报数并说明证据强度，不改任何判据结论。
-    if broken and partition is not None:
-        groups = partition.get("groups")
-        molecule_group = groups.get("molecule") if isinstance(groups, Mapping) else None
-        net = partition.get("molecule_net")
-        if net is None and isinstance(molecule_group, Mapping):
-            net = molecule_group.get("net", molecule_group.get("spin_moment"))
-        try:
-            net_value = float(net) if net is not None else None
-        except (TypeError, ValueError):
-            net_value = None
-        localized = partition.get("localized_antiparallel")
-        message = ("分子内 + / − 自旋矩各 %s / %s 个，净矩 %s μB（%s）；"
-                   "FHI-aims 单行列式不提供 ⟨S²⟩/NOON，这是局部证据而非严格反平行证明"
-                   % (_count_text(partition.get("molecule_n_positive")),
-                      _count_text(partition.get("molecule_n_negative")),
-                      "—" if net_value is None else "%+.4f" % net_value,
-                      "局部反平行" if localized is True
-                      else ("未满足局部反平行判据（净矩/幅度）" if localized is False
-                            else "分区数据不完整")))
-        result.add("info", "broken_symmetry_local_moments", message,
-                   spin_partition=dict(partition))
+        message = molecular_evidence_text(partition, broken_symmetry=broken)
+        if broken:
+            result.add("info", "broken_symmetry_local_moments",
+                       message + "。FHI-aims 单行列式不提供 ⟨S²⟩/NOON。",
+                       spin_partition=partition)
+        elif isinstance(molecule_group, Mapping):
+            share = off_molecule_share(partition, broken_symmetry=broken)
+            if share is not None:
+                result.add("info", "spin_localized_off_molecule",
+                           message + "。分子占全结逐原子绝对磁矩和的 %.2f%%。" % (100 * share),
+                           spin_partition=partition)
+            else:
+                result.add("info", "spin_molecular_moments", message, spin_partition=partition)
 
 
 # --------------------------------------------------------------------------- #
@@ -966,6 +931,42 @@ def review_run(target: Any, *, force: bool = True,
                                   accept_deviation=float(accept_deviation))
 
     result = ReviewResult(run_id=getattr(cfg, "name", None) or run_dir.name)
+    backend = getattr(getattr(cfg, "transport", None), "backend", None)
+    recorded, _ = _load_json(run_dir / "state.json")
+    if not backend and not recorded:
+        snapshot = load_run_spec(run_dir) or {}
+        backend = ((snapshot.get("config") or {}).get("transport") or {}).get("backend")
+    if backend == "transiesta" or (recorded or {}).get("backend") == "transiesta":
+        from .siesta.report import _verdict_reason, evidence
+        from .state import RunState
+        state = RunState.load(run_dir / "state.json", run=result.run_id, backend=backend)
+        audit = evidence(run_dir, state, cfg)
+        result.siesta = {"physics_verdict": audit["physics_verdict"],
+                         "engineering_passed": not audit["issues"], "stages": audit["stages"],
+                         "contacts": audit["contacts"], "transport": audit["transport"],
+                         "kconv": audit.get("kconv")}
+        for name, issue in audit["issues"].items():
+            result.add("error", "siesta_stage", f"{name}: {issue}", stage=name)
+        verdict = audit["physics_verdict"]
+        if verdict == "failed":
+            result.add("error", "siesta_convergence",
+                       "物理判定 failed：横向 k 点或屏蔽的数值判据未通过")
+        elif verdict == "passed":
+            result.add("info", "siesta_numeric_scope",
+                       "横向 k 点与屏蔽的数值判据通过；不构成实验有效性证据")
+        else:
+            reason = _verdict_reason(audit.get("scf"), audit.get("kconv"))
+            result.add("warning", "siesta_convergence",
+                       f"物理判定 inconclusive：{reason}")
+        result.finalize()
+        target_path = Path(output) if output else run_dir / "review.json"
+        previous, _ = _load_json(target_path)
+        result.review_path = str(target_path)
+        result.written = (force or not previous or previous.get("siesta") != result.siesta
+                          or previous.get("issues") != result.issues)
+        if result.written:
+            _write_json(result.to_dict(), target_path)
+        return result
     build_dir = None
     if stage:
         candidate = Path(stage)
@@ -992,6 +993,7 @@ def review_run(target: Any, *, force: bool = True,
     _connection_check_review(result, build_dir, review_cfg)
     _provenance_review(result, run_dir, cfg)
     _spin_review(result, run_dir, cfg)
+    _thermal_review(result, run_dir, cfg)
     result.finalize()
     # 供 Mapping 接口（CLI 的 _as_mapping 走 dict(result)）拿到本次实际配置。
     result.config_used = review_cfg
@@ -1008,3 +1010,147 @@ def review_run(target: Any, *, force: bool = True,
 #: 兼容别名（CLI 首选名是 review_run；备用 run_review/review）。
 review = review_run
 run_review = review_run
+# --------------------------------------------------------------------------- #
+# 热导链（M5-T2, 2026-11-23）
+#
+# 热导 run 走独立分支：判据定义在 `smj.junction.criteria`，数值评估在
+# `smj.phonon.checks`，这里只做"翻译"——把 checks 翻成 issues 与结论。
+#
+# 三条硬约束：
+# 1. `thermal.json` 不存在时**只记 info**：既有电子 run 的 review 结论必须
+#    零变化（devplan §4 的 M5 门禁）。
+# 2. 缺证据 → `inconclusive`，不判 passed（方案 §11）。
+# 3. 热导与电子的产物不混谈：`G_ph` 与 `G/G0` 来自两套几何，report 里
+#    必须显式标注，review 里也不把它们拼成一个结论。
+# --------------------------------------------------------------------------- #
+
+def _thermal_relax_evidence(run_dir: Path) -> tuple[float | None, str | None]:
+    """从 `thermal_relax/` 取 `max|F|` 与 `sc_accuracy_forces`。
+
+    直接读 aims.out 的最后一个力块（`phonon.forces.read_forces`），而不是
+    相信阶段 results —— review 的职责是独立复核。
+    """
+    relax_dir = run_dir / "thermal_relax"
+    max_force: float | None = None
+    aims_out = relax_dir / "aims.out"
+    if aims_out.is_file():
+        try:
+            from .phonon.forces import read_forces
+            forces = read_forces(aims_out)
+            import numpy as _np
+            max_force = float(_np.max(_np.linalg.norm(forces, axis=1)))
+        except (ValueError, OSError):
+            max_force = None
+    sc_forces: str | None = None
+    control = relax_dir / "control.in"
+    if control.is_file():
+        for line in control.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("sc_accuracy_forces"):
+                parts = stripped.split()
+                if len(parts) >= 2:
+                    sc_forces = parts[1]
+                break
+    return max_force, sc_forces
+
+
+def _thermal_lead_match(run_dir: Path, cfg: Any) -> bool | None:
+    """用分析阶段的资产、几何与冻结层分区检查匹配。"""
+    from .phonon.assets import lead_boundary, read_device_structure, resolve_lead_fc_path
+    from .phonon.fc import load_lead_fc
+
+    thermal = getattr(cfg, "thermal", None)
+    if thermal is None:
+        return None
+    geometry = run_dir / "thermal_fc" / "geometry.in"
+    if not geometry.is_file():
+        geometry = run_dir / "thermal_device" / "geometry.in"
+    try:
+        lead = load_lead_fc(resolve_lead_fc_path(thermal.lead_fc))
+        archived = run_dir / "thermal_analyze" / "thermal.json"
+        if archived.is_file():
+            used = json.loads(archived.read_text(encoding="utf-8")).get("lead_fc_sha256")
+            if used is not None and used != lead.sha256:
+                return False
+        meta_file = run_dir / "thermal_device" / "device_metadata.json"
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        elements, _, lattice = read_device_structure(geometry)
+        lead_boundary(lead, meta, elements, lattice, thermal.fc.cutoff)
+    except (OSError, KeyError):
+        return None
+    except (IndexError, TypeError, ValueError):
+        return False
+    spec = meta.get("spec") or {}
+    if not (lattice or meta.get("lattice") or {"in_plane", "a_lattice_A"} <= spec.keys()):
+        return None
+    return True
+
+
+def _thermal_review(result: ReviewResult, run_dir: Path, cfg: Any) -> None:
+    """热导链的机械判定（只读、可重复）。"""
+    path = run_dir / "thermal_analyze" / "thermal.json"
+    if not path.is_file():
+        result.thermal = {"available": False,
+                          "reason": "thermal_analyze/thermal.json 不存在（该 run 没跑热导链）"}
+        result.add("info", "thermal_absent",
+                   "没有 thermal.json：该 run 未跑热导链，热导判据不适用")
+        return
+    try:
+        from .analysis import read_thermal
+        thermal, warnings = read_thermal(path)
+    except ValueError as exc:
+        result.thermal = {"available": False, "reason": str(exc)}
+        result.add("error", "thermal_unreadable",
+                   "thermal.json 不可用，热导结论无从判定：%s" % exc)
+        return
+    for message in warnings:
+        result.add("info", "thermal_schema_warning", message)
+
+    from .phonon.checks import evaluate_thermal
+    max_force, sc_forces = _thermal_relax_evidence(run_dir)
+    lead_match = _thermal_lead_match(run_dir, cfg)
+    asym = thermal.get("fc_asymmetry")
+    outcome = evaluate_thermal(
+        thermal,
+        relax_max_force=max_force,
+        relax_sc_accuracy_forces=sc_forces,
+        lead_cell_match=lead_match,
+        fc_asymmetry=float(asym) if isinstance(asym, (int, float)) else None,
+    )
+
+    g_ph = float(thermal["g_ph_pw_per_k"])
+    result.thermal = {
+        "available": True,
+        "verdict": outcome["verdict"],
+        "g_ph_pw_per_k": g_ph,
+        "g_quantum_pw_per_k": float(thermal["g_quantum_pw_per_k"]),
+        "n_channels_effective": float(thermal["n_channels_effective"]),
+        "temperature_K": float(thermal["temperature_K"]),
+        "n_atoms": int(thermal["n_atoms"]),
+        "zt": thermal.get("zt"),
+        "checks": outcome["checks"],
+        "failed": outcome["failed"],
+        "inconclusive": outcome["inconclusive"],
+    }
+
+    for check in outcome["checks"]:
+        if check["passed"] is True:
+            continue
+        name = check["name"]
+        if check["passed"] is False and check["gate"] == "error":
+            result.add("error", name, "%s 未过：%s" % (name, check["detail"]))
+        elif check["passed"] is False:
+            result.add("warning", name,
+                       "%s 未过（warn 级）：%s" % (name, check["detail"]))
+        else:
+            result.add("warning", "thermal_evidence_missing",
+                       "%s 缺证据：%s" % (name, check["detail"]))
+
+    verdict = outcome["verdict"]
+    if verdict == "inconclusive":
+        result.add("warning", "thermal_inconclusive",
+                   "热导结论为 inconclusive（不是 passed）：%s"
+                   % ", ".join(outcome["inconclusive"]))
+    elif verdict == "failed":
+        result.add("error", "thermal_failed",
+                   "热导结论为 failed：%s" % ", ".join(outcome["failed"]))

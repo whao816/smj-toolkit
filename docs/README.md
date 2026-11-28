@@ -2,6 +2,9 @@
 
 ## 当前参考
 
+- [SIESTA 零偏压电子输运路线设计](siesta-zero-bias-transport-design.md) —— 平坦或针尖 Au(111) 接触的六阶段方案、数据交接与验收条件
+- [SIESTA 零偏压路线验证记录（2026-11-27）](validation-siesta-2026-11-27.md) —— gpu1 上 bpy/ppd 两套平坦 Au(111) 接触的六阶段真实运行：工程证据、G/G₀、物理 `inconclusive` 的边界与复现命令
+- [SIESTA 横向 k 点与屏蔽验证记录（2026-11-28）](validation-siesta-kconv-2026-11-28.md) —— bpy 3×3→5×5 与 5×5→7×7 均未达 1%（+22.9%/+5.6%），ppd 3×3→5×5 为 −0.7%；屏蔽两例均 passed，含 E_F 偏移与判定口径
 - [计算流程梳理](smj-计算流程梳理.md) —— 六阶段流程、逐步命令与默认参数、验收判据、资源模型、已知限制（0.2.x 口径；步骤 4 已参数化为「构建电极」：source / element / a_lattice；步骤 3 锚定支持任意元素，strip_thiol_h 三态；复核门含连接核对（原 A2），默认自动登记）
 - [科学性要求与判定标准调研](smj-科学性要求与判定标准调研.md) —— 四层判据（实现/数值/物理/外部有效）、分阶段必要条件、量化阈值与文献证据
 - [判据来源核验](criteria-source-research.md) —— `au_s_bond`、共振归因、`g_in_theory_band` 的一手来源核验与处置记录

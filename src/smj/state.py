@@ -47,6 +47,29 @@ STAGE_ORDER: tuple[str, ...] = (
     "junction_analyze",
 )
 
+#: 2026-11-23：热导（声子）链。与六阶段电子链**并行独立**，只在显式
+#: ``smj stage thermal_xxx`` / ``--run`` 时使用；按设计 DECISIONS D12，
+#: 它不出现在 ``smj status`` / ``smj plan`` 的默认阶段序列里，因此不进
+#: :data:`STAGE_ORDER`，:func:`stage_index` 对它显式报错。
+SIESTA_STAGE_ORDER = ("molecule_opt", "siesta_electrode", "siesta_junction_relax",
+                      "transiesta_scf", "tbtrans_te", "junction_analyze")
+
+
+def electronic_stages(backend: str) -> tuple[str, ...]:
+    if backend == "transiesta":
+        return SIESTA_STAGE_ORDER
+    if backend == "aitranss":
+        return STAGE_ORDER
+    raise SmjError(f"未知电子输运路线 {backend!r}")
+
+
+THERMAL_STAGE_ORDER: tuple[str, ...] = (
+    "thermal_device",
+    "thermal_relax",
+    "thermal_fc",
+    "thermal_analyze",
+)
+
 #: 2026-11-13：``au_relax`` 已从主链路移除。保留该名字仅用于读取/操作旧 run
 #: （``smj stage au_relax`` 仍可用），不再参与 ``run``、``plan``、report 的阶段序列。
 LEGACY_STAGES: tuple[str, ...] = ("au_relax",)
@@ -106,6 +129,22 @@ _ALIASES = {
     "analysis": "junction_analyze",
     "junction-analyze": "junction_analyze",
     "landauer": "junction_analyze",
+    # 热导链（2026-11-23）
+    "thermal-device": "thermal_device",
+    "tdevice": "thermal_device",
+    "t_device": "thermal_device",
+    "thermal-relax": "thermal_relax",
+    "trelax": "thermal_relax",
+    "t_relax": "thermal_relax",
+    "thermal-fc": "thermal_fc",
+    "tfc": "thermal_fc",
+    "t_fc": "thermal_fc",
+    "finite_fc": "thermal_fc",
+    "thermal-fc-array": "thermal_fc",
+    "thermal-analyze": "thermal_analyze",
+    "tanalyze": "thermal_analyze",
+    "t_analyze": "thermal_analyze",
+    "thermal-analysis": "thermal_analyze",
 }
 
 
@@ -120,7 +159,7 @@ def normalize_stage(name: str) -> str:
         raise SmjError("阶段名不能为空")
     key = str(name).strip().lower().replace(" ", "_")
     key = re.sub(r"_+", "_", key)
-    if key in STAGE_ORDER or key in LEGACY_STAGES:
+    if key in STAGE_ORDER or key in SIESTA_STAGE_ORDER or key in LEGACY_STAGES or key in THERMAL_STAGE_ORDER:
         return key
     if key in _ALIASES:
         return _ALIASES[key]
@@ -128,12 +167,18 @@ def normalize_stage(name: str) -> str:
     # electrode_build（具体目录由 RunLayout.stage_dir 回退定位）。
     if re.match(r"^au\d+_build$", key):
         return "electrode_build"
-    raise SmjError("未知阶段 %r；可选: %s（legacy: %s）"
-                   % (name, ", ".join(STAGE_ORDER), ", ".join(LEGACY_STAGES)))
+    raise SmjError("未知阶段 %r；可选: %s（legacy: %s；热导链: %s）"
+                   % (name, ", ".join(STAGE_ORDER), ", ".join(LEGACY_STAGES),
+                      ", ".join(THERMAL_STAGE_ORDER)))
 
 
 def stage_index(name: str) -> int:
     normalized = normalize_stage(name)
+    if normalized in THERMAL_STAGE_ORDER:
+        raise SmjError(
+            "%s 属于热导链，不在电子六阶段链上；请直接 "
+            "`smj stage %s --run`（它不参与 --from/--to 区间）"
+            % (normalized, normalized))
     if normalized not in STAGE_ORDER:
         raise SmjError("阶段 %s 已从主链路移除（仅兼容旧 run）" % normalized)
     return STAGE_ORDER.index(normalized)
@@ -156,13 +201,21 @@ def previous_stage(name: str) -> str | None:
     return STAGE_ORDER[idx - 1] if idx > 0 else None
 
 
-def stage_range(start: str | None = None, end: str | None = None) -> list[str]:
+def stage_range(start: str | None = None, end: str | None = None, *, backend: str = "aitranss") -> list[str]:
     """``--from/--to`` -> 阶段列表（含端点，按执行顺序）。"""
-    lo = 0 if start is None else stage_index(start)
-    hi = len(STAGE_ORDER) - 1 if end is None else stage_index(end)
+    order = electronic_stages(backend)
+    if backend == "transiesta":
+        try:
+            lo = order.index(normalize_stage(start)) if start else 0
+            hi = order.index(normalize_stage(end)) if end else len(order) - 1
+        except ValueError as exc:
+            raise SmjError("所选阶段不属于 SIESTA 路线") from exc
+    else:
+        lo = 0 if start is None else stage_index(start)
+        hi = len(order) - 1 if end is None else stage_index(end)
     if lo > hi:
         raise SmjError("--from %s 在 --to %s 之后，区间为空" % (start, end))
-    return list(STAGE_ORDER[lo:hi + 1])
+    return list(order[lo:hi + 1])
 
 
 # --------------------------------------------------------------------------- #
@@ -250,8 +303,14 @@ class RunState:
     warnings: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
+    backend: str = "aitranss"
+
+    @property
+    def order(self) -> tuple[str, ...]:
+        return electronic_stages(self.backend)
+
     def __post_init__(self) -> None:
-        for stage in STAGE_ORDER:
+        for stage in self.order:
             self.stages.setdefault(stage, StageState())
 
     # -- 查询 -------------------------------------------------------------- #
@@ -260,7 +319,9 @@ class RunState:
         if key not in self.stages:
             # 2026-11-13：au_relax 已从主链路移除，但旧 run 的 state 和显式的
             # `smj stage au_relax ...` 仍需可读；按需创建 legacy 段，不污染新 run。
-            if key in LEGACY_STAGES:
+            # 2026-11-23：热导链同理——它不参与 STAGE_ORDER/--from/--to，但要能
+            # 单独 prepare/collect，所以在第一次被引用时按需建段（D12）。
+            if key in LEGACY_STAGES or key in THERMAL_STAGE_ORDER:
                 self.stages[key] = StageState()
             else:
                 raise KeyError(key)
@@ -270,7 +331,7 @@ class RunState:
         return self.stage(name).status
 
     def statuses(self) -> dict[str, str]:
-        return {name: self.stages[name].status for name in STAGE_ORDER}
+        return {name: self.stages[name].status for name in self.order}
 
     def is_done(self, name: str) -> bool:
         return self.status(name) in DONE_STATUSES
@@ -279,7 +340,7 @@ class RunState:
         return self.status(name) == "failed"
 
     def first_incomplete(self) -> str | None:
-        for name in STAGE_ORDER:
+        for name in self.order:
             if self.status(name) not in DONE_STATUSES:
                 return name
         return None
@@ -321,10 +382,14 @@ class RunState:
 
     # -- 持久化 ------------------------------------------------------------ #
     def to_dict(self) -> dict[str, Any]:
-        ordered = list(STAGE_ORDER)
+        ordered = list(self.order)
         ordered += [name for name in LEGACY_STAGES if name in self.stages]
+        # 热导链按需出现：不参与 stage_range/plan/status 的默认展示，
+        # 但 prepare/collect 的状态必须落盘，否则 --submit 会认不出 --prepare(D12)。
+        ordered += [name for name in THERMAL_STAGE_ORDER if name in self.stages]
         return {
             "schema": "smj.state.v1",
+            **({"backend": self.backend} if self.backend != "aitranss" else {}),
             "run": self.run,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -345,9 +410,10 @@ class RunState:
                     stages[normalize_stage(name)] = StageState.from_dict(payload)
                 except SmjError:
                     continue
-        known = {"schema", "run", "created_at", "updated_at", "stages", "results", "warnings"}
+        known = {"schema", "run", "created_at", "updated_at", "stages", "results", "warnings", "backend"}
         state = cls(
             run=str(data.get("run") or run),
+            backend=str(data.get("backend", "aitranss")),
             path=path,
             created_at=str(data.get("created_at") or now_iso()),
             updated_at=str(data.get("updated_at") or now_iso()),
@@ -359,17 +425,20 @@ class RunState:
         return state
 
     @classmethod
-    def load(cls, path: str | Path, *, run: str = "") -> "RunState":
+    def load(cls, path: str | Path, *, run: str = "", backend: str | None = None) -> "RunState":
         p = Path(path)
         if not p.exists():
-            return cls(run=run or p.parent.name, path=p)
+            return cls(run=run or p.parent.name, path=p, backend=backend or "aitranss")
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise SmjError("state.json 读取失败 (%s): %s" % (p, exc)) from exc
         if not isinstance(data, Mapping):
             raise SmjError("state.json 顶层应为对象: %s" % p)
-        return cls.from_dict(data, run=run or p.parent.name, path=p)
+        state = cls.from_dict(data, run=run or p.parent.name, path=p)
+        if backend is not None and state.backend != backend:
+            raise SmjError(f"运行目录已绑定 {state.backend}，当前配置为 {backend}，请使用独立 run.name")
+        return state
 
     def save(self, path: str | Path | None = None) -> Path:
         target = Path(path) if path else self.path

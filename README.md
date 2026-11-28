@@ -1,5 +1,8 @@
 # smj — 单分子结输运计算链（独立包）
 
+零偏压电子输运也可选择 SIESTA 5.4.2、TranSIESTA 和 TBtrans，默认组装平坦 Au(111) 接触（`pip install -e ".[siesta]"`）。[六阶段使用说明](docs/siesta-zero-bias-transport-design.md) · [示例配置](demo/siesta-au111/smj.yaml) · [2026-11-27 验证记录](docs/validation-siesta-2026-11-27.md) · [k 点/屏蔽验证记录](docs/validation-siesta-kconv-2026-11-28.md)
+
+
 > 从**分子结构**到**透射谱**的端到端自动化：FHI-aims 分子优化 → FHI-aims 加针尖/弛豫 →
 > 构建电极（本地三角岛或 FHI-aims 电极库；默认 Au(111)）→ FHI-aims 静态 SCF → aitranss 透射 → Landauer 分析。
 > 整链可一把跑完，也可**逐阶段独立运行**；每个阶段的输入/产物都落在
@@ -116,7 +119,7 @@ python -m pip install -e .
 # 或构建 wheel 后安装（产物在 dist/）
 python scripts/gen_junction_provenance.py           # 先刷新内核台账（PROVENANCE.json 随 wheel 分发）
 python scripts/build_wheel.py --check       # 只用标准库，不需要 setuptools/build；--check 按 RECORD 校验
-python -m pip install dist/smj_toolkit-0.2.2rc2-py3-none-any.whl
+python -m pip install dist/smj_toolkit-0.3.0rc1-py3-none-any.whl
 ```
 
 可选依赖：
@@ -171,7 +174,7 @@ smj run --dry-run
 下一阶段（该阶段标 `failed`，阻塞原因写进 note，`smj run` 退出码 1）——这是刻意的
 fail-closed 语义，不是缺陷。
 
-真跑把 `run.mode` 改成 `slurm-ssh`，补齐 `cluster.host/remote_root/partition` 与
+真跑把 `run.mode` 改成 `slurm-ssh`，补齐 `cluster.host/partition` 与
 `cluster.env`，然后（仍在 `smj-demo/` 下）：
 
 ```bash
@@ -281,7 +284,11 @@ smj stage junction_analyze --run --te /data/te/TE.dat --config smj.yaml
 ## 4. Slurm 配置
 
 `cluster` 段只在 `run.mode: slurm-ssh` 时必需；`dry-run` / `local` 下可留空。
-`slurm-ssh` 至少要求 `host`、`remote_root`、`partition`，缺一直接报配置错误。
+`slurm-ssh` 需要 `host` 和 `partition`。集群工作目录统一为 **`~/smj-runs/<任务名>/<阶段名>`**，例如 `~/smj-runs/tpm-b-rad/aims_scf`。家目录由 SSH 登录账号在集群上解析。`cluster.remote_root` 可省略，已有绝对路径配置须与该账号的 `~/smj-runs` 完全对应。
+
+`run.name` 按“分子简称-异构体或协议”命名。限 1–40 个 ASCII 字母、数字，词段用单个连字符连接，可保留分子缩写的大小写。同一账号下，不同计算使用不同任务名。阶段名由工作流生成，AITRANSS 复用同一任务的 `aims_scf` 目录。
+
+提交前会核对真实路径。如果已有阶段目录含符号链接，工作流会在上传和清理前停止。历史结果仍可在本地审阅。重跑旧版 Gaussian 作业需重新执行 `--prepare`，以便在阶段目录内创建临时文件。
 
 ```yaml
 run:
@@ -296,7 +303,7 @@ cluster:
   user: yourname
   port: 22
   key: ~/.ssh/id_ed25519
-  remote_root: /data/yourname/smj
+  remote_root: ~/smj-runs
   partition: main
   ntasks: 4
   gres: ""
@@ -320,14 +327,16 @@ cluster:
 | 键 | 用途 | 默认 |
 |---|---|---|
 | `g16root` / `g16_module` | Gaussian 安装根 / module 名 | 空（`g16root` 或 `g16_module` 二选一） |
-| `g16_scratch` / `g16_mem` / `g16_walltime` / `g16_gres` | Gaussian 临时目录/内存/墙钟/GRES | `16G` / `01:00:00` / 空 |
+| `g16_scratch` | Gaussian 本地运行临时目录 | 本地需配置，Slurm 自动在阶段目录内创建独立临时目录 |
+| `g16_mem` / `g16_walltime` / `g16_gres` | Gaussian 内存/墙钟/GRES | `16G` / `01:00:00` / 空 |
 | `aims_prefix` / `aims_module` / `aims_bin` / `aims_ld_module` | FHI-aims 定位方式 | 空（三者择一） |
 | `aims_mem` / `aims_walltime` / `aims_gpus` | FHI-aims 资源 | `16G` / `02:00:00` / 空 |
 | `aitranss_bin` | aitranss 可执行文件 | 空 |
 | `mkl_lib` | aitranss 依赖的 MKL 库路径 | 空 |
 | `te_mem` / `te_walltime` / `te_gres` | aitranss 资源 | `8G` / `02:00:00` / 空 |
 
-缺省值不静默成功：输入渲染器在缺 `g16root`/`g16_scratch` 等键时，会把
+Slurm 提交旧 Gaussian 脚本时，如果提示 scratch 设置不符合要求，请重新运行
+`smj stage molecule_opt --prepare` 生成脚本。输入渲染器在缺少程序安装路径等必需配置时，会把
 `UNCONFIGURED` 写进作业脚本（例如 `export g16root=UNCONFIGURED`），这样的脚本在集群上会
 直接失败。`smj preflight` 在**非 `dry-run`** 模式下检查 Gaussian 许可、FHI-aims 与
 aitranss 可执行文件，缺一项即 error（退出码 1）；`molecule.opt_engine: aims` 时分子优化
@@ -336,6 +345,33 @@ aitranss 可执行文件，缺一项即 error（退出码 1）；`molecule.opt_e
 真跑前请先跑一次。`dry-run` 不触网、也不核对二进制，所以干跑通过不等于集群能跑。
 0.1.1 起提交前会再扫一遍作业脚本：仍含 `UNCONFIGURED` 时 `--submit` / `smj run` 直接
 拒绝（`StageError`，退出 1），不再让它到集群上才失败。
+
+### 4.1 GRES 与节点独占（全项目通用）
+
+**纯 CPU 作业也必须显式写 `--gres=gpu:0`。** 这条不是本仓的偏好，是 Slurm 的行为：
+
+- 节点声明了 GRES（`/etc/slurm/slurm.conf` 里 `NodeName=... Gres=gpu:4`），而分区没有
+  为 GRES 设默认值；Slurm 的默认分配方式是**把节点全部 GRES 给该作业**。
+- 后果：作业本身只用了 8 核，却把 4 张卡一起占住，**同一节点上第二个作业一律
+  PENDING(Resources)** —— 即使 `squeue` 显示 `CPUAlloc=8/CPUTot=64`、内存也空着。
+  判断方法：`sbatch --test-only` 给出的预计开始时间正好等于正在跑那个作业的时限终点。
+- `--gres=none` **无效**（Slurm 不接受该写法）；`--gres=gpu:0` 才是"不要卡"。
+- 实测（2026-11-24，gpu1，64 核 / 4×RTX 4090）：不写 GRES 时 12 h 的作业把后续
+  24 个数组任务全部堵到时限之后；加上 `--gres=gpu:0` 后 8 个数组任务 + 2 个弛豫作业
+  同时跑满 64 核。
+
+规则实现在 `src/smj/slurm.py`（叶子模块，全项目共用，Gaussian / FHI-aims / aitranss /
+热导链的作业脚本都走它）：
+
+| 配置 | 渲染结果 |
+|---|---|
+| 不写（`gres` / `g16_gres` / `te_gres` / `aims_gres_sched` 留空） | `#SBATCH --gres=gpu:0` |
+| 写 `gpu:1` | `#SBATCH --gres=gpu:1` |
+| 写 `off` / `none` / `-` / `no` | **整行不渲染**（给没有 GRES 的集群用） |
+
+注意 `aims_gpus` 是另一回事：它表示**真正的 GPU 计算模式**（1 GPU ↔ 1 rank），
+走 `#SBATCH --gpus=N`，与调度用的 `aims_gres_sched` 互不影响。热导链的 FHI-aims
+是纯 CPU（`mpirun -np N`），只用后者。
 
 ## 5. 三种运行模式与离线演练
 
@@ -370,7 +406,7 @@ config = load_config("smj.yaml")               # 在 run 配置所在目录执�
 # 不想改文件时可在内存里改（下面的 host 等只用于通过字段检查）：
 config.run.mode = "slurm-ssh"
 config.cluster.host = "fake-cluster"
-config.cluster.remote_root = "/tmp/smj-fake"
+config.cluster.remote_root = "~/smj-runs"
 config.cluster.partition = "main"
 runner = StageRunner(config, transport=transport, dry_run=False)
 runner.prepare("molecule_opt")
@@ -435,6 +471,145 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 可直接用 `sha256` 对账；归档目录已在 `.gitignore` 中，重复 prepare/collect 会追加新条目
 而不是覆盖历史。归档失败只记阶段 note，不阻断计算。
 
+## 6.1 声子热导（thermal 链）
+
+给定 Au–分子–Au 结，算声子热导 `G_ph`（pW/K）与声子透射谱 `T_ph(ħω)`。**它不是 κ**：
+单分子结没有确定的截面积，块体的傅里叶定律 / Wiedemann–Franz / 动力学理论都不适用，
+能报的只有热导 `G`（W/K）本身。
+
+**前置条件比电子链少**：只需要 FHI-aims（任何带 `compute_forces` 的版本即可，有限位移
+不依赖 DFPT），电极力常数随包发布，不用自己先算一份体相：
+
+```bash
+$ smj lead-fc --show          # 资产身份：Au / 4.078230 Å / 3×3 / 2 层 / sha256
+$ smj lead-fc --export my_lead   # 导出后可用 thermal.lead_fc 指向自己的版本
+```
+
+`smj.yaml` 里打开（其余键都有可用默认值）：
+
+```yaml
+thermal:
+  enabled: true
+  electrode: {in_plane: [3, 3], layers: 4, device_layers: 2, vacuum: 20.0}
+  fc:        {displacement: 0.01, cutoff: 10.0, array_parallel: 8, k_grid: [1, 1, 1]}
+  negf:      {eta_meV: 0.05, energy_step_meV: 0.05, band_top_meV: 19.5}
+```
+
+热导链**独立于电子六阶段链**（D12）：它不出现在 `smj status`/`smj plan` 的默认输出里，
+也不接受 `run --from/--to` 区间，逐阶段用 `smj thermal --stage X --run`。
+
+| 阶段 | 做什么 | 产物 | 上机 |
+|---|---|---|---|
+| `thermal_device` | 建 Au(111) 3×3 周期板（`layers` 层 × 两侧）+ 去质子化分子，标 `layer_index`/`side`/`role`；`S–Au = gap/2 + au_s_distance − S–S/2` | `geometry.in`、`device_metadata.json` | 本地 |
+| `thermal_relax` | 弛豫（冻结最外层 `freeze_outer_layers` 层），模板带 `compute_forces .true.`、`preconditioner kerker 1.5`、`k_grid K K 1` | `geometry.in.next_step`、`aims.out` | 1 个作业 |
+| `thermal_fc` | 对器件区每个自由度做 ±0.01 Å 中心差分（6N 个点）→ 读力 → 力常数 | `force_constants.npy`、`displacements.json`、`forces_all.json` | 数组作业 |
+| `thermal_analyze` | 拼 lead 力常数 → 动力学矩阵 → ASR 诊断 → 表面自能 → `T_ph` → Landauer 积分 | `thermal.json`、`thermal_spectrum.*`、`thermal_conductance_vs_temperature.*` | 本地 |
+
+nap-sh 实测（arXiv 级标定，2026-11）：90 原子（Au 72 + 分子 18）、器件区 54、**324 个位移**、
+8 路并发 **约 9 h**（单点 20–35 min）；`G_ph(300 K) = 13.72 pW/K`、`G_Q = 283.93 pW/K`、
+有效通道数 `N_eff = 0.048`，300 K 已达高温平台的 98.9%。
+
+判定走 `smj review` 的 `thermal` 块，十条判据：`ph_transmission_present`、`ph_relax_converged`、
+`ph_band_top_zero`、`ph_quantum_bound`、`ph_acoustic_limit`、`ph_asr_residual`、`ph_fc_symmetry`、
+`ph_imaginary_modes`、`ph_lead_cell_match`、`ph_grid_independence`。error 门未过 → 顶层
+`blocked`；warn 门未过或**缺证据** → `thermal.verdict = inconclusive`（不会判 pass），
+顶层 `status` 仍是 `passed/warning/blocked` 三值，不改变既有退出码语义。
+
+两条容易踩的硬约束：
+
+1. **热导器件与电子链器件不是同一体系**。热导用 Au(111) 周期板（有主层才能做半无限表面
+   自能），电子链用金字塔团簇；`G_ph` 与 `G/G0` **不可并列**，`smj report` 的
+   `## 5. 热导（声子）` 里有强制提示。
+2. **η 是数值正则化参数，不是物理线宽**。换 η 等于换方法：本体系 η 由 0.5 降到 0.05 meV，
+   `G_ph` 由 10.9 升到 13.7（+25%）。协议值冻结在 0.05 meV / 0.05 meV 步长（方案 D15），
+   与文献横比必须同 η，或显式声明为「η→0 外推值」（外推约 13.8 pW/K）。
+
+已知限制：简谐近似（非谐修正文献估计 ~15%）；线性响应给不出热整流；`ZT_total` 要求同一
+几何的电子透射，本链不提供（`thermal.json` 里 `zt.available = false` 并写明原因）。
+
+### 6.1.1 扫参与跨 run 比较
+
+`G_ph` 对正则化参数（η、能量步长）极其敏感，所以报告数字前先把「这个数有多依赖 η」
+量化出来，再谈分子之间的差别：
+
+```bash
+$ smj thermal --sensitivity -c smj.yaml     # 不碰集群：复用已有 force_constants.npy
+  η\步长           0.100      0.050      0.025
+  0.300         12.099     12.372          —
+  0.200         12.799     13.122     12.961
+  0.100         13.355     13.614     13.403
+  0.050         13.494     13.717     13.449   ← 生产配置
+  η→0 外推：13.819 pW/K
+  步长引起的相对变化最大 2.46%（梯形积分底噪，不是收敛趋势）
+```
+
+写 `thermal_analyze/sensitivity.json`。η→0 只用**生产步长下最小的两个 η** 做渐近
+线性外推——`G(η)` 是饱和的，全局拟合会被低端陡坡拖出比最小 η 还小的值。
+
+多个分子放一张表时用 `smj thermal-compare`，它**先比协议再比数**：
+
+```bash
+$ smj thermal-compare runs/            # 输出 markdown 表；--out 写文件，--json 给机器
+$ smj thermal-compare runs/ --strict   # 协议不一致直接返回非零
+```
+
+协议项包括温度、η、谱的实际能量步长、`band_top_meV`、`lead_fc_sha256`、右电极坐标变换和输运动力学矩阵的处理方式。任一不一致都会在表前
+点名（跨协议的 `G_ph` 互比等于换方法，见 D15）。
+
+数组作业掉点时不必重跑整批：
+
+```bash
+$ smj thermal --stage thermal_fc --retry missing            # 或 --retry 17,203
+```
+
+`--retry` 复用已 prepare 的脚本，只把 `--array=` 换成缺的那几个槽位；`fc_summary.json`
+里若有 SCF **未收敛**的槽位会直接报错（未收敛的 SCF 照样写出形状正确的力，靠条数
+和形状是查不出来的）。
+
+### 6.1.2 环境清单与收敛轴
+
+`thermal_analyze` 除 `thermal.json` 外还写两份东西，用来回答「换个团队能不能复现」
+和「这个数扫过什么」：
+
+- **`environment.json`**（`smj.environment.v1`）—— 决定数值的输入与工具：smj/Python/
+  numpy 版本、FHI-aims 二进制 sha256、species 目录内容摘要、lead 力常数 sha256、
+  热导配置快照。`identity()` 只取六项（版本、numpy、aims、species、lead FC），
+  **不含路径**，所以两台机器装在不同目录仍是同一套工具；`digest()` 剔除
+  `generated_at` 便于比对。`thermal-compare` 会单独报「环境不一致」，与「协议不一致」
+  分开——前者是换了工具，后者是换了方法。
+- **`thermal.json` 的 `convergence`** —— 三条收敛轴。力常数截断半径零机时可得
+  （切已组装矩阵的 lead 块后重算 NEGF）；lead 层数与器件区大小必须重跑位移集，
+  所以只登记状态与所需作业。默认截断来自所选电极资产；显式填写的
+  `thermal.fc.cutoff` 必须与资产一致。截断扫描以当前完整矩阵的热导为参考。
+
+以下是 `cb65abf` 版本的历史截断扫描（nap-sh，η=0.05 meV）。该版本已修正层序，仍使用旧的右电极变换、截断距离和能量网格。
+
+```text
+截断 4/5/6/7/8/10/12 Å → 14.36 / 15.29 / 15.48 / 15.48 / 15.93 / 15.93 / 15.93 pW/K
+相对散布 9.8%；8/10/12 Å 三档逐位相同
+```
+
+旧距离算法在六角斜胞中会错删部分近邻，上述散布只描述该历史版本。名义截断覆盖块内全部
+非零对时，后处理可以确认已有耦合全部保留。更远的体相耦合是否影响结果仍需独立验证
+（`beyond_nominal_checked=false`，`converged=null`）。
+
+审计还发现一层结构问题：6 层周期胞是 A–B–C–A–B–C 堆垛，每往上一层在面内
+还位移 `(p1+p2)/3`，所以参考层 1（B 位）的行块**不能**由参考层 0（A 位）做
+`K(i,j)=K(0,(j-i) mod layers)` 平移得到。用该假设拼出的「两层主层 11.12、
+三层主层 11.38 pW/K」**已撤回**；实测 `max|K(0,5)-K(0,1)^T| = 1.768 eV/Å²`，
+与耦合本身（`max|K(0,1)|=1.597`）同量级。随包电极使用单 A 层近似。
+
+使用同一份 nap-sh 力常数、随包 Au 电极、0.05 meV 的 η 和实际步长，旧非对称
+矩阵交换左右电极后，300 K 声子热导从 15.107394 变为 16.106344 pW/K。
+采用互易矩阵和相邻主层后，两种方向均为 **15.194481 pW/K**。完整器件行
+的声学求和残差为 2.15×10⁻¹³ eV/Å²，实际输运分区的残差为 0.182 eV/Å²
+（相对 0.00277，门限 0.001）。固定界面耦合时两种约束不相容，程序保留互易矩阵并记录原因。
+另有两个虚频模低于 −10 cm⁻¹，本例复核结论为 `inconclusive`。
+
+已有 A、B 两套位移结果时，可用 `python scripts/gen_au_lead_fc.py --assemble runs/lead-fc runs/lead-fc-layer1 --out lead-ab`
+生成独立资产。`lead_asr.json` 记录对称化前的互易偏差以及实测行的逐方向声学求和残差。
+位移层序的原始审计见 [lead-mapping-audit](docs/lead-mapping-audit-2026-11-25.md)。
+
 ## 7. 附带功能
 
 | 命令 | 作用 | 产物/输出 |
@@ -442,6 +617,7 @@ print(transport.commands[-2:])                 # 看实际发出的命令
 | `smj preflight` | 提交前检查：分子可读/原子重叠、species 覆盖、建结几何闸门、资源上限；非 `dry-run` 时再加集群/SSH 连通、远端目录可写、二进制/许可 | 结构化 issues（error/warning/info），有 error 退出 1 |
 | `smj status` | 读 `state.json`，打印阶段/状态/job id/远端目录/耗时/备注 | 终端表格（`--json` 机器可读） |
 | `smj report` | 由 run 目录生成 `manifest.json` + `report.md`（9 节：概览/判定/结构复核/阶段状态/输入摘要/资源/输运/失败原因/产物清单）；缺 `TE.dat` 时物理判定为「无法判定」而不是通过 | 报告文件；默认跳过已存在文件，`--force` 重写，`--no-checks` 不算判定，`--strict` 在判定失败/阻断时退出 1 |
+| `smj siesta-kconv` | 比较两个已采集 SIESTA run 在 E_F 处的 $G/G_0$，判断横向 $k$ 点的相对变化是否在容差内；读 `junction_analyze/results.json` | markdown 表或 `--json`；`--json-out kconv.json` 供 `smj report`/`smj review` 升级物理判定，`--strict` 未通过退出 1 |
 | `smj analyze` | 对 `aitranss_te/TE.dat` 做 Landauer 分析（`log10_G_over_G0_like`、`S_uV_per_K`、`k_e_pW_per_K`、`ZT_electronic`），写 `junction_analyze/analysis.json`；`--plot` 可顺手按统一版式出 `T_E_plot.png`（`[plot]` extra） | `analysis.json`（含 `independent` 独立复核结果） |
 | `smj plot` | 按**统一版式**画 T(E)（四边框/刻度朝内/E_F 虚线/log 纵轴/固定配色，见 `docs/plot_style.md`）；可给 TE.dat、run 目录或逗号标签叠加多条 | `T_E.png` + `T_E.pdf`（默认 PNG+PDF 同源导出，600 dpi） |
 | `smj pdos` | 分组 PDOS：读 `aims_scf` 的 `mos.aims`（开壳层 `alpha.aims`/`beta.aims`，按 `$uhfmo_*` 头行判通道）与 `basis-indices.out`，按 `--groups molecule=1-20,left=21-52` 把原子分组投影到 α/β，占据数取 `aims.out` 的 `State Occupation` 表（闭壳层只取最后一张；开壳层取末两张分别给 α/β，行数允许不同，但与通道波函数态数不符时显式报错而不是按索引截断），落在 `TE.dat` 的 E − E_F 网格上（与 T(E) 同一能量轴）；权重按每态 `Σc²` 归一（NAO 非正交，真正 Mulliken 需要 `omat.aims` 重叠矩阵，本地只有表头）；`--plot` 出上下两栏共享 x 轴的图。默认回取只抓 `mos.aims` 表头，本地没有完整本征向量时会**显式失败**并提示用 `--fetch` 按清单整取 | 终端摘要或 `--json`；`-o` 写 `smj.pdos.v1` JSON；缺完整本征向量时退出 1 |
@@ -565,8 +741,10 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   0.05 Å、表面索引集合没变）旧签名即失效，`smj review` 默认 `blocked`，只有显式
   `review.accept_deviation` 才降为 warning 并标注“人工豁免”。`review.connection_check`
   默认 `true`，没有有效签名时 `smj review` 为 `blocked`。
-- **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT
-  （未测晶格热导就不下总 ZT 结论）。
+- **口径不可混**：Au60 与 20 Au/侧的绝对值不可直接比较；电子 `ZT_e` 不是总 ZT。
+  热导链能测 `G_ph`，但它是**另一个器件**（周期板，见 §6.1），与电子 `G/G0` 不同构，
+  `thermal.json` 的 `zt.available` 因此恒为 `false` 并写明原因——不要拿两个器件的
+  分子结论互相拼成总 ZT。
 - **电极厚度口径**：`electrode.au_per_electrode` 只在 `source: builtin` 生效
   （`null` = 完整 60 Au/侧；整数按完整原子层截断，30 → 35/侧；上限 30）。默认
   `source: library` 时该键被完全忽略，团簇大小由 `electrodes.library` 文件决定。
@@ -623,13 +801,11 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   `smj report` 的 §4.1 加"自旋分布（Hirshfeld，μB）"表：分子 / 接触区（距锚原子
   ≤3.0 Å 的电极原子）/ 电极的份额与占比。总磁矩守恒**不能**说明自由基还在分子上：
   `runs/ttf-cation` 实测总矩 1.0000 μB 里分子只占 0.0056（0.56%），`smj review` 会记
-  `spin_localized_off_molecule`（info）。分区只陈述数字，不设阈值判定；Hirshfeld 段名
-  在但解析不出 `| Atom N:` 行会拒绝 `collected`。
-- **单列 TE 默认阻断（2026-11-21，S3）**：开壳层 TE.dat 只剩一列时，aitranss 已经把
-  α/β 合并成均值，自旋极化不可恢复——`aitranss_te.collect` 现在直接 `StageError`，
-  并提示检查 `$uhfmo_alpha/$uhfmo_beta`、SCF 是否真开壳层、nsaos 是否非零。外部/历史
-  数据确知只能单列时显式设 `transport.allow_single_channel: true` 放行，结果里记
-  `single_channel_allowed: true` 与 note。
+  `spin_localized_off_molecule`（info）。定位提示用逐原子磁矩绝对值求和，避免分子内
+  正负磁矩抵消造成误判。逐原子数据不完整时，报告会标出缺失的证据。
+- **TE.dat 自旋通道校验**要求各能量点的透射列数一致，并核对文件中声明的通道数。
+  缺列、坏值或非有限数会报出行号。整份单通道历史谱可通过
+  `transport.allow_single_channel: true` 显式采集；只凭该谱无法确定开壳层的自旋极化率。
 - **自旋分辨热输运（2026-11-21，S2）**：`analyze_te_spin` 现在每通道也积 L1/L2，
   `results.json` 的 `spin` 块多出 `S_alpha_uV_per_K` / `S_beta_uV_per_K` /
   `S_total_uV_per_K` / `k_e_*` / `ZT_*` / `spin_polarization_S`；`smj report` §4.1
@@ -640,7 +816,10 @@ python scripts/scan_convergence.py compare scan/scan.json --tolerance 0.05
   （相对 1e-6）；旧 `spin` 块（只有 L0）只标"不适用"，不误判故障。
   `runs/ifs-bs` 实测 Sα=+6.1560、Sβ=+6.1589 μV/K（相对差 4.8e-4），P_S=−2.4e-4，
   与 P(E_F)=−1.8e-5 同号且可忽略。
-- **破缺对称（BS）单重态的证据（2026-11-21，S4）**：FHI-aims 单行列式 BS 近似不给
+- **破缺对称（BS）单重态候选**使用 `multiplicity: 1`、`broken_symmetry: true` 和反号初矩。
+  省略 `fixed_spin_moment` 或设为 `false` 时释放净磁矩，显式设为 `true` 时写
+  `fixed_spin_moment 0`。两种协议均保留共线自旋自由度，末态局域磁矩可直接从
+  Hirshfeld 分区核对。FHI-aims 单行列式 BS 近似不给
   ⟨S²⟩/NOON，能拿到的第一手证据是 Hirshfeld 局部自旋矩。`spin_partition.summarize`
   现在给出分子组内的正/负计数与净矩，正负共存、单个原子 ≥0.05 μB 且
   `|net| < 0.05·max_abs` 时标 `localized_antiparallel: true`（0.05 μB 下限挡住数值

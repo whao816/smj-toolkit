@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smj-toolkit"
-version = "0.2.2rc2"
+version = "0.3.0rc1"
 description = "Single-molecule junction transport workflow (standalone)"
 readme = "README.md"
 license = { text = "MIT" }
@@ -29,8 +29,9 @@ classifiers = [
 
 [project.optional-dependencies]
 plot = ["matplotlib>=3.7"]
-dev = ["pytest>=8"]
-all = ["matplotlib>=3.7", "pytest>=8"]
+siesta = ["netCDF4>=1.6", "matplotlib>=3.7"]
+dev = ["pytest>=8", "netCDF4>=1.6", "matplotlib>=3.7"]
+all = ["matplotlib>=3.7", "pytest>=8", "netCDF4>=1.6"]
 
 [project.scripts]
 smj = "smj.cli:main"
@@ -44,6 +45,7 @@ include = ["smj*"]
 
 [tool.setuptools.package-data]
 "smj.junction" = ["templates/*", "PROVENANCE.json"]
+"smj.phonon" = ["data/*/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

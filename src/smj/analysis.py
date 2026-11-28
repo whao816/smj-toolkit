@@ -4,7 +4,7 @@
 :mod:`smj.junction.independent_check`）的**薄封装**，只做三件事：
 
 1. 调 vendored ``analyze_te`` 得到固定字段的统计摘要；
-2. 可选跑独立复核（独立解析器 + Simpson 求积 + CODATA 常数），抓实现级单位/
+2. 可选跑独立复核（独立数值解析 + Simpson 求积 + CODATA 常数），抓实现级单位/
    口径事故（见 vendored ``independent_check`` 的独立性边界声明）；
 3. 落 ``analysis.json``，可选出图（``matplotlib`` 属 extra ``plot``，未装时
    优雅跳过并说明），可选与参考值 compare（默认容差：log10(G/G0) 绝对 0.1、
@@ -24,8 +24,10 @@ aitranss 的 ``T(E)`` 以 **G0 = 2e^2/h 为单位（per spin）**，非极化时
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
+from itertools import islice
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -138,7 +140,7 @@ def _tolerance_for(key: str, tolerances: Mapping[str, Any] | None) -> dict[str, 
 # --------------------------------------------------------------------------- #
 def independent_check(result: Mapping[str, Any], te_path: str | Path, *,
                       temperature: float | None = None) -> dict:
-    """独立的 L0/L1/L2 复核（不同解析器 + Simpson 求积 + CODATA 常数）。
+    """独立的 L0/L1/L2 复核（独立数值解析 + Simpson 求积 + CODATA 常数）。
 
     返回 ``{ok, L0, L1, L2, G_over_G0, S_uV_per_K, ZT_electronic, comparison}``；
     独立复核失败不影响主管线结果，调用方在 ``warnings`` 里记录原因。
@@ -367,9 +369,11 @@ def read_analysis(path: str | Path) -> dict:
 
 def te_header(te_path: str | Path) -> dict:
     """从 TE.dat 表头/数据行提取 ``bias`` / ``efermi`` / ``points``（不臆断）。"""
+    from .junction.landauer import read_te_channels
+
     te = resolve_te(te_path)
-    text = Path(te).read_text(encoding="utf-8", errors="ignore")
-    header = text.splitlines()[:8]
+    with te.open(encoding="utf-8-sig", errors="replace") as stream:
+        header = list(islice(stream, 8))
     out: dict[str, Any] = {"source": str(te)}
     for line in header:
         m = re.search(r"efermi\s*=\s*([-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?)", line,
@@ -380,23 +384,114 @@ def te_header(te_path: str | Path) -> dict:
                       re.IGNORECASE)
         if m:
             out["bias_V"] = float(m.group(1))
-    points = 0
-    for line in text.splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        parts = s.split()
-        if len(parts) >= 3:
-            try:
-                float(parts[0].replace("D", "E"))
-                float(parts[1].replace("D", "E"))
-                float(parts[2].replace("D", "E"))
-            except ValueError:
-                continue
-            points += 1
-    out["points"] = points
+    rows, _ = read_te_channels(te)
+    out["points"] = len(rows)
     return out
 
 
 #: CLI/兼容别名（首选名是 analyze_run）。
 analyze = analyze_run
+
+# --------------------------------------------------------------------------- #
+# 热导（声子）产物的 schema 校验（2026-11-23, M5-T4）
+#
+# `thermal.json` 由 `thermal_analyze` 阶段写、由 `review`/`report` 读。这里的
+# 作用与 `analysis.json` 一致：**只做契约校验，不做物理判据** —— 判据在
+# `smj.phonon.checks` 与 `smj.junction.criteria`，物理结论不在这里下。
+# --------------------------------------------------------------------------- #
+
+#: thermal.json 的 schema 标识（与 `thermal_analyze.SCHEMA` 同值）。
+THERMAL_SCHEMA = "smj.thermal.v1"
+
+#: 必需键。缺任何一个都 raise —— 静默补默认值会让"没算"看起来像"算过了"。
+THERMAL_REQUIRED_KEYS = (
+    "schema", "temperature_K", "n_atoms", "n_device_atoms", "n_lead_atoms",
+    "g_ph_pw_per_k", "g_quantum_pw_per_k", "n_channels_effective",
+    "acoustic_sum_residual", "acoustic_sum_relative_residual",
+    "imaginary_modes", "n_k_points", "band_top_meV", "eta_meV",
+    "energy_step_meV", "spectrum", "zt",
+)
+
+#: spectrum 段的三个等长数组。
+THERMAL_SPECTRUM_KEYS = ("energy_meV", "transmission", "cumulative_g_ph_pw_per_k")
+
+#: 允许出现在 thermal.json 里但不在必需键中的附加键（多出来的保留并告警）。
+THERMAL_OPTIONAL_KEYS = ("relax_max_force_ev_per_A", "lead_fc_sha256", "fc_asymmetry", "notes",
+                         # D13：ASR 投影记录。旧文件没有这三个键，故列为可选。
+                         "right_lead_transform", "asr_projection_reason",
+                         "transport_matrix_protocol", "transport_asr",
+                         "discarded_device_lead_max_ev_per_A2",
+                         "asr_projected", "asr_projection_norm",
+                         "asr_residual_after_ev_per_A2", "asr_region",
+                         # 软模归属（modes.describe_soft_modes）。解释性字段，
+                         # 缺了不影响任何判据，故可选。
+                         "soft_modes",
+                         # 免费的温度曲线（同一份透射谱，只换玻色因子）
+                         "g_ph_by_temperature",
+                         # 把负本征值投影掉后 G_ph 的相对变化（None = 无虚频）
+                         "soft_mode_impact_relative_g_ph",
+                         "g_ph_symmetric_pw_per_k", "g_ph_soft_removed_pw_per_k",
+                         # 三条收敛轴的状态（截断已测，另两条登记为未测）。
+                         "convergence",
+                         # 环境清单指纹（正文在 environment.json）。
+                         "environment")
+
+
+def read_thermal(path: str | Path) -> tuple[dict, list[str]]:
+    """读并校验 ``thermal.json``，返回 ``(payload, warnings)``。
+
+    校验项：schema 值、必需键齐备、spectrum 三数组等长且长度为 >=2、
+    数值有限（``allow_nan=False`` 语义）。任何一项不过都 raise ``ValueError``
+    —— 与 :func:`read_analysis` 的口径一致：**契约坏掉时宁可炸，不要猜**。
+    """
+    p = Path(path)
+    if not p.is_file():
+        raise ValueError("thermal.json 不存在: %s" % p)
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("thermal.json 不是合法 JSON: %s" % exc) from exc
+    if not isinstance(data, dict):
+        raise ValueError("thermal.json 顶层必须是对象")
+    if data.get("schema") != THERMAL_SCHEMA:
+        raise ValueError("thermal.json 的 schema 是 %r，期望 %r"
+                         % (data.get("schema"), THERMAL_SCHEMA))
+    missing = [k for k in THERMAL_REQUIRED_KEYS if k not in data]
+    if missing:
+        raise ValueError("thermal.json 缺必需键: %s" % ", ".join(missing))
+
+    warnings: list[str] = []
+    extra = sorted(set(data) - set(THERMAL_REQUIRED_KEYS) - set(THERMAL_OPTIONAL_KEYS))
+    if extra:
+        warnings.append("thermal.json 含未知键，已保留: %s" % ", ".join(extra))
+
+    spectrum = data["spectrum"]
+    if not isinstance(spectrum, dict):
+        raise ValueError("thermal.json 的 spectrum 必须是对象")
+    absent = [k for k in THERMAL_SPECTRUM_KEYS if k not in spectrum]
+    if absent:
+        raise ValueError("thermal.json 的 spectrum 缺: %s" % ", ".join(absent))
+    lens = {k: len(spectrum[k]) for k in THERMAL_SPECTRUM_KEYS}
+    if len(set(lens.values())) != 1:
+        raise ValueError("thermal.json 的 spectrum 三数组长度不一致: %r" % lens)
+    if lens["energy_meV"] < 2:
+        raise ValueError("thermal.json 的 spectrum 至少要有 2 个能量点")
+    for key in THERMAL_SPECTRUM_KEYS:
+        for value in spectrum[key]:
+            if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise ValueError("thermal.json 的 spectrum.%s 含非有限数值" % key)
+    from .phonon.landauer import validate_spectrum
+    _, transmission = validate_spectrum([v * 1.e-3 for v in spectrum["energy_meV"]],
+                                        spectrum["transmission"])
+    spectrum["transmission"] = transmission.tolist()
+    for key in ("g_ph_pw_per_k", "g_quantum_pw_per_k", "n_channels_effective"):
+        try:
+            number = float(data[key])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("thermal.json 的 %s 不是数值" % key) from exc
+        if not math.isfinite(number):
+            raise ValueError("thermal.json 的 %s 非有限" % key)
+    if float(data["g_ph_pw_per_k"]) < 0.0:
+        raise ValueError("thermal.json 的 g_ph_pw_per_k 为负：%r"
+                         % data["g_ph_pw_per_k"])
+    return data, warnings

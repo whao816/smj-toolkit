@@ -16,7 +16,7 @@ from ..junction.inputs import make_aims_molecule_opt_input
 from ..checks import check_geometry, total_electrons
 from ..errors import StageError
 from ..provenance import parse_aims_versions, record_observed_software
-from ..spin import record_initial_charge, write_initial_charges
+from ..spin import describe_spin_constraint, record_initial_charge, write_initial_charges
 from . import Engine, EngineCollected, EnginePrepared, register
 
 
@@ -41,7 +41,7 @@ class AimsEngine(Engine):
         多重度 M 由 ``fixed_spin_moment = M - 1 = 2S`` 表达；早期实现把 M−1
         直接写进 ``spin``（如 ``spin 2``），FHI-aims 会因关键字取值非法而停止。
         ``molecule.broken_symmetry``（M=1 的 BS 单重态）同样要 ``collinear``：
-        自旋通道必须存在，只是总自旋不钉。
+        独立的自旋通道允许反号的局域磁矩。
         """
         multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
         broken = bool(getattr(molecule, "broken_symmetry", False))
@@ -139,6 +139,8 @@ class AimsEngine(Engine):
         multiplicity = int(getattr(molecule, "multiplicity", 1) or 1)
         broken = bool(getattr(molecule, "broken_symmetry", False))
         spin_moment = float(multiplicity - 1) if multiplicity > 1 else None
+        if broken and getattr(molecule, "fixed_spin_moment", False):
+            spin_moment = 0.0
         functional = getattr(molecule, "opt_functional", "pbe")
         basis = getattr(molecule, "opt_basis", "light")
 
@@ -191,10 +193,9 @@ class AimsEngine(Engine):
                 % (geom.name, natoms, functional, basis, self._spin(molecule)))
         if broken:
             shell_note = (
-                "破缺对称单重态（M=1）：spin collinear + 反号 per-atom initial_moment；"
-                "不写 fixed_spin_moment（2S=0 会直接压回闭壳层）。FHI-aims 单行列式给的是"
-                "BS 近似解，不打印 ⟨S²⟩——是否真落到开壳层单重态须由自旋密度/自然轨道"
-                "占据数确认")
+                "破缺对称单重态初猜（M=1）：spin collinear + 反号 per-atom initial_moment；"
+                "%s。需检查收敛后的局域磁矩或自旋密度，确认反号分布是否保留。"
+                % describe_spin_constraint(spin_moment))
         elif spin_moment:
             shell_note = (
                 "开壳层：spin collinear + fixed_spin_moment %g（μB = 2S = M−1）把总自旋"
@@ -212,8 +213,8 @@ class AimsEngine(Engine):
             if abs(sum(moments.values()) - target) > 1e-6:
                 if broken:
                     moment_notes.append(
-                        "破缺对称单重态的 initial_moments 合计 %g μB ≠ 0：N↑≠N↓ 不是单重态，"
-                        "检查初猜符号" % sum(moments.values()))
+                        "破缺对称初猜的 initial_moments 合计 %g μB ≠ 0，请检查初猜符号"
+                        % sum(moments.values()))
                 else:
                     moment_notes.append(
                         "initial_moments 合计 %g μB ≠ M−1 = %g μB：fixed_spin_moment 仍会"

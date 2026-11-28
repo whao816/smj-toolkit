@@ -19,4 +19,10 @@ from . import aims_scf  # noqa: F401,E402
 from . import aitranss_te  # noqa: F401,E402
 from . import junction_analyze  # noqa: F401,E402
 
+# 热导链（D12：独立于六阶段电子链，只按名字显式调用）
+from . import thermal_device  # noqa: F401,E402
+from . import thermal_relax  # noqa: F401,E402
+from . import thermal_fc  # noqa: F401,E402
+from . import thermal_analyze  # noqa: F401,E402
+
 __all__ = ["Stage", "Prepared", "Collected", "register", "get_stage", "all_stages"]

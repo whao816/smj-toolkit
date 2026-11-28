@@ -15,6 +15,8 @@ FHI-aims 在 ``output hirshfeld`` 下会把每个原子的 Hirshfeld 布居打�
 
 from __future__ import annotations
 
+import json
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -28,6 +30,10 @@ __all__ = [
     "parse_hirshfeld",
     "parse_hirshfeld_text",
     "read_geometry",
+    "read_partition",
+    "partition_evidence",
+    "molecular_evidence_text",
+    "off_molecule_share",
     "summarize",
 ]
 
@@ -180,6 +186,7 @@ def _moment_stats(values: Sequence[float]) -> dict[str, float | int]:
         "n_positive": sum(1 for value in moments if value > 1e-8),
         "n_negative": sum(1 for value in moments if value < -1e-8),
         "net": sum(moments),
+        "sum_abs": sum(abs(value) for value in moments),
         "max_abs": max((abs(value) for value in moments), default=0.0),
     }
 
@@ -203,6 +210,8 @@ def summarize(
     if not table.atoms:
         return None
     by_index = {atom.index: atom for atom in table.atoms}
+    total_abs = sum(abs(a.spin_moment) for a in table.atoms if a.spin_moment is not None)
+    complete = not table.missing
     owner: dict[int, str] = {}
     by_group: dict[str, dict] = {}
     for name, members in groups.items():
@@ -223,8 +232,19 @@ def summarize(
             "atoms": len(indices),
             "spin_moment": stats["net"],
             "fraction": None,
+            "abs_fraction": stats["sum_abs"] / total_abs if total_abs and complete else None,
+            "missing": len(indices) - len(values),
             **stats,
         }
+        if name == "molecule" and values:
+            sites = [by_index[i] for i in indices if by_index[i].spin_moment is not None]
+            largest = max(sites, key=lambda a: a.spin_moment)
+            smallest = min(sites, key=lambda a: a.spin_moment)
+            by_group[name]["site_extrema"] = [
+                {"index": a.index, "element": a.element, "spin_moment": a.spin_moment}
+                for a, include in ((largest, largest.spin_moment > 0),
+                                   (smallest, smallest.spin_moment < 0)) if include
+            ]
     total = table.total or 0.0
     if total:
         for data in by_group.values():
@@ -239,6 +259,8 @@ def summarize(
             molecule["n_positive"] > 0 and molecule["n_negative"] > 0
             and molecule_max_abs >= 0.05
             and abs(molecule_net) < 0.05 * molecule_max_abs)
+        if molecule["missing"] or not molecule["atoms"]:
+            localized_antiparallel = None
         molecule_positive = molecule["n_positive"]
         molecule_negative = molecule["n_negative"]
     else:
@@ -261,3 +283,126 @@ def summarize(
         "molecule_n_negative": molecule_negative,
         "localized_antiparallel": localized_antiparallel,
     }
+
+
+def partition_evidence(partition: Mapping, *, initial_moments: Mapping | None = None) -> dict:
+    """补全 v1 侧车的分子局部矩。分子为前 N 个原子，接触区归属无法由计数恢复。"""
+    result = dict(partition)
+    groups = result.get("groups")
+    molecule = groups.get("molecule") if isinstance(groups, Mapping) else None
+    if not isinstance(molecule, Mapping):
+        return result
+    if (initial_moments is None and "site_extrema" in molecule
+            and "localized_antiparallel" in result):
+        return result
+    rows = result.get("atom_moments", result.get("atoms"))
+    if isinstance(rows, list):
+        members = molecule.get("atoms")
+        if isinstance(members, int) and 0 < members <= len(rows):
+            members = range(1, members + 1)
+        try:
+            atoms = [AtomMoment(row["index"], row.get("element", ""), row.get("spin_moment"))
+                     for row in rows]
+            if {a.index for a in atoms} != set(range(1, len(rows) + 1)):
+                return result
+            if any(a.spin_moment is not None and not math.isfinite(a.spin_moment)
+                   for a in atoms):
+                return result
+            if isinstance(result.get("atoms"), int) and result["atoms"] != len(rows):
+                return result
+            # 有显式成员时可以恢复所有分区。只有计数时，仅分子顺序和无接触区时的
+            # 电极补集确定；带接触区的旧数据保留原有电极汇总。
+            membership = {"molecule": members}
+            for name in ("contact", "electrode"):
+                group = groups.get(name)
+                if isinstance(group, Mapping) and isinstance(group.get("atoms"), list):
+                    membership[name] = group["atoms"]
+            if set(groups) == {"molecule", "electrode"} and "electrode" not in membership:
+                remaining = sorted({a.index for a in atoms}.difference(members))
+                if len(remaining) == groups["electrode"].get("atoms"):
+                    membership["electrode"] = remaining
+            summary = summarize(HirshfeldTable(atoms), membership)
+        except (KeyError, TypeError, AttributeError, ValueError):
+            return result
+        if summary:
+            result.update({k: v for k, v in summary.items() if k.startswith("molecule_")})
+            result["localized_antiparallel"] = summary["localized_antiparallel"]
+            result["groups"] = {
+                name: {**group, **summary["groups"].get(name, {})} for name, group in groups.items()
+                if isinstance(group, Mapping)
+            }
+            if initial_moments:
+                result["seed_sites"] = [
+                    {"index": atom.index, "element": atom.element, "spin_moment": atom.spin_moment,
+                     "initial_moment": initial_moments[str(atom.index)]}
+                    for atom in atoms if str(atom.index) in initial_moments and atom.index in members
+                ]
+    return result
+
+
+def read_partition(run_dir: Path) -> dict | None:
+    path = run_dir / "aims_scf" / "spin_partition.json"
+    try:
+        partition = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(partition, dict) or not isinstance(partition.get("groups"), dict):
+        return None
+    try:
+        inputs = json.loads((path.parent / "input_summary.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        inputs = {}
+    seeds = inputs.get("initial_moments") if isinstance(inputs, Mapping) else None
+    return partition_evidence(partition, initial_moments=seeds if isinstance(seeds, Mapping) else None)
+
+
+def off_molecule_share(partition: Mapping | None, *, broken_symmetry: bool) -> float | None:
+    """仅对非 BS，用逐原子绝对矩份额检验原有的 1% 提示标准。"""
+    groups = (partition or {}).get("groups") or {}
+    molecule = groups.get("molecule")
+    if broken_symmetry or not isinstance(molecule, Mapping) or "electrode" not in groups:
+        return None
+    share = molecule.get("abs_fraction")
+    return share if isinstance(share, (int, float)) and 0 <= share < 0.01 else None
+
+
+def molecular_evidence_text(partition: Mapping, *, broken_symmetry: bool) -> str:
+    """汇报有符号位点极值及分子局部矩幅度，旧汇总缺字段时留空。"""
+    molecule = (partition.get("groups") or {}).get("molecule")
+    molecule = molecule if isinstance(molecule, Mapping) else {}
+
+    def formatted(value: float | None, fmt: str) -> str:
+        if not isinstance(value, (int, float)) or not math.isfinite(value):
+            return "—"
+        if fmt.endswith("f") and 0 < abs(value) < 0.0001:
+            fmt = fmt.replace(".4f", ".2e")
+        return fmt % value
+
+    def number(key: str, fmt: str) -> str:
+        value = molecule.get(key, partition.get("molecule_" + key))
+        if key == "net" and value is None:
+            value = molecule.get("spin_moment")
+        return formatted(value, fmt)
+
+    text = ("分子内 + / − 自旋矩各 %s / %s 个，净矩 %s μB，"
+            "Σ|mᵢ| %s μB，最大 |mᵢ| %s μB" %
+            (number("n_positive", "%d"), number("n_negative", "%d"), number("net", "%+.4f"),
+             number("sum_abs", "%.4f"), number("max_abs", "%.4f")))
+    for label, sites in (("分子位点极值", molecule.get("site_extrema")),
+                         ("初始自旋中心的终态磁矩", partition.get("seed_sites"))):
+        if sites:
+            values = [
+                "%s#%s %s" % (a.get("element", ""), a["index"], formatted(a.get("spin_moment"), "%+.4f"))
+                for a in sites if isinstance(a, Mapping) and "index" in a
+            ]
+            text += "；%s %s μB" % (label, "、".join(values))
+    if molecule.get("missing"):
+        text += "（缺 %d 个原子磁矩，以上为已知值）" % molecule["missing"]
+    if not broken_symmetry:
+        return text
+    localized = partition.get("localized_antiparallel")
+    if localized is True:
+        return text + "（局部反平行）"
+    if localized is False:
+        return text + "（未满足局部反平行判据）"
+    return text + "（分区数据不完整）"

@@ -1,9 +1,7 @@
 """M=1 的破缺对称（BS）单重态：配置/自旋状态/判据/协议指纹。
 
-背景：双自由基分子（如 indeno[2,1-b]fluorene）的 (U)DFT 基态是开壳层单重态，
-不是三重态、更不是闭壳层。FHI-aims 侧只能这样表达：``multiplicity 1`` +
-``spin collinear`` + 两个自由基中心反号的 per-atom ``initial_moment``，并且
-**不写** ``fixed_spin_moment``（2S = M−1 = 0 会直接把它压回闭壳层）。
+以两个中心的反号初始磁矩寻找 BS 解。FHI-aims 的共线自旋可固定 N↑−N↓=0，
+也可释放净磁矩约束；这两种输入都允许非零局域自旋密度。
 
 这些测试锁住四条硬前提，防止 BS 被静默当成闭壳层：
 1. 只允许 multiplicity=1；
@@ -15,16 +13,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from smj.config import MoleculeConfig, load_config
+from smj.context import StageContext
 from smj.engines.aims import AimsEngine
 from smj.errors import ConfigError
 from smj.junction.criteria import evaluate_run_criteria, is_open_shell
 from smj.provenance import protocol_components
 from smj.spin import SpinState, record_junction_spin, spin_state
+from smj.stages import get_stage
+from smj.state import RunLayout, RunState
 
 H_EV = 27.211386245988
 
@@ -93,14 +93,24 @@ def test_spin_state_broken_symmetry_is_open_shell_without_constraint(workdir):
     assert state.broken_symmetry is True
     assert state.open_shell is True          # 两套自旋通道
     assert state.spin == "collinear"          # FHI-aims 关键字
-    assert state.fix_spin_moment is False     # 不能钉 2S=0
+    assert state.fix_spin_moment is False     # BS 省略开关时沿用历史释放行为
     assert state.fixed_spin_moment == 0.0
 
 
-def test_spin_state_forces_fix_false_for_broken_symmetry():
+def test_spin_state_honors_explicit_fixed_zero_for_broken_symmetry():
     state = SpinState(multiplicity=1, charge=0, fix_spin_moment=True,
                       broken_symmetry=True)
-    assert state.fix_spin_moment is False
+    assert state.fix_spin_moment is True
+    assert state.fixed_spin_moment == 0.0
+
+
+@pytest.mark.parametrize("setting,fixed", [("", False), ("null", False),
+                                           ("true", True), ("false", False)])
+def test_bs_config_resolves_spin_constraint(workdir, setting, fixed):
+    option = "  fixed_spin_moment: %s\n" % setting if setting else ""
+    config = _config(workdir, BS_YAML + option)
+    assert config.molecule.fixed_spin_moment is fixed
+    assert spin_state(config).fix_spin_moment is fixed
 
 
 def test_spin_state_rejects_broken_symmetry_with_triplet():
@@ -123,6 +133,41 @@ def test_record_junction_spin_marks_broken_symmetry(workdir):
 # --------------------------------------------------------------------------- #
 # aims 引擎
 # --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("stage", ["molecule_opt", "aims_tip_relax", "aims_scf"])
+@pytest.mark.parametrize("setting,fixed", [("", False), ("false", False), ("true", True)])
+def test_bs_stage_inputs_preserve_local_moments_and_net_constraint(
+        workdir, stage, setting, fixed):
+    option = "  fixed_spin_moment: %s\n" % setting if setting else ""
+    config = _config(workdir, "  broken_symmetry: true\n"
+                     "  initial_moments: {1: 1.0, 2: -1.0}\n"
+                     + option + "cluster:\n  species_dir: species\n")
+    species = workdir / "species"
+    species.mkdir()
+    for element in ("S", "Au"):
+        (species / (element + "_default")).write_text(
+            "  species %s\n" % element, encoding="utf-8")
+    xyz = workdir / "molecule.xyz"
+    xyz.write_text("2\nS2\nS 0 0 0\nS 0 0 3\n", encoding="utf-8")
+    geometry = workdir / "geometry.in"
+    geometry.write_text("atom 0 0 0 S\natom 0 0 3 S\n", encoding="utf-8")
+    ctx = StageContext(config, RunLayout(workdir / "run"), RunState("t"), dry_run=True,
+                       overrides={"geometry": geometry if stage == "aims_scf" else xyz})
+    stage_dir = ctx.ensure_stage_dir(stage)
+    get_stage(stage).prepare(ctx, stage_dir)
+
+    lines = (stage_dir / "control.in").read_text(encoding="utf-8").splitlines()
+    control = [line.split() for line in lines]
+    assert ["spin", "collinear"] in control
+    assert [float(parts[1]) for parts in control if parts[:1] == ["fixed_spin_moment"]] == (
+        [0.0] if fixed else [])
+    geom = (stage_dir / "geometry.in").read_text(encoding="utf-8").splitlines()
+    assert [float(line.split()[1]) for line in geom
+            if line.split()[:1] == ["initial_moment"]] == [1.0, -1.0]
+    summary = json.loads((stage_dir / "input_summary.json").read_text(encoding="utf-8"))
+    key = "spin_moment" if stage == "molecule_opt" else "fixed_spin_moment"
+    assert summary[key] == (0.0 if fixed else None)
+
+
 def test_aims_engine_spin_and_moments_accept_broken_symmetry():
     molecule = MoleculeConfig(multiplicity=1, broken_symmetry=True,
                               initial_moments={7: 1.0, 18: -1.0})

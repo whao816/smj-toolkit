@@ -20,6 +20,7 @@ import base64
 import gzip
 import hashlib
 import io
+import re
 import sys
 import tarfile
 import zipfile
@@ -108,8 +109,34 @@ def _package_files() -> list[tuple[str, Path]]:
     return sorted(out.items())
 
 
+def _extras() -> dict[str, list[str]]:
+    """Read ``[project.optional-dependencies]`` without requiring tomllib on 3.10."""
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+        section = text.split("[project.optional-dependencies]", 1)[1]
+        section = section.split("\n[", 1)[0]
+        extras: dict[str, list[str]] = {}
+        for line in section.splitlines():
+            match = re.match(r"^([A-Za-z0-9_-]+)\s*=\s*\[(.*)\]\s*$", line)
+            if match:
+                extras[match.group(1)] = re.findall(r'"([^"]+)"', match.group(2))
+        return extras
+    data = tomllib.loads(text)
+    return {
+        str(name): [str(dep) for dep in deps]
+        for name, deps in data.get("project", {}).get("optional-dependencies", {}).items()
+    }
+
+
 def _metadata(version: str) -> str:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    extras: list[str] = []
+    for name, dependencies in _extras().items():
+        extras.append("Provides-Extra: %s" % name)
+        extras.extend('Requires-Dist: %s; extra == "%s"' % (dep, name)
+                      for dep in dependencies)
     return "\n".join([
         "Metadata-Version: 2.4",
         "Name: smj-toolkit",
@@ -121,13 +148,7 @@ def _metadata(version: str) -> str:
         "Requires-Python: >=3.10",
         "Requires-Dist: PyYAML<7,>=6",
         "Requires-Dist: numpy>=1.24",
-        "Provides-Extra: plot",
-        "Requires-Dist: matplotlib>=3.7; extra == \"plot\"",
-        "Provides-Extra: dev",
-        "Requires-Dist: pytest>=8; extra == \"dev\"",
-        "Provides-Extra: all",
-        "Requires-Dist: matplotlib>=3.7; extra == \"all\"",
-        "Requires-Dist: pytest>=8; extra == \"all\"",
+    ] + extras + [
         "Keywords: single-molecule junction, transport, FHI-aims, aitranss, DFT",
     ] + ["Classifier: %s" % c for c in _classifiers()] + [
         "Description-Content-Type: text/markdown",

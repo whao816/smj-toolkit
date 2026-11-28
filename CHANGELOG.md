@@ -2,7 +2,205 @@
 
 本项目遵循语义化版本（0.x 阶段：次版本可含不兼容变更；rc 视为发布候选）。
 
-## 未发布
+## 0.3.0rc1 (2026-11-28)
+
+### 新功能:SIESTA/TranSIESTA 零偏压电子输运路线(2026-11-27)
+
+- 新增 `transport.backend: transiesta` 的六阶段路线 `molecule_opt →
+  siesta_electrode → siesta_junction_relax → transiesta_scf → tbtrans_te →
+  junction_analyze`，与 FHI-aims 路线共用 `smj plan/run/status/report/review`；
+  阶段表、协议摘要、状态机和上游摘要按 backend 记录，旧配置继续按 AIMS 解释。
+- `siesta.*` 配置覆盖 PBE GGA、300 Ry 网格、0.025 eV 展宽、DZP 基组、PSML/PSF
+  赝势、`flat`/`adatom`/`trimer`/`pyramid` 接触和 `unpolarized`/`collinear` 自旋；
+  `siesta.electrode_reuse` 允许不同分子复用同一份已收敛电极，复用时核对晶格、
+  主层、赝势/基组摘要与电极 k 点。
+- TBtrans 读取 `device.TBT.nc`，生成标准化 `transmission.tsv` 与 `spectrum.json`；
+  `junction_analyze` 在本地按 Landauer 积分，输出 `results.json` 和 `T_E.png`，
+  并保留自旋简并/共线通道的归一化约定。
+- `smj report`/`smj review` 对 transiesta 走独立证据链：逐阶段核对协议、上游
+  摘要和产物 sha256，接触、电荷偏差、屏蔽 profile 和输运结果都写进 `manifest.json`。
+- 新增 `siesta.reuse_relax_from`：换横向 k 网格时复用已采集的结区几何，只重建电极
+  与器件 SCF；复用记录核对 `opt.xyz`、电极几何摘要和接触通过标记，不重跑 relax。
+- 新增 `siesta.reuse_scf_from`：只加密 TBtrans 横向 k 点时复用已收敛的器件 SCF
+  （`device.TS.HSX` 等），核对自旋、结几何、接触和电极 HSX 摘要，只重建 TBtrans
+  输入；`scf.json` 的 `reused_from` 记录来源，使 TBtrans-only 扫描可由 YAML 复现。
+- 电极与器件 FDF 打开 `WriteMullikenPop 1`；器件 SCF 按 Au 层解析 Mulliken 电荷，
+  以电极中间体相层为参考，输出左右最外两层 Δq 与电极层间 spread。判据为
+  最外两层 |Δq|≤0.05 e 且电极层 spread≤0.05 e，状态写入 `scf.json` 的 `screening`。
+- 新增 `smj siesta-kconv BASE REFINED`：比较两个 run 的 `G/G0`，默认容差 1%，
+  `--json-out` 写 `kconv.json`；报告和复核读该文件与 `screening` 状态，两项都
+  通过才给 `passed`，否则保留 `inconclusive` 或给 `failed`，并明确数值收敛不构成
+  实验有效性证据。
+- 新增 `[siesta]` 可选依赖（`netCDF4>=1.6`、`matplotlib>=3.7`）、
+  [示例配置](demo/siesta-au111/smj.yaml)、
+  [设计文档](docs/siesta-zero-bias-transport-design.md) 和 36 个测试函数
+  （几何、预检、阶段、谱解析、报告与路由）。
+- 2026-11-27 在 gpu1 上用 bpy/ppd 两套平坦 Au(111) 接触贯通六阶段：bpy
+  `G/G₀=1.814×10⁻³`、ppd `0.444`；两例 `smj report` 工程核对通过，物理判定
+  `inconclusive`。数值、边界与复现命令见
+  [验证记录](docs/validation-siesta-2026-11-27.md)。
+- 2026-11-28 完成横向 k 与屏蔽验证：bpy 3×3→5×5 变化 +22.853%、5×5→7×7
+  TBtrans 变化 +5.646%，均未达 1% 判据，旧 3×3 值只能视为未收敛；ppd
+  3×3→5×5 为 −0.726%，通过。两套 5×5 运行的屏蔽均 `passed`（最外两层
+  |Δq| 在 10⁻³ e 以下）。bpy 判定 `failed`、ppd 判定 `passed`（仅数值判据），
+  详见 [k 点验证记录](docs/validation-siesta-kconv-2026-11-28.md)。
+
+### 修复:发布包元数据与 CI 依赖(2026-11-28)
+
+- wheel 的 `METADATA` 改为从 `pyproject.toml` 读取全部 `optional-dependencies`；
+  补齐此前缺失的 `[siesta]` extra，以及 `dev` 的 `netCDF4`、`matplotlib`。
+  打包测试锁定四个 extra 与关键依赖，避免 wheel 与 pyproject 再次漂移。
+- `dev` extra 加入 `matplotlib>=3.7`，与 `junction_analyze` 出图及全量测试的依赖一致；
+  修复 GitHub Actions 在干净环境里因缺 matplotlib 导致 `test_siesta_route` 失败。
+
+### 改进:自旋通道校验与破缺对称初矩语义(2026-11-28)
+
+- `molecule.fixed_spin_moment` 缺省改为 `null`：普通开壳层结仍固定 `M−1`，
+  `broken_symmetry: true` 的 BS 单重态默认释放净磁矩；显式 `true`/`false`
+  仍可覆盖，报告按实际约束记录。
+- TE.dat 采集核对每个能量点的通道数一致，并与文件声明通道数比对；缺列、
+  坏值或非有限数会报出行号。历史单通道谱仍可
+  `transport.allow_single_channel: true` 显式放行，但报告不再把它当成可恢复的
+  自旋极化证据。
+
+### 验证:Linux 全量测试(2026-11-28)
+
+- 在 gpu1 登录节点（Python 3.12.12、pytest 9.0.3）以
+  `PYTHONPATH=src python3 -m pytest -q` 复跑全量：**1067 passed, 2 skipped,
+  2 deselected**，无 failed/error；2 个 skip 均因环境未安装 `rdkit`。
+- 同一快照 `smj verify` 全部通过；Windows 上的 10 failed/26 errors 确认是
+  DSH 沙箱与 Git Bash 的环境限制，不是产品回归。
+
+### 修正:Au lead 层序与截断轴的面内最小像(2026-11-25)
+
+- **lead 层序修复**：`lead_fc.npy` 按「参考层 0（次外层）→ 参考层 1（主层）」
+  排列；`thermal_analyze` 原来传 `left_pl + left_outer`，等于把 `K(0,1)` 当
+  `K(1,0)`。矩阵仍对称、所有检查都过，但 nap-sh 的 `G_ph` 从 **15.9264**
+  变成 **13.7166 pW/K**。现改为 `left_outer + left_pl`（右侧同理），并加
+  非对称层间耦合的回归测试。
+- **截断轴改用面内最小像距离**：lead 块来自周期体相，裸坐标会把跨边界近邻
+  算成 11.9 Å（实际 3.1 Å）。`_atom_distances` 新增 `lattice=`，`cutoff_sensitivity`
+  传入器件晶格。修正后 8/10/12 Å 三档逐位相同，原先「23% 散布」「4.3%
+  shortfall」「10 Å 未收敛」全部撤回；`convergence.fc_cutoff` 改用
+  `nominal_covers_span` + `beyond_nominal_checked=false` + `converged=null`
+  三态语义：覆盖只说明"不多切"，不能证明"没漏切"。
+- **主层厚度结论撤回**：6 层胞是 A–B–C 堆垛，层间还带面内 `(p1+p2)/3` 位移，
+  参考层 1（B 位）的行块不能用 `K(i,j)=K(0,(j-i) mod layers)` 从参考层 0（A 位）
+  平移得到。实测 `max|K(0,5)-K(0,1)^T|=1.768 eV/Å²`（`max|K(0,1)|=1.597`），
+  因此审计里原先的 L=2=11.121、L=3=11.376 pW/K 与「不需要重算」结论**全部撤回**。
+  当前 L=1=15.926 也只是把 B 位自能块近似成 A 位的值。正确做法是**追加 layer 1
+  的 27 个位移点**（已有 54 个不重算），再用实测的 B 位行块构造 L=1/L=2；L=3 还需
+  layer 2 的另 27 个点。详见 `docs/lead-mapping-audit-2026-11-25.md`。
+
+### 新功能:热导的环境清单与三条收敛轴(2026-11-25)
+
+- 新增 `src/smj/phonon/environment.py`：`thermal_analyze` 每次 collect 写
+  `environment.json`（`smj.environment.v1`），记录 smj/Python/numpy 版本、FHI-aims
+  二进制 sha256、species 目录内容摘要、lead 力常数 sha256 与热导配置快照。
+  `identity()` 只取六项且**不含路径**（不同安装目录仍是同一套工具），`digest()`
+  剔除 `generated_at` 以便逐字比对。`thermal.json` 里存 `environment.digest`。
+- `thermal-compare` 增加环境比对：`environment_consistent` / `environment_mismatches`
+  与协议比对**分开报告**——前者是换了工具，后者是换了方法（D15）。
+- `thermal.json` 新增 `convergence`：力常数截断轴（零机时，切已组装矩阵的 lead 块
+  后重算 NEGF）+ lead 层数与器件区大小两条**未测**轴（含所需作业与
+  `why_not_post_hoc`）。
+- 截断轴初版（nap-sh，η=0.05 meV）报 4/5/6/7/8/10/12 Å → 10.55/10.72/12.42/
+  12.20/11.77/13.12/13.72 pW/K、散布 23.0%，并据此判「真实截断效应」。该结论
+  已被上一节的**面内最小像修正**推翻：裸坐标把跨边界近邻算成 11.9 Å，修正后
+  8/10/12 Å 逐位相同。保留这段是为了记住教训，不是现行口径。
+- 由此得出的「名义 10 Å 未收敛、需提到 ≥12 Å 重算」同样撤回；现行结论是
+  名义截断覆盖两层块内全部非零对，更远体相耦合无法后处理验证
+  （`beyond_nominal_checked=false`），不等于已收敛。
+- 报告新增「运行环境」与「收敛轴」两段；README 新增 §6.1.2。
+
+### 新功能:热导的跨 run 比较与正则化扫参(2026-11-25)
+
+- 新增 `smj thermal-compare PATH...`：读各 run 的 `thermal_analyze/thermal.json`，
+  输出 markdown 表（`G_ph` / `N_eff` / `G_Q` / 温度 / η / 步长 / 虚频 / 判定）。
+  **先比协议再比数**——η、能量步长、温度、`lead_fc_sha256` 任一不一致都会在表前
+  列出不一致项；`--strict` 时直接返回非零。`PATH` 可以是 run 目录、其父目录
+  （扫一层）或 `thermal.json` 本身；`--out` 写文件，`--json` 给机器读。
+- 新增 `smj thermal --sensitivity`：用已有 `force_constants.npy` 扫 η（默认
+  0.3/0.2/0.1/0.05 meV）与能量步长（0.1/0.05/0.025 meV），写
+  `thermal_analyze/sensitivity.json`，并给出「η→0 外推」。**不碰集群**。
+  被带顶闸门拒绝的组合如实记成 `null` + `rejected`（拒绝本身就是结果）。
+- η→0 外推**只取生产步长下最小的两个 η**做渐近线性外推：实测 `G(η)` 是饱和的
+  （0.3/0.2/0.1/0.05 → 12.37/13.12/13.61/13.72），全局线性拟合会被低端陡坡拖出
+  13.67，反而**低于**最小 η 的实测值 13.72 —— 不合物理。nap-sh 的外推值为
+  13.82 pW/K（最小 η 实测 13.72）。
+- `thermal.json` 新增 `lead_fc_sha256`，供跨 run 比较时确认电极力常数一致。
+- `thermal_analyze` 的 NEGF 组装抽成 `_build` / `_energy_grid` / `_curve_factory`
+  / `sensitivity`，`collect` 与扫参走**同一套**矩阵与切块，避免两处各写一份
+  （2026-11-24 就栽在"原子下标当自由度下标切 D、形状恰好撞上、`T_ph` 恒为 0"
+  这种双实现分歧上）。重构后真实 run 复现 13.71663469845449 pW/K 逐位一致。
+
+### 改进:热导数组作业的失败恢复(2026-11-25)
+
+- `thermal_fc` 收尾步骤改为 `--allow-missing --summary fc_summary.json`：槽位失败
+  时也落盘汇总产物，并把缺槽位与**SCF 未收敛**槽位写进 `fc_summary.json`。
+  此前失败一次就没有任何可读产物，只能进 `fc/` 逐个看 `aims.out`。
+- `thermal_fc.collect` 消费 `fc_summary.json`：未收敛槽位直接拒绝（不收敛的 SCF
+  照样写出形状正确的力，条数与形状检查发现不了），缺槽位的报错里直接给出可执行
+  的 `smj thermal --stage thermal_fc --retry 17,203`。
+- 新增 `smj thermal --retry SPEC`：只重跑指定槽位（逗号下标，或 `missing` /
+  `not-converged`），用命令行 `--array=` 覆盖脚本里的 `#SBATCH --array`，不必
+  重新 prepare；凑齐后收尾逻辑会重写 `forces_all.json` 与 `fc_summary.json`。
+- `concat_forces.concat(..., allow_missing=..., with_summary=...)` 与
+  `scan_aims`（判 `Self-consistency cycle converged` / `NOT converged`）。
+- 回取计划 `thermal_fc` 增加 `fc_summary.json`。
+
+### 新功能:单分子结热导（声子）计算链(2026-11-23)
+
+- 新增独立的四阶段链 `thermal_device` → `thermal_relax` → `thermal_fc` →
+  `thermal_analyze`，与电子六阶段链(D12)完全隔离：smj run/plan/status
+  的默认输出零变化，stage_range 仍只认六阶段。
+- `thermal_fc` 是一条 Slurm 数组作业：中心差分 6N 个位移（3x3 周期板、
+  器件区 54 原子时 324 个），每任务独立目录 + `apply_displacement.py`
+  改几何 + `extract_forces.py` 取力块，最后一个完成的任务汇总写哨兵。
+- 数值内核 src/smj/phonon/：单位换算（EV_PER_SQRT=0.0646542、
+  THz=15.6333，与 phonopy VaspToTHz 相对差 1.4e-7）、López-Sancho
+  表面格林函数、Caroli 透射（含 1/N_k 归一化）、Landauer 线性响应积分、
+  动力学矩阵与虚频。63 条解析基准（完美链 T=1、带边 0.5、n 通道给 n·G_Q、
+  G∝T、L↔R 对称到 1e-12）。
+- smj thermal：新增子命令；`thermal.json` 契约 smj.thermal.v1 由
+  smj.analysis.read_thermal 校验。
+- 十条热导判据进 CRITERIA（ph_*）：带顶归零、量子上限、声学极限、
+  ASR 残差、FC 对称性、虚频、lead 胞匹配、网格独立性等；4 条 physical 各带
+  一手源。smj review 对热导 run 出 passed/inconclusive/failed，
+  **缺证据一律 inconclusive，不当作通过**。
+- smj report 新增 ## 5. 热导（声子） 节，并显式标注"热导器件（周期板
+  3x3，~90 原子）与电子链器件（金字塔团簇）不是同一体系，G_ph 与
+  G/G0 不可并列"。
+- smj report 的 ## 5. 同时嵌入两联谱图
+  （thermal_analyze/thermal_spectrum.png）与热流贡献分位表（累积 G_ph 达
+  25/50/75/90% 的能量，meV 与 cm⁻¹）：G_ph 是积分，分位才能说明热由哪段
+  声子带走。nap-sh 实测分位 5.8/10.9/12.2/14.3 meV 全落在界面骨架模区间，
+  分子内 C-C 伸缩（~190 meV）在 lead 带顶之上、弹性透射为零。
+- 新增 G_ph(T) 曲线（thermal_analyze/thermal_conductance_vs_temperature.png，
+  thermal.json 的 g_ph_by_temperature 列 14 个温度点）：谐波近似下 T_ph(ω)
+  与温度无关，只换玻色因子，**不额外花机时**。它同时是"300 K 够不够收敛"
+  与"低温端是否回到 G∝T 量子极限"的免费检验。nap-sh：300 K = 13.72 pW/K
+  已是高温平台（13.87）的 98.9%，10→20 K 由 2.04 升到 3.83 pW/K（比值 1.88）。
+- 新增软模归属 src/smj/phonon/modes.py（describe_soft_modes）：虚频只报波数
+  没有意义，要报"谁在动"。给出 原子/区域(分子/器件 Au/lead)/键 三类权重、
+  参与比、刚体占比、最大键伸缩。**本征矢在质量加权坐标下**，必须除以 √m
+  才能当物理位移用（否则 √14≈3.7 的 H 振幅会让每个低频模都像 C-H 伸缩）。
+  nap-sh 的两个虚模（-21.30、-18.23 cm⁻¹）分子占 99.5%/99.8%、lead 占 0%、
+  刚体占比 0.14/0.04、最大键伸缩 ~0.01 Å，且 |λ| 比典型实模浅 30–500 倍
+  → 分子骨架的浅弯曲/扭转，不是键拉伸、也不是 lead 截断假象。把全部负本征值
+  投影掉后 G_ph 只变 +0.20%。报告里给出归属表与投影对照。
+- 判据口径两处修正（方案 D13/D14）：ASR 残差改判**相对残差**（1e-3）且只判
+  器件区行（lead 两块按构造不闭合，判它永远失败）；网格独立性门限由 1%
+  重标到 5%（实测梯形积分底噪就有 1-2%），真正的收敛控制量是 η。
+- gpu1 端到端跑通（90 原子 3x3 周期板、324 个位移、约 17 h 墙钟）：
+  G_ph(300 K) = 13.72 pW/K、G_Q = 283.93 pW/K、N_eff = 0.048、
+  ASR 相对残差 4e-15、带顶以上 max T = 1.2e-7。
+- 调度经验提升为项目级：新增 smj.slurm.gres_line，纯 CPU 作业默认
+  --gres=gpu:0（Slurm 默认把节点全部 GRES 分给单个作业，不写会把 64 核
+  整节点锁死），README §4.1 记录实测依据。
+- 唯一内核改动：write_aims_geometry(path, atoms, constrained=(), lattice=None)；
+  lattice=None 时输出逐字节不变（有逐字节回归用例）。PROVENANCE.json
+  已刷新，gen_demo_reference.py --check 最大相对偏差 0.00e+00。
 
 ### 可复现性：方法说明与验证数据入库（2026-11-23）
 

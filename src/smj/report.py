@@ -35,7 +35,9 @@ from .provenance import (
     run_spec_sha256,
 )
 from .resources import check_smj_budget, estimate_smj_resources
-from .spin_summary import SPIN_CAVEAT, normalize as normalize_spin, percent as spin_percent
+from .spin_partition import molecular_evidence_text, partition_evidence, read_partition
+from .spin_summary import (SPIN_CAVEAT, normalize as normalize_spin,
+                           percent as spin_percent, recorded_bs_constraint)
 from .state import STAGE_ORDER, RunLayout, RunState, now_iso
 from .verdict import JUDGMENT_SCHEMA, judgment_fingerprint
 
@@ -261,7 +263,8 @@ def _input_summary(run_dir: Path, spec: Mapping[str, Any],
     if broken_sym:
         # M=1 的 BS 单重态：单看 multiplicity 会被读成闭壳层，必须显式标注。
         spin_meta["broken_symmetry"] = True
-        spin_meta["fixed_spin_moment"] = None
+        spin_meta["fixed_spin_moment"] = recorded_bs_constraint(
+            run_dir, run_spec, molecule_cfg.get("fixed_spin_moment"))
     if molecule_cfg.get("initial_moments"):
         spin_meta["initial_moments"] = molecule_cfg.get("initial_moments")
     # 分子结构：优先 molecule_opt/opt.xyz（旧 run 回退 gaussian_opt），否则 run 根的 xyz。
@@ -371,20 +374,23 @@ def _spin_block(spin: Any, molecule: Mapping[str, Any]) -> dict | None:
     )
 
 
-def _spin_partition_block(state: RunState) -> dict | None:
+def _spin_partition_block(state: RunState, run_dir: Path) -> dict | None:
     """``aims_scf`` 写下的 Hirshfeld 自旋分区（S1）；缺失时返回 None。
 
     分区来自 FHI-aims 的 Hirshfeld 分析：总磁矩守恒不能说明自由基还在分子上，
     必须把分子/接触区/电极的份额分开报。这里只搬运展示数据，不参与判定。
     """
+    sidecar = read_partition(run_dir)
     try:
         recorded = state.stage("aims_scf").results or {}
     except (KeyError, AttributeError):
-        return None
+        return sidecar
     inner = recorded.get("aims_scf") if isinstance(recorded, Mapping) else None
     if not isinstance(inner, Mapping):
-        return None
+        return sidecar
     block = inner.get("spin_partition")
+    if sidecar:
+        return {**(block if isinstance(block, Mapping) else {}), **sidecar}
     return dict(block) if isinstance(block, Mapping) else None
 
 
@@ -398,6 +404,7 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
     两者都没有时再从 ``aitranss_te/TE.dat`` 现算（开壳层顺带解析双通道）。
     """
     molecule = dict(molecule or {})
+    te = run_dir / "aitranss_te" / "TE.dat"
     for name in ("results.json", "analysis.json"):
         candidate = run_dir / "junction_analyze" / name
         if not candidate.is_file():
@@ -409,16 +416,22 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
             continue
         if not isinstance(payload, dict):
             continue
+        if te.is_file():
+            from .junction.landauer import read_te_channels
+            try:
+                read_te_channels(te)
+            except (OSError, ValueError) as exc:
+                warnings.append("原始 TE.dat 不可用，无法核实已保存的输运结果：%s" % exc)
+                return None
         transport = {"source": str(candidate),
                      **{k: payload.get(k) for k in _TRANSPORT_KEYS}}
         spin = _spin_block(payload.get("spin"), molecule)
         if spin is not None:
             transport["spin"] = spin
-        partition = _spin_partition_block(state)
+        partition = _spin_partition_block(state, run_dir)
         if partition is not None:
             transport["spin_partition"] = partition
         return transport
-    te = run_dir / "aitranss_te" / "TE.dat"
     if not te.is_file():
         return None
     try:
@@ -443,7 +456,7 @@ def _transport_summary(run_dir: Path, state: RunState, temperature: float | None
         else:
             if spin is not None:
                 payload["spin"] = spin
-    partition = _spin_partition_block(state)
+    partition = _spin_partition_block(state, run_dir)
     if partition is not None:
         payload["spin_partition"] = partition
     return payload
@@ -482,13 +495,15 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         system = getattr(getattr(config, "molecule", None), "family", None)
     layout = RunLayout(run_dir)
     rid = run_id or (getattr(config, "name", None) if config is not None else None) or run_dir.name
-    state = state or RunState.load(layout.state_path, run=rid)
+    run_spec = load_run_spec(run_dir)
+    saved_backend = ((run_spec or {}).get("config", {}).get("transport") or {}).get("backend")
+    backend = getattr(getattr(config, "transport", None), "backend", None) or saved_backend
+    state = state or RunState.load(layout.state_path, run=rid, backend=backend)
     warnings: list[str] = list(state.warnings)
 
     # 2026-11 P0-1：manifest 绑定 run_spec（配置快照 + 文件哈希）。没有 run_spec
     # 的旧 run 允许用当前配置重建，但必须显式标 reconstructed 并告警，不能假装
     # 这份 manifest 能证明原始参数。
-    run_spec = load_run_spec(run_dir)
     provenance: dict[str, Any] = {
         "path": None,
         "run_spec_sha256": None,
@@ -515,6 +530,9 @@ def build_manifest(target: Any, *, run_id: str | None = None,
         provenance["protocol_sha256"] = run_spec.get("protocol_sha256")
 
     spec_data = dict(spec or {}) or dict((run_spec or {}).get("config") or {})
+    if state.backend == "transiesta":
+        from .siesta.report import manifest
+        return manifest(run_dir, state, config, rid, spec_data, run_spec, provenance, include_checks, warnings)
     input_summary = _input_summary(run_dir, spec_data, warnings, run_spec=run_spec)
     inventory = _inventory(run_dir, stages if stages is not None
                            else discover_stages(run_dir))
@@ -705,7 +723,7 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
     fixed = spin.get("fixed_spin_moment")
     if fixed is not None:
         lines.append("| 总自旋约束 | %s |" % (
-            "fixed_spin_moment（钉住 2S = M−1）" if fixed
+            "fixed_spin_moment（固定 Nα−Nβ = M−1）" if fixed
             else "未钉住（release 解，自旋可离域到电极）"))
     lines.append("| TE.dat 通道数 | %s |" % _cell(spin.get("channels")))
     lines.append("| Tα(E_F) / Tβ(E_F) [G0] | %s / %s |" % (
@@ -735,11 +753,12 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
     if spin.get("note"):
         lines.append("- 数据提示：%s" % _cell(spin.get("note")))
     if isinstance(partition, Mapping) and isinstance(partition.get("groups"), Mapping):
+        partition = partition_evidence(partition)
         groups = partition["groups"]
         lines.append("")
         lines.append("**自旋分布（Hirshfeld，μB）**")
         lines.append("")
-        lines.append("| 区域 | 原子数 | 自旋矩 (μB) | 占比 |")
+        lines.append("| 区域 | 原子数 | 净磁矩 (μB) | 逐原子绝对矩和 (μB) |")
         lines.append("|---|---|---|---|")
         for name, label in (("molecule", "分子"), ("contact", "接触区"),
                             ("electrode", "电极")):
@@ -749,23 +768,13 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
             lines.append("| %s | %s | %s | %s |" % (
                 label, _cell(data.get("atoms")),
                 _fmt(data.get("spin_moment"), "%+.4f"),
-                spin_percent(data.get("fraction"))))
+                _fmt(data.get("sum_abs"), "%.4f")))
         lines.append("")
         lines.append("- 接触区 = 距锚原子 ≤3.0 Å 的电极原子；自旋分布只陈述 "
                      "FHI-aims 的 Hirshfeld 分配，不参与判定。")
-        if spin.get("broken_symmetry"):
-            localized = partition.get("localized_antiparallel")
-            if localized is True:
-                tag = "局部反平行"
-            elif localized is False:
-                tag = "未满足局部反平行判据（净矩/幅度）"
-            else:
-                tag = "分区数据不完整"
-            lines.append(
-                "- 破缺对称证据：分子内 + / − 自旋矩各 %s / %s 个，净矩 %s μB（%s）。"
-                % (_cell(partition.get("molecule_n_positive")),
-                   _cell(partition.get("molecule_n_negative")),
-                   _fmt(partition.get("molecule_net"), "%+.4f"), tag))
+        evidence_label = "破缺对称证据" if spin.get("broken_symmetry") else "分子局部矩"
+        lines.append("- %s：%s。" % (evidence_label, molecular_evidence_text(
+            partition, broken_symmetry=bool(spin.get("broken_symmetry")))))
     if spin.get("broken_symmetry"):
         lines.append("")
         lines.append("- FHI-aims 单行列式不提供 ⟨S²⟩/NOON；上行的局部自旋矩是"
@@ -773,9 +782,283 @@ def _render_spin_section(lines: list[str], spin: Mapping[str, Any],
                      "模型分子的 ⟨S²⟩ 交叉验证（默认不自动执行）。")
 
 
+def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
+    """``## 5. 热导`` —— 声子端到端热导（M5-T3）。"""
+    lines.append("## 5. 热导（声子）")
+    lines.append("")
+    root = man.get("root")
+    path = None if not root else Path(str(root)) / "thermal_analyze" / "thermal.json"
+    if path is None or not path.is_file():
+        lines.append("- 该 run 未跑热导链（无 `thermal_analyze/thermal.json`）。")
+        lines.append("")
+        return
+
+    from .analysis import read_thermal
+    try:
+        data, warnings = read_thermal(path)
+    except ValueError as exc:
+        lines.append("- `thermal.json` 不可用：%s" % _cell(str(exc)))
+        lines.append("")
+        return
+
+    lines.append("> ⚠️ **几何不可比**：热导器件是 Au(111) 3×3 周期板（~%d 原子，"
+                 "含 %d 层 lead），电子六阶段链的器件是金字塔团簇（另一次计算）。"
+                 "`G_ph` 与 `G/G0` 来自**两套几何**，不可并列比较；`ZT_total` 只是"
+                 "把两者各自的数拼起来的**参考量**，不构成对该结的热电结论。"
+                 % (int(data["n_atoms"]), int(round(data["n_lead_atoms"] / 9 or 1))))
+    lines.append("")
+    lines.append("| 量 | 值 |")
+    lines.append("|---|---|")
+    lines.append("| G_ph (pW/K) | %s |" % _fmt(data.get("g_ph_pw_per_k"), "%.4f"))
+    lines.append("| G_Q (pW/K) | %s |" % _fmt(data.get("g_quantum_pw_per_k"), "%.4f"))
+    lines.append("| 有效通道数 N_eff | %s |" % _fmt(data.get("n_channels_effective"), "%.4f"))
+    zt = data.get("zt") or {}
+    if zt.get("available"):
+        lines.append("| k_e (pW/K) | %s |" % _fmt(zt.get("k_e_pW_per_K"), "%.4f"))
+        lines.append("| ZT_electronic | %s |" % _fmt(zt.get("zt_electronic"), "%.6f"))
+        lines.append("| ZT_total（参考） | %s |" % _fmt(zt.get("zt_total"), "%.6f"))
+    else:
+        lines.append("| ZT_total | 不可得（%s） |"
+                     % _cell(zt.get("reason") or "无电子结果"))
+    band_top = float(data.get("band_top_meV", 19.5))
+    spectrum = data.get("spectrum") or {}
+    energies = [float(v) for v in spectrum.get("energy_meV") or []]
+    transmission = [float(v) for v in spectrum.get("transmission") or []]
+    from .phonon.landauer import above_band
+    above = [abs(t) for t, keep in zip(transmission, above_band(energies, band_top)) if keep]
+    lines.append("| T_ph(ω>带顶 %.1f meV) | %s |"
+                 % (band_top, "—" if not above else "%.2e" % max(above)))
+    lines.append("| 完整器件行 ASR 残差 (eV/Å²) | %s |"
+                 % _fmt(data.get("acoustic_sum_residual"), "%.3e"))
+    transport_asr = data.get("transport_asr") or {}
+    lines.append("| 输运分区投影前 ASR 残差 (eV/Å²) | %s |"
+                 % _fmt(transport_asr.get("residual_ev_per_A2"), "%.3e"))
+    if data.get("asr_projected") and transport_asr:
+        lines.append("| 输运分区投影后 ASR 残差 (eV/Å²) | %s |"
+                     % _fmt(transport_asr.get("residual_after_ev_per_A2"), "%.3e"))
+    if data.get("asr_projection_reason") == "incompatible_fixed_coupling":
+        lines.append("| ASR 投影 | 固定界面耦合与平移约束不相容，保留投影前矩阵 |")
+    omitted = data.get("discarded_device_lead_max_ev_per_A2") or {}
+    if omitted:
+        lines.append("| 舍弃的器件–非主层耦合最大绝对值 (eV/Å²) | 左 %s，右 %s |"
+                     % (_fmt(omitted.get("left"), "%.3e"), _fmt(omitted.get("right"), "%.3e")))
+    modes = data.get("imaginary_modes") or {}
+    worst = modes.get("worst_cm1")
+    lines.append("| 虚频 | %d 个（最差 %s cm⁻¹） |"
+                 % (int(modes.get("count", 0)),
+                    "—" if worst is None else "%.2f" % float(worst)))
+    lines.append("| 温度 (K) | %s |" % _fmt(data.get("temperature_K"), "%.1f"))
+    lines.append("| 能量网格 | %s meV（η=%s meV） |"
+                 % (_fmt(data.get("energy_step_meV"), "%.3f"),
+                    _fmt(data.get("eta_meV"), "%.3f")))
+    lines.append("| 来源 | `%s` |" % _cell(str(path)))
+    lines.append("")
+
+    # 谱图 + 分位：`G_ph` 是个积分，看不出热流由哪一段声子带走；这张两联图
+    # （T_ph 与归一化累积）是解释分子间差异的主要依据，因此嵌进报告而不是只
+    # 留在阶段目录里。
+    from .phonon.units import EV_TO_CM1
+    from .plotting import cumulative_quantiles
+
+    image_rel = "thermal_analyze/thermal_spectrum.png"
+    image = Path(str(man.get("root"))) / image_rel
+    if not image.is_file():
+        # 阶段内出图失败过（无 matplotlib / 字体问题）时在这里补一次；失败只
+        # 留文字，绝不让报告生成失败。
+        try:
+            from .plotting import plot_thermal
+            plot_thermal(path, image, formats=("png",))
+        except Exception as exc:  # noqa: BLE001 - 报告不因缺图而失败
+            lines.append("- 未能生成透射谱图：%s" % _cell(str(exc)))
+            lines.append("")
+    if image.is_file():
+        lines.append("![声子透射谱与累积热导](%s)" % image_rel)
+        lines.append("")
+
+    quantiles = cumulative_quantiles(
+        energies, [float(v) for v in spectrum.get("cumulative_g_ph_pw_per_k") or []])
+    if quantiles:
+        lines.append("热流贡献分位（累积 `G_ph` 达到该百分比时的声子能量）：")
+        lines.append("")
+        lines.append("| 分位 | 能量 (meV) | 波数 (cm⁻¹) |")
+        lines.append("|---|---|---|")
+        for label in ("25%", "50%", "75%", "90%"):
+            if label not in quantiles:
+                continue
+            energy_mev = float(quantiles[label])
+            lines.append("| %s | %.2f | %.0f |"
+                         % (label, energy_mev, energy_mev * 1.0e-3 * EV_TO_CM1))
+        lines.append("")
+
+    lines.append(
+        "η（`eta_meV`）控制格林函数的数值展宽。比较不同分子时应核对 η 和实际能量步长。")
+    lines.append("")
+
+    curve = data.get("g_ph_by_temperature") or {}
+    curve_values = [float(v) for v in curve.get("g_ph_pw_per_k") or []]
+    curve_rel = "thermal_analyze/thermal_conductance_vs_temperature.png"
+    curve_image = Path(str(man.get("root"))) / curve_rel
+    if curve_values and not curve_image.is_file():
+        try:
+            from .plotting import plot_thermal_vs_temperature
+            plot_thermal_vs_temperature(path, curve_image, formats=("png",))
+        except Exception:  # noqa: BLE001 —— 出图失败只是少一张图
+            pass
+    if curve_image.is_file():
+        lines.append("![声子热导随温度](%s)" % curve_rel)
+        lines.append("")
+    curve_temperatures = curve.get("temperature_K") or []
+    if len(curve_values) >= 2 and len(curve_temperatures) == len(curve_values):
+        lines.append(
+            "对同一透射谱积分得到的 `G_ph(T)` 在 %.0f K 为 %.2f pW/K，"
+            "在 %.0f K 为 %.2f pW/K。"
+            % (curve_temperatures[0], curve_values[0], curve_temperatures[-1], curve_values[-1]))
+        lines.append("")
+
+    soft = data.get("soft_modes") or []
+    if soft:
+        lines.append("**软模归属**（虚频只报波数没有意义，必须看谁在动）：")
+        lines.append("")
+        lines.append("| 模 | ω (cm⁻¹) | 分子 | 器件区 Au | lead | 参与原子数 | 刚体占比 |")
+        lines.append("|---|---|---|---|---|---|---|")
+        for mode in soft:
+            regions = mode.get("regions") or {}
+            rigid = mode.get("rigid_body") or {}
+            lines.append(
+                "| %d | %.2f | %.1f%% | %.1f%% | %.1f%% | %.1f | %.2f |"
+                % (int(mode.get("index", -1)) + 1, float(mode.get("cm1", 0.0)),
+                   100.0 * float(regions.get("molecule", 0.0)),
+                   100.0 * float(regions.get("device_au", 0.0)),
+                   100.0 * float(regions.get("lead", 0.0)),
+                   float(mode.get("participation_ratio", 0.0)),
+                   float(rigid.get("fraction", 0.0))))
+        lines.append("")
+        impact = data.get("soft_mode_impact_relative_g_ph")
+        removed = data.get("g_ph_soft_removed_pw_per_k")
+        symmetric = data.get("g_ph_symmetric_pw_per_k")
+        if impact is not None and removed is not None and symmetric is not None:
+            lines.append(
+                "把**全部负本征值投影掉**再算一遍：`G_ph` 由 %.3f 变 %.3f pW/K"
+                "（%+.2f%%）。"
+                % (symmetric, removed, 100.0 * float(impact)))
+            lines.append("")
+        asymmetry = data.get("fc_asymmetry")
+        if asymmetry is not None and not data.get("transport_matrix_protocol"):
+            lines.append(
+                "互易性：力常数矩阵不对称度 %.2f%%（有限差分噪声 + 器件/lead 两侧"
+                "分开算）。对称化后再积分，`G_ph` 由 %.3f 变 %.3f pW/K；该差别"
+                "已计入 `ph_fc_symmetry` 判据，不另行修正数值。"
+                % (100.0 * float(asymmetry), float(data.get("g_ph_pw_per_k", 0.0)),
+                   float(data.get("g_ph_symmetric_pw_per_k", 0.0))))
+            lines.append("")
+
+    environment_path = Path(str(man.get("root"))) / "thermal_analyze" / "environment.json"
+    if environment_path.is_file():
+        try:
+            environment = json.loads(environment_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            environment = {}
+        if environment:
+            from .phonon.environment import describe_lines
+
+            lines.append("**运行环境**（决定数值的输入与工具，换一样数就可能变）：")
+            lines.append("")
+            for item in describe_lines(environment):
+                lines.append("- " + item)
+            fingerprint = (data.get("environment") or {}).get("digest") or ""
+            if fingerprint:
+                lines.append(f"- 环境指纹 `{fingerprint[:16]}`"
+                             "（`smj thermal-compare` 用它确认两个 run 是否同环境）")
+            lines.append("")
+
+    convergence = data.get("convergence") or {}
+    if convergence:
+        lines.append("**收敛轴**（哪几个开关真的影响 `G_ph`）：")
+        lines.append("")
+        cutoff = convergence.get("fc_cutoff") or {}
+        rows = cutoff.get("rows") or []
+        if rows:
+            production = cutoff.get("production_A")
+            lines.append("| 力常数截断 (Å) | G_ph (pW/K) | 说明 |")
+            lines.append("|---|---|---|")
+            for row in rows:
+                value = row.get("g_ph_pw_per_k")
+                mark = ""
+                if production and abs(float(row["cutoff_A"]) - float(production)) < 1e-9:
+                    mark = "（生产）"
+                if value is None:
+                    cells = f"| {float(row['cutoff_A']):.1f}{mark} | — | {_cell(row.get('rejected') or '无有效值')} |"
+                else:
+                    cells = f"| {float(row['cutoff_A']):.1f}{mark} | {float(value):.3f} | |"
+                lines.append(cells)
+            lines.append("")
+            spread = cutoff.get("relative_spread")
+            if spread is not None:
+                lines.append(
+                    f"上述截断扫描中有效热导的相对散布为 {100.0 * float(spread):.1f}%。")
+                if cutoff.get("nominal_covers_span"):
+                    lines.append(
+                        "名义截断已覆盖当前电极块内的全部非零耦合。")
+                lines.append("")
+            shortfall = cutoff.get("nominal_shortfall")
+            if shortfall is not None and cutoff.get("uncut_g_ph_pw_per_k") is not None:
+                lines.append(
+                    f"按名义半径截断后，热导相对于当前完整矩阵的偏差为 {100.0 * float(shortfall):.2f}%。")
+                lines.append("")
+            if cutoff.get("beyond_nominal_checked") is False:
+                lines.append(
+                    "> 超出名义截断的体相耦合不在当前 lead 力常数资产里，"
+                    "无法后处理验证：后处理只能证明「不多切」，不能证明「没漏切」。"
+                    "要量化这一段，需要用更大的 `fc_cutoff_A` 重算一次电极"
+                    "力常数（54 个 SCF）后对照。")
+                lines.append("")
+        for key, label in (("lead_layers", "lead 层数"),
+                           ("device_layers", "器件区层数")):
+            axis = convergence.get(key) or {}
+            if axis.get("status") != "unmeasured":
+                continue
+            lines.append(
+                f"- **{label}：未测**（当前 {axis.get('current')}；"
+                f"{axis.get('requires')}）")
+        if any((convergence.get(key) or {}).get("status") == "unmeasured"
+               for key in ("lead_layers", "device_layers")):
+            lines.append("")
+            lines.append("这两条轴改变的是**哪些原子参与 DFT**，力常数矩阵必须重算，"
+                         "不能后处理得到；在它们测完之前，`G_ph` 的不确定度只包含 "
+                         "η、步长与截断三项。")
+            lines.append("")
+
+    review_path = Path(str(man.get("root"))) / "review.json"
+    if review_path.is_file():
+        try:
+            payload = json.loads(review_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+        thermal = (payload or {}).get("thermal") or {}
+        if thermal.get("available"):
+            lines.append("热导判据结论：**%s**" % thermal.get("verdict"))
+            failed = thermal.get("failed") or []
+            unclear = thermal.get("inconclusive") or []
+            if failed:
+                lines.append("- failed：%s" % ", ".join("`%s`" % f for f in failed))
+            if unclear:
+                lines.append("- inconclusive：%s"
+                             % ", ".join("`%s`" % u for u in unclear))
+            if not failed and not unclear:
+                lines.append("- 十条判据全部通过。")
+            lines.append("")
+    for message in warnings:
+        lines.append("- %s" % _cell(message))
+    if warnings:
+        lines.append("")
+
+
 def render_report(manifest: Mapping[str, Any]) -> str:
     """manifest -> Markdown 报告（机械可生成部分，不写文件）。"""
     man = dict(manifest or {})
+    if man.get("backend") == "transiesta":
+        from .siesta.report import render
+        return render(man)
     rid = man.get("run_id", "?")
     state = man.get("state") or {}
     totals = man.get("totals") or {}
@@ -966,11 +1249,11 @@ def render_report(manifest: Mapping[str, Any]) -> str:
             _cell(molecule.get("charge")), _cell(molecule.get("multiplicity"))))
         if molecule.get("broken_symmetry"):
             lines.append("| 自旋态 | 破缺对称单重态（M=1，broken_symmetry；"
-                         "反号 initial_moments，不写 fixed_spin_moment） |")
-        elif (molecule.get("multiplicity") or 1) > 1:
+                         "反号 initial_moments） |")
+        if molecule.get("broken_symmetry") or (molecule.get("multiplicity") or 1) > 1:
             fixed = molecule.get("fixed_spin_moment")
             lines.append("| 总自旋约束 | %s |" % (
-                "fixed_spin_moment（钉住 2S = M−1）" if fixed
+                "fixed_spin_moment（固定 Nα−Nβ = M−1）" if fixed
                 else "未钉住（release 解，自旋可离域到电极）"))
     electrode = inputs.get("electrode") or {}
     lines.append("| 建结阶段 | %s |" % _cell(electrode.get("stage")))
@@ -1045,7 +1328,9 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         _render_spin_section(lines, transport["spin"], transport.get("spin_partition"))
     lines.append("")
 
-    lines.append("## 5. 失败原因")
+    _thermal_section(lines, man)
+
+    lines.append("## 6. 失败原因")
     lines.append("")
     failures = man.get("failures") or []
     if failures:
@@ -1058,7 +1343,7 @@ def render_report(manifest: Mapping[str, Any]) -> str:
         lines.append("- 无失败阶段。")
     lines.append("")
 
-    lines.append("## 6. 产物清单")
+    lines.append("## 7. 产物清单")
     lines.append("")
     lines.append("| 阶段 | 文件数 | 体积 (MiB) | 关键产物 sha256(前12) |")
     lines.append("|---|---|---|---|")
@@ -1199,7 +1484,20 @@ def generate_report(target: Any, *, run_id: str | None = None,
     warnings: list[str] = []
     existing = read_manifest(run_dir)
     stale_reason: str | None = None
-    if existing is not None and not force:
+    if manifest.get("backend") == "transiesta" and not force:
+        # These are derived reports. Reuse only the same verified output chain,
+        # including its current run status, protocol and requested checks.
+        comparable = ("backend", "state", "stages", "stage_issues", "contacts", "scf",
+                      "transport", "warnings", "provenance", "verdict")
+        if layout.manifest_path.is_file() and not existing:
+            stale_reason = "SIESTA manifest 无法解析"
+        elif existing and any(existing.get(k) != manifest.get(k) for k in comparable):
+            stale_reason = "SIESTA 阶段状态、协议或已采集证据发生变化"
+        elif layout.report_path.is_file() and (
+                not existing or layout.report_path.read_text(encoding="utf-8", errors="replace")
+                != render_report(existing)):
+            stale_reason = "SIESTA 报告与已核实记录不符"
+    elif existing is not None and not force:
         previous = existing.get("judgment")
         previous_sha = previous.get("sha256") if isinstance(previous, dict) else None
         current_sha = (manifest.get("judgment") or {}).get("sha256")
@@ -1218,9 +1516,10 @@ def generate_report(target: Any, *, run_id: str | None = None,
         # 2026-11-22 复审 P0-1：判定逻辑变了，旧 manifest 不能原样复用。
         # 重建 manifest 的同时必须重写 report.md——否则人读报告仍是旧结论。
         warnings.append("manifest 已过期（%s），已按当前判据重建" % stale_reason)
-        manifest.setdefault("warnings", []).append(
-            "manifest 曾过期（%s）：本次按当前判据重建，旧判定不再复用"
-            % stale_reason)
+        if manifest.get("backend") != "transiesta":
+            manifest.setdefault("warnings", []).append(
+                "manifest 曾过期（%s）：本次按当前判据重建，旧判定不再复用"
+                % stale_reason)
         write_manifest(manifest, layout.manifest_path)
         written.append(str(layout.manifest_path))
         effective = manifest

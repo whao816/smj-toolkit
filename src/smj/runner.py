@@ -17,7 +17,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Sequence
 
 from .config import RunConfig
 from .context import StageContext
@@ -159,13 +159,16 @@ class StageRunner:
         self.run_dir = Path(run_dir or config.run_dir).resolve()
         self.layout = RunLayout(self.run_dir)
         self.layout.ensure()
-        self.state = RunState.load(self.layout.state_path, run=config.name)
+        self.state = RunState.load(self.layout.state_path, run=config.name, backend=config.transport.backend)
         self.state.path = self.layout.state_path
 
         self.transport = transport
         self.dry_run = (config.mode == "dry-run") if dry_run is None else bool(dry_run)
         self.overrides = dict(overrides or {})
         self.logger = logger or (lambda message: None)
+        if config.transport.backend == "transiesta" and stage_getter is None:
+            from .siesta import get_stage
+            stage_getter = get_stage
         self.stage_getter = stage_getter or lazy_stage_getter
         self.force = bool(force)
         self.poll_s = poll_s
@@ -200,6 +203,19 @@ class StageRunner:
             raise
         except Exception as exc:  # noqa: BLE001 - 注入的假 getter 可能抛别的
             raise SmjError("取阶段 %r 失败: %s" % (name, exc)) from exc
+
+    def _invalidate_siesta_children(self, name):
+        from .state import StageState
+        affected = {name}
+        for child in self.state.order:
+            if affected.intersection(self.get_stage(child).depends):
+                affected.add(child)
+        for child in affected:
+            if self.state.status(child) in ("submitted", "waiting", "submit_unknown"):
+                raise ActiveJobError(f"{child}: 作业仍活跃，请先核对调度状态")
+        for child in affected:
+            self.state.stages[child] = StageState()
+        self._save()
 
     def _ensure_transport(self) -> Transport:
         if self.transport is None:
@@ -290,9 +306,17 @@ class StageRunner:
                 raise StageError(
                     "阶段 %s 已完成（status=%s）；重跑请加 --force" % (key, status))
 
+        siesta_record = {}
+        if self.state.backend == "transiesta":
+            from .siesta.workflow import parents, stage_protocol
+            siesta_record = {"siesta_protocol": stage_protocol(self.config, key),
+                             "siesta_parents": parents(self.context, stage)}
+
         # 2026-11 P0-1：run 级配置快照先落盘，再开始产生任何阶段输入。
         # 配置漂移默认在这里拒绝；--force 才重绑（旧快照留 run_spec.previous.json）。
         spec = ensure_run_spec(self.config, self.run_dir, force=force)
+        if siesta_record:
+            self._invalidate_siesta_children(key)
 
         if getattr(self.config.run, "clean", False):
             self._clean_stage_dir(key)
@@ -317,7 +341,11 @@ class StageRunner:
         payload = _prepared_payload(prepared)
         artifacts = payload.get("artifacts") or list(getattr(stage, "outputs", ()) or ())
         local_only = bool(payload.get("local_only"))
-        inputs_sha256 = hash_stage_inputs(payload.get("inputs") or ())
+        if self.state.backend == "transiesta":
+            from .siesta.io import sha
+            inputs_sha256 = {str(Path(p).resolve()): sha(p) for p in payload["inputs"]}
+        else:
+            inputs_sha256 = hash_stage_inputs(payload.get("inputs") or ())
         self.state.set(
             key, status="prepared", prepared_at=now_iso(),
             job_id=None, remote_dir=None, submitted_at=None, finished_at=None,
@@ -333,7 +361,7 @@ class StageRunner:
             outputs_sha256={},
             parent_stage=payload.get("parent_stage"),
             parent_fingerprint=payload.get("parent_fingerprint"),
-            protocol_sha256=spec.get("protocol_sha256"),
+            protocol_sha256=spec.get("protocol_sha256"), **siesta_record,
         )
         self._save()
         for note in payload.get("notes") or ():
@@ -341,11 +369,16 @@ class StageRunner:
         return payload
 
     # -- submit ------------------------------------------------------------ #
-    def submit(self, name: str, *, force: bool | None = None) -> dict[str, Any]:
-        """提交阶段作业（slurm-ssh 用 sbatch；local 同步执行脚本）。"""
+    def submit(self, name: str, *, force: bool | None = None,
+               sbatch_args: Sequence[str] = ()) -> dict[str, Any]:
+        """提交阶段作业（slurm-ssh 用 sbatch；local 同步执行脚本）。
+
+        ``sbatch_args`` 透传给 ``sbatch``，目前只有数组作业的 ``--array=17,203``
+        （只重跑失败槽位）用得上；local 模式不支持。
+        """
         key = normalize_stage(name)
         stage = self.get_stage(key)
-        if not getattr(stage, "needs_submit", True):
+        if self.state.stage(key).extra.get("local_only") or not getattr(stage, "needs_submit", True):
             raise StageError("阶段 %s 是本地阶段，无需提交（直接 --run 或 --collect）" % key)
         status = self.state.status(key)
         force = self.force if force is None else bool(force)
@@ -373,6 +406,9 @@ class StageRunner:
             raise StageError(
                 "阶段 %s 状态为 %r，不能提交；先 --prepare 或加 --force" % (key, status))
 
+        if self.state.backend == "transiesta":
+            from .siesta.workflow import check_prepared
+            check_prepared(self.context, stage)
         script = self._stage_script(key)
         if not script:
             raise StageError("阶段 %s 没有作业脚本，无法提交" % key)
@@ -383,14 +419,15 @@ class StageRunner:
         if self.config.mode == "slurm-ssh":
             session = self._session()
             try:
-                submission = session.submit(key, stage_dir, script=script)
+                submission = session.submit(key, stage_dir, script=script,
+                                            sbatch_args=tuple(sbatch_args))
             except SubmitUncertain as exc:
                 # 2026-11-22 复审 P0：sbatch 超时/无 job id 不能当"提交失败"。
                 # 作业可能已经在排队，状态必须是显式的“未知”，让下一次 run 停下来
                 # 要求人工 squeue 核对；否则 --run 会自动重提，同一目录两个作业。
                 self.state.set(
                     key, status="submit_unknown",
-                    remote_dir=str(getattr(exc, "remote_dir", session.stage_dir(key))),
+                    remote_dir=str(exc.remote_dir or session.stage_dir(key)),
                     script=script, job_id=None,
                     note=str(exc), error=str(exc))
                 self._save()
@@ -523,6 +560,9 @@ class StageRunner:
             raise StageError("阶段 %s 已 collected；重新解析请加 --force" % key)
         stage_dir = self.layout.ensure_stage(key)
 
+        if self.state.backend == "transiesta":
+            from .siesta.workflow import check_prepared
+            check_prepared(self.context, stage)
         download: dict[str, Any] | None = None
         local_only = bool(self.state.stage(key).extra.get("local_only"))
         # 0.1.2：本地阶段（electrode_build / junction_analyze）没有远端产物，
@@ -533,7 +573,10 @@ class StageRunner:
                 and not local_only and remote_stage):
             self._log("[%s] 回取产物 ..." % key)
             names = None
-            if key == "molecule_opt":
+            if self.config.transport.backend == "transiesta":
+                from .siesta import remote_outputs
+                names = remote_outputs(self.context, key)
+            elif key == "molecule_opt":
                 # 回取清单由引擎声明；None = 沿用 vendored 的 gaussian_opt 计划
                 # （mol.gjf/mol.log/sub_g16.sh，Gaussian 口径）。
                 remote_files = engine_for_config(self.config).remote_files
@@ -558,7 +601,13 @@ class StageRunner:
         payload = _collected_payload(collected)
         artifacts = payload.get("artifacts") or list(getattr(stage, "outputs", ()) or ())
         unhashed: list[str] = []
-        outputs_sha256 = hash_stage_outputs(stage_dir, artifacts, missing=unhashed)
+        if self.state.backend == "transiesta":
+            from .siesta.io import sha
+            out = Path(payload.get("output_dir") or stage_dir).resolve()
+            outputs_sha256 = {str(p if out == stage_dir.resolve() else out / p): sha(out / p)
+                              for p in artifacts}
+        else:
+            outputs_sha256 = hash_stage_outputs(stage_dir, artifacts, missing=unhashed)
         note = None if not download or not download["missing"] else (
             "未取到: " + ", ".join(download["missing"]))
         if unhashed:
@@ -749,7 +798,7 @@ class StageRunner:
             keep_going: bool | None = None,
             force: bool | None = None) -> list[StageOutcome]:
         """按 ``--from/--to`` 链式推进；已 collected 的阶段默认跳过。"""
-        names = stage_range(start, end)
+        names = stage_range(start, end, backend=self.config.transport.backend)
         keep = bool(getattr(self.config.run, "keep_going", False)
                     if keep_going is None else keep_going)
         force = self.force if force is None else bool(force)
@@ -758,6 +807,10 @@ class StageRunner:
         for key in names:
             status = self.state.status(key)
             if not force and status == "collected":
+                if self.state.backend == "transiesta":
+                    from .siesta.workflow import check_prepared, check_outputs
+                    check_prepared(self.context, self.get_stage(key))
+                    check_outputs(self.layout, key, self.state.stage(key))
                 outcomes.append(StageOutcome(
                     stage=key, status="collected", ok=True,
                     message="已完成，跳过（--force 可重跑）"))

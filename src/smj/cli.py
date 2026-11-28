@@ -48,6 +48,7 @@ from .runner import StageOutcome, StageRunner, lazy_stage_getter
 from .state import (
     REMOTE_STAGES,
     STAGE_ORDER,
+    THERMAL_STAGE_ORDER,
     RunLayout,
     RunState,
     normalize_stage,
@@ -236,13 +237,20 @@ def _make_runner(args: argparse.Namespace, config: RunConfig) -> StageRunner:
 
 def _state_for(config: RunConfig) -> tuple[RunLayout, RunState]:
     layout = RunLayout(config.run_dir)
-    state = RunState.load(layout.state_path, run=config.name)
+    state = RunState.load(layout.state_path, run=config.name, backend=config.transport.backend)
     return layout, state
 
 
 # --------------------------------------------------------------------------- #
 # 阶段元数据（plan / audit 用；stages 缺失时退回静态表）
 # --------------------------------------------------------------------------- #
+def _route_getter(config, args):
+    if config.transport.backend == "transiesta":
+        from .siesta import get_stage
+        return getattr(args, "stage_getter", None) or get_stage
+    return getattr(args, "stage_getter", None)
+
+
 def _fallback_meta(name: str) -> dict[str, Any]:
     index = STAGE_ORDER.index(name)
     return {
@@ -397,6 +405,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         config_path = target / DEFAULT_CONFIG_NAME
         base = target
     name = args.name or _slug(base.resolve().name or "my-run")
+    if args.mode == "slurm-ssh" and not args.name:
+        name = re.sub(r"[^a-z0-9]+", "-", name)[:40].strip("-") or "my-run"
     path = write_default_config(
         config_path, name=name, xyz=args.xyz, mode=args.mode, overwrite=args.force)
     print("已写入配置: %s" % path)
@@ -563,10 +573,11 @@ def cmd_plan(args: argparse.Namespace) -> int:
     config = _load_config(args)
     layout, state = _state_for(config)
     rows = []
-    for name in STAGE_ORDER:
-        meta = _stage_meta(name, getattr(args, "stage_getter", None))
+    getter = _route_getter(config, args)
+    for name in state.order:
+        meta = _stage_meta(name, getter)
         script = meta["script"] or "-"
-        if name == "molecule_opt":
+        if name == "molecule_opt" and config.transport.backend == "aitranss":
             # 脚本名由引擎声明（缺省引擎 aims），不再在这里写引擎分支。
             script = engine_for_config(config).script
         rows.append({
@@ -697,11 +708,353 @@ def cmd_stage(args: argparse.Namespace) -> int:
     return EXIT_UNFINISHED if outcome.status == "waiting" else EXIT_FAILED
 
 
+def _resolve_retry_slots(spec: str, stage_dir: Path) -> list[int]:
+    """把 ``--retry`` 的 SPEC 变成槽位下标列表。
+
+    支持两种写法：显式下标（``17,203``），以及从远端收尾写下的
+    ``fc_summary.json`` 里取 ``missing`` / ``not_converged``。后者是主路径：
+    collect 的报错信息里给出的就是它可以接受的写法。
+    """
+    text = str(spec).strip()
+    lowered = text.lower()
+    if lowered in ("missing", "not-converged", "not_converged", "unknown"):
+        summary_path = Path(stage_dir) / "fc_summary.json"
+        if not summary_path.is_file():
+            raise SmjError(
+                "--retry %s 需要 %s（远端数组作业收尾时写的收敛报告）。"
+                "没有它就直接给下标：--retry 17,203"
+                % (text, summary_path))
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SmjError("读 %s 失败: %s" % (summary_path, exc)) from exc
+        key = lowered.replace("-", "_")
+        slots = summary.get(key, []) if isinstance(summary, dict) else None
+        if not isinstance(slots, list) or any(type(s) is not int for s in slots):
+            raise SmjError("%s 的 %s 不是槽位下标列表" % (summary_path, key))
+        if not slots:
+            raise SmjError("%s 里 %s 为空：没有需要重跑的槽位" % (summary_path, key))
+        return slots
+    slots = []
+    for part in text.replace(" ", "").split(","):
+        if not part:
+            continue
+        try:
+            slots.append(int(part))
+        except ValueError:
+            raise SmjError(
+                "--retry 的下标必须是整数（收到 %r）；也可以写 missing "
+                "、not-converged 或 unknown" % part) from None
+    if not slots:
+        raise SmjError("--retry 没给下标")
+    return sorted(set(slots))
+
+
+def cmd_thermal_compare(args: argparse.Namespace) -> int:
+    """多 run 热导比较：先比协议，再比数。"""
+    from .phonon.compare import compare, find_runs, load_run, render_markdown
+
+    try:
+        paths = find_runs([Path(p) for p in args.paths])
+        records = [load_run(path) for path in paths]
+    except (OSError, ValueError) as exc:
+        print("错误: %s" % exc, file=sys.stderr)
+        return EXIT_FAILED
+    result = compare(records)
+    markdown = render_markdown(result)
+    if args.json:
+        _emit_json({"consistent": result.consistent,
+                    "mismatches": result.mismatches,
+                    "environment_consistent": result.environment_consistent,
+                    "environment_mismatches": result.environment_mismatches,
+                    "rows": result.rows()})
+    else:
+        if args.out:
+            target = Path(args.out)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(markdown, encoding="utf-8", newline="\n")
+            print("已写 %s（%d 个 run）" % (target, len(records)))
+        else:
+            print(markdown)
+    if args.strict and not result.consistent:
+        return EXIT_FAILED
+    return EXIT_OK
+
+
+def cmd_siesta_kconv(args: argparse.Namespace) -> int:
+    """Compare two collected TranSIESTA runs on different transverse k meshes."""
+    from .siesta.kconv import compare, render_markdown
+
+    try:
+        payload = compare(args.base, args.refined, tolerance=args.tolerance)
+    except (OSError, ValueError) as exc:
+        print("错误: %s" % exc, file=sys.stderr)
+        return EXIT_FAILED
+    markdown = render_markdown(payload)
+    if args.out:
+        target = Path(args.out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(markdown + "\n", encoding="utf-8", newline="\n")
+        print("已写 %s" % target)
+    if args.json_out:
+        target = Path(args.json_out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(_jsonable(payload), ensure_ascii=False, indent=2) + "\n",
+                          encoding="utf-8", newline="\n")
+        print("已写 %s" % target)
+    if args.json:
+        _emit_json(payload)
+    elif not args.out:
+        print(markdown)
+    if args.strict and not payload["passed"]:
+        return EXIT_FAILED
+    return EXIT_OK
+
+
+def _cmd_thermal_sensitivity(args, config, runner) -> int:
+    """扫 η 与能量步长：回答"这个数有多依赖正则化参数"。
+
+    不重跑 DFT —— 力常数已经在 `thermal_fc/force_constants.npy` 里，扫参只是
+    把同一份力常数用不同 η 再算一遍透射。没有这一步，横向比较很容易变成
+    "η 大的那次算低了"，而两次的差别可能比分子之间的真实差别还大。
+    """
+    from .stages.thermal_analyze import sensitivity
+
+    fc_dir = runner.layout.ensure_stage("thermal_fc")
+    if not (fc_dir / "force_constants.npy").is_file():
+        raise SmjError("没找到 thermal_fc/force_constants.npy；先跑完 thermal_fc 再扫参")
+    payload = sensitivity(
+        fc_dir / "force_constants.npy",
+        runner.layout.ensure_stage("thermal_device") / "device_metadata.json",
+        fc_dir / "geometry.in",
+        config.thermal,
+        temperature=config.thermal.resolved_temperature(
+            config.transport.temperature))
+    target = runner.layout.ensure_stage("thermal_analyze") / "sensitivity.json"
+    target.write_text(json.dumps(payload, indent=2, ensure_ascii=False,
+                                 allow_nan=False) + "\n", encoding="utf-8")
+    if args.json:
+        _emit_json(payload)
+        return EXIT_OK
+    production = payload["production"]
+    print("扫参（T = %.1f K，带顶 %.2f meV）：η 与步长都只改正则化，不改力常数"
+          % (payload["temperature_K"], payload["band_top_meV"]))
+    header = "  %-9s" % "η\\步长"
+    for step in payload["energy_steps_meV"]:
+        header += "%11s" % ("%.3f" % step)
+    print(header)
+    table: dict[float, dict[float, float | None]] = {}
+    for row in payload["rows"]:
+        table.setdefault(row["eta_meV"], {})[row["energy_step_meV"]] = \
+            row["g_ph_pw_per_k"]
+    for eta in payload["etas_meV"]:
+        line = "  %-9.3f" % eta
+        for step in payload["energy_steps_meV"]:
+            value = table.get(eta, {}).get(step)
+            line += "%11s" % ("—" if value is None else "%.3f" % value)
+        if eta == production["eta_meV"]:
+            line += "   ← 生产配置"
+        print(line)
+    extrapolated = payload.get("eta_zero_extrapolation")
+    if extrapolated:
+        print("  η→0 外推：%.3f pW/K（斜率 %.2f pW/K per meV，用 %d 个点）"
+              % (extrapolated["g_ph_pw_per_k"],
+                 extrapolated["slope_pw_per_k_per_meV"],
+                 extrapolated["n_points"]))
+    spread = payload.get("step_relative_spread") or {}
+    if spread:
+        print("  步长引起的相对变化最大 %.2f%%（梯形积分底噪，不是收敛趋势）"
+              % (100.0 * max(spread.values())))
+    print("  已写 %s" % target)
+    return EXIT_OK
+
+
+def _cmd_thermal_retry(args, config, runner, names) -> int:
+    """只重跑 ``thermal_fc`` 数组作业里失败/未收敛的槽位。
+
+    为什么单独一条路径：324 个位移点跑 9 小时，失败一两个点是常态。整批重跑
+    既浪费机时也可能踩到同样的资源问题；而 Slurm 的命令行 ``--array=17,203``
+    会覆盖脚本里的 ``#SBATCH --array`` 行，所以不必改脚本、不必重新 prepare。
+    重跑任务的收尾逻辑按"已完成份数"触发，凑齐后会重写
+    ``forces_all.json`` 与 ``fc_summary.json``。
+    """
+    if any(name != "thermal_fc" for name in names):
+        raise SmjError("--retry 只能用于 thermal_fc；加 --stage thermal_fc 或去掉 --stage")
+    if config.mode != "slurm-ssh":
+        raise SmjError("--retry 只在 slurm-ssh 模式有意义（local 模式会顺序重跑整批）")
+    status = runner.state.status("thermal_fc")
+    if not args.force and status in ("submitted", "waiting", "submit_unknown"):
+        raise SmjError("thermal_fc 上次提交的状态为 %s。先 --wait 或核对远端作业；"
+                       "确认已经结束后可用 --force --retry 重试" % status)
+    stage_dir = Path(runner.layout.stage_dir("thermal_fc"))
+    manifest = stage_dir / "displacements.json"
+    if not manifest.is_file():
+        raise SmjError("thermal_fc 还没 prepare（缺 %s）" % manifest)
+    try:
+        count = len(json.loads(manifest.read_text(encoding="utf-8")))
+    except (OSError, ValueError) as exc:
+        raise SmjError("读 %s 失败: %s" % (manifest, exc)) from exc
+    slots = _resolve_retry_slots(args.retry, stage_dir)
+    bad = sorted({slot for slot in slots if slot < 0 or slot >= count})
+    if bad:
+        raise SmjError("重跑下标越界: %s（有效范围 0–%d）" % (bad[:5], count - 1))
+    from .stages.thermal_fc import ThermalFcStage
+
+    natoms = ThermalFcStage.count_aims_atoms(stage_dir / "geometry.in")
+    estimate = runner.context.estimate("thermal_fc", natoms)
+    ThermalFcStage.write_job_files(runner.context, stage_dir, count, estimate)
+    parallel = max(1, int(getattr(config.thermal.fc, "array_parallel", 8) or 8))
+    array_spec = "--array=%s%%%d" % (",".join(str(slot) for slot in slots), parallel)
+    payload = runner.submit("thermal_fc", force=True, sbatch_args=(array_spec,))
+    if args.json:
+        _emit_json(payload)
+    else:
+        print("重跑 %d 个槽位: %s" % (len(slots), array_spec))
+        _print_submission(payload, stage="thermal_fc")
+        print("跑完后用 `smj thermal --stage thermal_fc --collect` 回取本次力与 SCF 汇总。")
+    return EXIT_OK
+
+
+def cmd_thermal(args: argparse.Namespace) -> int:
+    """声子热导链：``thermal_device`` → ``thermal_relax`` → ``thermal_fc`` →
+    ``thermal_analyze``。
+
+    独立于六阶段电子链（方案 D12）：``smj run`` / ``smj plan`` / ``smj status``
+    的默认输出里看不到它，只有这一条命令能推进它。
+    """
+    config = _load_config(args)
+    thermal = getattr(config, "thermal", None)
+    if thermal is None or not thermal.enabled:
+        raise SmjError(
+            "thermal 段未启用：请在 smj.yaml 里加 `thermal:\\n  enabled: true`"
+            "（并配好热导链要用的 geometry/fc/negf 参数）")
+
+    if args.stage:
+        name = normalize_stage(args.stage)
+        if name not in THERMAL_STAGE_ORDER:
+            raise SmjError("%r 不是热导链阶段；可选: %s"
+                           % (args.stage, ", ".join(THERMAL_STAGE_ORDER)))
+        names = (name,)
+    else:
+        names = THERMAL_STAGE_ORDER
+
+    action = "status"
+    for candidate in ("prepare", "submit", "wait", "collect", "run"):
+        if getattr(args, candidate, False):
+            action = candidate
+            break
+    if args.analyze_only:
+        action = "analyze"
+
+    dry_run = bool(args.dry_run) or config.mode == "dry-run"
+    if action in ("submit", "wait") and dry_run:
+        raise SmjError("dry-run 模式不能 %s；把 run.mode 改成 local / slurm-ssh，"
+                       "或去掉 --dry-run" % action)
+
+    runner = _make_runner(args, config)
+
+    if args.sensitivity:
+        return _cmd_thermal_sensitivity(args, config, runner)
+
+    if args.retry is not None:
+        return _cmd_thermal_retry(args, config, runner, names if args.stage else ("thermal_fc",))
+
+    if action == "status":
+        rows = []
+        for name in names:
+            state = runner.state.stages.get(name)
+            rows.append((name, state.status if state else "pending",
+                         state.job_id if state else None))
+        if args.json:
+            _emit_json({"thermal": [
+                {"stage": n, "status": s, "job_id": j} for n, s, j in rows]})
+        else:
+            for name, status, job_id in rows:
+                print("  %-16s %-12s %s" % (name, status, job_id or ""))
+        return EXIT_OK
+
+    if action == "analyze":
+        # 只重算 NEGF + Landauer：力常数已经在盘上，不必再碰集群
+        payload = runner.collect("thermal_analyze", force=args.force)
+        if args.json:
+            _emit_json(payload)
+        else:
+            _print_collected(payload, stage="thermal_analyze")
+        return EXIT_OK
+
+    if action == "prepare":
+        for name in names:
+            payload = runner.prepare(name, force=args.force)
+            if args.json:
+                _emit_json(payload)
+            else:
+                _print_prepared(payload, stage=name)
+        return EXIT_OK
+
+    if action == "submit":
+        for name in names:
+            payload = runner.submit(name, force=args.force)
+            if args.json:
+                _emit_json(payload)
+            else:
+                _print_submission(payload, stage=name)
+        return EXIT_OK
+
+    if action == "wait":
+        for name in names:
+            payload = runner.wait(name)
+            if args.json:
+                _emit_json(payload)
+            else:
+                _print_wait(payload, stage=name)
+            if payload.get("failed"):
+                return EXIT_FAILED
+            if not payload.get("finished"):
+                return EXIT_UNFINISHED
+        return EXIT_OK
+
+    if action == "collect":
+        for name in names:
+            payload = runner.collect(name, force=args.force)
+            if args.json:
+                _emit_json(payload)
+            else:
+                _print_collected(payload, stage=name)
+        return EXIT_OK
+
+    # --run：逐阶段 prepare → (submit → wait) → collect，失败即停
+    from .stages.base import get_stage
+
+    for name in names:
+        stage = get_stage(name)
+        payload = runner.prepare(name, force=args.force)
+        if not args.json:
+            _print_prepared(payload, stage=name)
+        if stage.needs_submit:
+            if dry_run:
+                print("  [dry-run] 跳过 %s 的提交" % name)
+                continue
+            runner.submit(name, force=args.force)
+            waited = runner.wait(name)
+            if waited.get("failed"):
+                return EXIT_FAILED
+            if not waited.get("finished"):
+                return EXIT_UNFINISHED
+        elif not args.json:
+            print("  [本地] %s 无需提交，直接 collect" % name)
+        collected = runner.collect(name, force=args.force)
+        if args.json:
+            _emit_json(collected)
+        else:
+            _print_collected(collected, stage=name)
+    return EXIT_OK
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     config = _load_config(args)
     start = args.from_stage or args.stage
     end = args.to_stage or args.stage
-    names = stage_range(start, end)  # 提前校验，避免跑一半才发现区间非法
+    names = stage_range(start, end, backend=config.transport.backend)  # 提前校验，避免跑一半才发现区间非法
 
     keep_going: bool | None = None
     if args.keep_going:
@@ -727,7 +1080,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if all(outcome.ok for outcome in outcomes):
         if not args.json:
             print("\n完成：%s" % ", ".join(names))
-            if "junction_analyze" in names:
+            if "junction_analyze" in names and config.transport.backend == "aitranss":
                 print("出图: junction_analyze/T_E.png + T_E.pdf（统一版式 style %s）；"
                       "换尺寸/叠加用 smj plot -c %s"
                       % (_style_version(), args.config))
@@ -777,7 +1130,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def _status_rows(state: RunState) -> list[dict[str, Any]]:
     rows = []
-    for name in STAGE_ORDER:
+    for name in state.order:
         stage = state.stage(name)
         rows.append({
             "stage": name,
@@ -896,6 +1249,30 @@ def cmd_pdos(args: argparse.Namespace) -> int:
 
 def cmd_analyze(args: argparse.Namespace) -> int:
     config = _load_config(args)
+    if config.transport.backend == "transiesta":
+        from shutil import copyfile
+        from .siesta.io import read_json
+        runner = _make_runner(args, config)
+        stage = "junction_analyze"
+        target = Path(args.plot).resolve() if args.plot else None
+        if target and target.suffix.lower() != ".png":
+            raise SmjError("TranSIESTA 的 --plot 路径需要 .png 扩展名")
+        if runner.state.status(stage) != "collected" or args.force:
+            runner.prepare(stage, force=args.force)
+            runner.collect(stage)
+        else:
+            runner.run(stage, stage)
+        outputs = runner.state.stage(stage).outputs_sha256
+        files = {Path(n).name: runner.layout.artifact(stage, n) for n in outputs}
+        data = read_json(files["results.json"])
+        if target and target != files["T_E.png"].resolve():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            copyfile(files["T_E.png"], target)
+        if args.json:
+            _emit_json(data)
+        else:
+            _print_mapping(data, title="analyze: %s" % config.name)
+        return EXIT_OK
     module = _optional_module(_AUX_MODULES["analyze"][0], "analyze（透射谱分析）")
     func = _find_callable(module, _AUX_MODULES["analyze"][1])
     plot = None if args.plot is None else (True if args.plot == "" else args.plot)
@@ -967,6 +1344,8 @@ def cmd_plot(args: argparse.Namespace) -> int:
 def cmd_review(args: argparse.Namespace) -> int:
     config = _load_config(args)
 
+    if config.transport.backend == "transiesta" and getattr(args, "approve", False):
+        raise SmjError("--approve 仅适用于 AITRANSS 的连接核对")
     # 2026-11-15：A2 人工确认更名为「连接核对」（connection check），默认自动登记。
     # --approve 是手工补签/重签路径（fail-closed），签完在同一条命令里看门过没过。
     if getattr(args, "approve", False):
@@ -1026,7 +1405,12 @@ def cmd_review(args: argparse.Namespace) -> int:
         _print_issues(data.get("issues") or data.get("problems"))
     _print_mapping(
         {k: v for k, v in data.items() if k not in ("issues", "problems", "ok")})
-    print("结论: %s" % ("通过" if ok else "未通过"))
+    if config.transport.backend == "transiesta":
+        verdict = data.get("physics_verdict") or (data.get("siesta") or {}).get(
+            "physics_verdict") or "inconclusive"
+        print("工程检查%s；物理判定 %s" % ("通过" if ok else "未通过", verdict))
+    else:
+        print("结论: %s" % ("通过" if ok else "未通过"))
     return EXIT_OK if ok else EXIT_FAILED
 
 
@@ -1042,7 +1426,7 @@ def cmd_spin(args: argparse.Namespace) -> int:
         run = _load_config(args).run_dir
     try:
         payload = build_spin_report(run, temperature=args.temperature)
-    except FileNotFoundError as exc:
+    except (OSError, ValueError) as exc:
         _error(str(exc), debug=bool(getattr(args, "debug", False)))
         return EXIT_FAILED
     if args.json:
@@ -1103,9 +1487,10 @@ def cmd_audit(args: argparse.Namespace) -> int:
                             "run_spec.protocol_sha256=%s 与当前配置=%s 不一致"
                             % (str(stored)[:12], current[:12]))
 
-    for name in STAGE_ORDER:
+    getter = _route_getter(config, args)
+    for name in state.order:
         stage = state.stage(name)
-        meta = _stage_meta(name, getattr(args, "stage_getter", None))
+        meta = _stage_meta(name, getter)
         if (config.mode == "slurm-ssh" and stage.status in ("submitted", "waiting")
                 and not stage.job_id):
             add("error", "missing-job-id",
@@ -1162,6 +1547,33 @@ def cmd_audit(args: argparse.Namespace) -> int:
     print("结论: %s（error=%d, warning=%d）"
           % ("通过" if ok else "未通过", errors, warnings))
     return EXIT_OK if ok else EXIT_FAILED
+
+
+def cmd_lead_fc(args: argparse.Namespace) -> int:
+    """电极力常数资产：默认打印身份，``--export DIR`` 复制出去。"""
+    from .phonon import assets as assets_mod
+
+    try:
+        if args.export:
+            written = assets_mod.export_lead_fc(args.export)
+            if args.json:
+                print(json.dumps({"exported": [str(p) for p in written]},
+                                 ensure_ascii=False, indent=2))
+            else:
+                for path in written:
+                    print("已导出: %s" % path)
+                print("在 smj.yaml 里用 thermal.lead_fc 指向该目录即可替换随包资产。")
+            return 0
+        info = assets_mod.lead_fc_info()
+        if args.json:
+            print(json.dumps(info, ensure_ascii=False, indent=2, default=str))
+        else:
+            for line in assets_mod.describe_lines():
+                print(line)
+        return 0
+    except (FileNotFoundError, ValueError, OSError) as exc:
+        print("错误: %s" % exc, file=sys.stderr)
+        return 1
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -1459,6 +1871,37 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(stage)
     stage.set_defaults(handler=cmd_stage)
 
+    # thermal --------------------------------------------------------------- #
+    thermal_cmd = subparsers.add_parser(
+        "thermal", help="声子热导链：器件 → 弛豫 → 力常数 → 热导（独立于六阶段）",
+        description=(
+            "推进 thermal_device → thermal_relax → thermal_fc → thermal_analyze。"
+            "不带动作 flag 时只打印这四个阶段的状态。"
+            "需要 smj.yaml 里 thermal.enabled: true。"))
+    thermal_cmd.add_argument("--stage", metavar="STAGE",
+                             help="只操作一个阶段: %s"
+                             % ", ".join(THERMAL_STAGE_ORDER))
+    group = thermal_cmd.add_mutually_exclusive_group()
+    group.add_argument("--prepare", action="store_true", help="只生成输入，不提交")
+    group.add_argument("--submit", action="store_true", help="只提交")
+    group.add_argument("--wait", action="store_true", help="只等待")
+    group.add_argument("--collect", action="store_true", help="只解析产物")
+    group.add_argument("--run", action="store_true", help="prepare→submit→wait→collect")
+    group.add_argument("--analyze-only", dest="analyze_only", action="store_true",
+                       help="只重算 NEGF/Landauer（力常数已在盘上，不碰集群）")
+    group.add_argument("--retry", metavar="SPEC", default=None,
+                       help=("只重跑 thermal_fc 数组作业里失败/未收敛的槽位。"
+                             "SPEC 是逗号分隔的下标（如 17,203），"
+                             "或 missing / not-converged / unknown（从 fc_summary.json 读）。"
+                             "重跑后收尾步骤会自动重拼 forces_all.json"))
+    group.add_argument("--sensitivity", action="store_true",
+                       help=("用已有 force_constants.npy 扫 η 与能量步长"
+                             "（不碰集群），写 sensitivity.json 并给出 η→0 外推"))
+    thermal_cmd.add_argument("--dry-run", action="store_true", help="只生成输入")
+    thermal_cmd.add_argument("--force", action="store_true", help="允许重跑/覆盖")
+    _add_common(thermal_cmd)
+    thermal_cmd.set_defaults(handler=cmd_thermal)
+
     # run ------------------------------------------------------------------- #
     run = subparsers.add_parser(
         "run", help="按 --from/--to 链式推进全部阶段",
@@ -1621,6 +2064,52 @@ def build_parser() -> argparse.ArgumentParser:
         description="检查 Python、PyYAML、numpy、vendored junction、模板与阶段模块。")
     _add_common(verify, with_config=False)
     verify.set_defaults(handler=cmd_verify)
+
+    lead_fc = subparsers.add_parser(
+        "lead-fc", help="查看/导出声子热导用的电极力常数资产",
+        description=("声子 NEGF 需要一份 Au(111) 半无限电极的力常数。它由一次"
+                     "体相有限位移得到（3x3x6 层、Gamma、54 个 SCF），与分子无关，"
+                     "所以随包发布一份。--show 看身份，--export 导出后可用 "
+                     "thermal.lead_fc 指向自己的版本。"))
+    _add_common(lead_fc, with_config=False)
+    lead_fc.add_argument("--show", action="store_true", help="打印资产身份（默认动作）")
+    lead_fc.add_argument("--export", metavar="DIR", default=None,
+                         help="把资产复制到 DIR（生成 lead_fc.npy + lead_fc.json）")
+    lead_fc.set_defaults(handler=cmd_lead_fc)
+
+    compare_cmd = subparsers.add_parser(
+        "thermal-compare", help="把多个 run 的声子热导摆到一张表里",
+        description=("读各 run 的 thermal_analyze/thermal.json，输出 markdown 表。"
+                     "**先比协议再比数**：η、能量步长、温度、电极力常数任一不一致"
+                     "都会显式列出（D15：跨协议比较等于换方法）；--strict 时直接失败。"))
+    _add_common(compare_cmd, with_config=False)
+    compare_cmd.add_argument("paths", nargs="+", metavar="PATH",
+                             help="run 目录、其父目录（扫一层）或 thermal.json")
+    compare_cmd.add_argument("--out", metavar="FILE", default=None,
+                             help="把 markdown 表写到文件（默认打印到 stdout）")
+    compare_cmd.add_argument("--strict", action="store_true",
+                             help="协议不一致时返回非零退出码")
+    compare_cmd.set_defaults(handler=cmd_thermal_compare)
+
+    kconv_cmd = subparsers.add_parser(
+        "siesta-kconv", help="比较两个 TranSIESTA run 的横向 k 点收敛性",
+        description=("读两个 run 的 junction_analyze/results.json，比较 E_F 处 "
+                     "G/G0 的相对变化；默认容差 1%。这是数值收敛检查，"
+                     "不构成实验有效性证据。"))
+    _add_common(kconv_cmd, with_config=False)
+    kconv_cmd.add_argument("base", metavar="BASE",
+                           help="较粗 k 网格的 run 目录或 results.json")
+    kconv_cmd.add_argument("refined", metavar="REFINED",
+                           help="较密 k 网格的 run 目录或 results.json")
+    kconv_cmd.add_argument("--tolerance", type=float, default=0.01,
+                           help="允许的 |ΔG/G|（默认 0.01，即 1%%）")
+    kconv_cmd.add_argument("--out", metavar="FILE", default=None,
+                           help="把 markdown 表写到文件")
+    kconv_cmd.add_argument("--json-out", metavar="FILE", default=None,
+                           help="把比较结果写到 JSON（报告据此升级判定）")
+    kconv_cmd.add_argument("--strict", action="store_true",
+                           help="未通过容差时返回非零退出码")
+    kconv_cmd.set_defaults(handler=cmd_siesta_kconv)
 
     return parser
 

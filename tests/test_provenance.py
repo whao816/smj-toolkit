@@ -79,6 +79,36 @@ def _spec(run_dir: Path) -> dict:
     return json.loads((run_dir / "run_spec.json").read_text(encoding="utf-8"))
 
 
+@pytest.mark.parametrize("legacy_setting", [True, False])
+@pytest.mark.parametrize("old_transport", [False, True])
+def test_legacy_bs_hash_resumes_only_released_run(workdir, legacy_setting, old_transport):
+    from smj.provenance import (canonical_json, ensure_run_spec, protocol_components,
+                                run_spec_payload, sha256_text)
+
+    cfg = _config(workdir)
+    mol = cfg.molecule
+    mol.broken_symmetry = True
+    mol.initial_moments = {1: 1.0, 2: -1.0}
+    mol.fixed_spin_moment = False
+    snapshot = run_spec_payload(cfg, workdir)
+    snapshot["protocol_schema"] = 2
+    snapshot["config"]["molecule"]["fixed_spin_moment"] = legacy_setting
+    protocol = protocol_components(cfg)
+    if legacy_setting:
+        protocol["molecule"].pop("fixed_spin_moment", None)
+    else:
+        protocol["molecule"]["fixed_spin_moment"] = False
+    if old_transport:
+        snapshot["config"]["transport"].pop("allow_single_channel")
+        protocol["transport"].pop("allow_single_channel")
+    snapshot["protocol_sha256"] = sha256_text(canonical_json(protocol))
+    (workdir / "run_spec.json").write_text(json.dumps(snapshot), encoding="utf-8")
+    assert ensure_run_spec(cfg, workdir) == snapshot
+    mol.fixed_spin_moment = True
+    with pytest.raises(ConfigError, match="protocol_sha256"):
+        ensure_run_spec(cfg, workdir)
+
+
 def _sha256_file(path: Path) -> str:
     import hashlib
     return hashlib.sha256(path.read_bytes()).hexdigest()

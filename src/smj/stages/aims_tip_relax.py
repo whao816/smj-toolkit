@@ -14,9 +14,9 @@ from pathlib import Path
 from ..junction.geometry import read_xyz
 from ..junction.inputs import make_tip_relax_input, measure_au_s_bonds
 from ..errors import StageBlocked, StageError
-from ..spin import (DEFAULT_INITIAL_MOMENT, insert_control_lines, map_molecule_moments,
-                    record_initial_charge, record_junction_spin, spin_control_lines,
-                    spin_state, write_initial_charges, write_initial_moments)
+from ..spin import (DEFAULT_INITIAL_MOMENT, describe_spin_constraint, insert_control_lines,
+                    map_molecule_moments, record_initial_charge, record_junction_spin,
+                    spin_control_lines, spin_state, write_initial_charges, write_initial_moments)
 from ..structure_archive import safe_archive
 from ._aims_log import describe, relax_status
 from ._helpers import (est_record, resolve_anchor_indices,
@@ -35,8 +35,7 @@ class AimsTipRelaxStage(Stage):
     # -- prepare ----------------------------------------------------------- #
     def prepare(self, ctx, stage_dir: Path) -> Prepared:
         stage_dir = Path(stage_dir)
-        # 开壳层结：tip 弛豫同样要 spin collinear + fixed_spin_moment=M−1，
-        # 否则自由基的未配对电子在弛豫阶段就被 SCF 抹成闭壳层。
+        # tip 弛豫使用结的共线自旋设置与所选净磁矩约束。
         state = spin_state(ctx.config)
         # --geometry 允许跳过 molecule_opt，直接把已优化分子结构喂给本阶段。
         xyz = ctx.upstream(self.name, "opt.xyz", override=ctx.override_path("geometry"))
@@ -123,14 +122,8 @@ class AimsTipRelaxStage(Stage):
             notes.append("锚定原子 %s 非 S：strip_thiol_h=null 默认保留 H"
                          "（确需去质子请设 strip_thiol_h: true）" % anchor_element)
         if state.open_shell:
-            if state.broken_symmetry:
-                constraint = ("破缺对称单重态（M=1，不写 fixed_spin_moment，总自旋不钉）")
-            elif state.fix_spin_moment:
-                constraint = ("fixed_spin_moment %g（=2S=M−1）；弛豫全程固定总自旋"
-                              % state.fixed_spin_moment)
-            else:
-                constraint = ("未写 fixed_spin_moment：解除总自旋约束，让 SCF 自寻自旋态"
-                              "（release-fixed-spin 对照）")
+            constraint = describe_spin_constraint(
+                state.fixed_spin_moment if state.fix_spin_moment else None)
             guess = ("default_initial_moment %g" % default_moment
                      if default_moment is not None else "per-atom initial_moment")
             notes.append("开壳层结：control.in 写 spin collinear + %s + %s（初猜）"

@@ -84,7 +84,7 @@ molecule.xyz
 | species 目录 | error | `cluster.species_dir` 或 `paths.species_defaults` 必须存在；逐元素核对 species 文件齐备（`*_<El>_default` 等 5 种命名） |
 | 建结几何闸门 | error/warning | 若 `electrode_build/geometry.in` 已存在，跑 `validate_junction_geometry` 的 7 项检查（见 §6.1） |
 | 资源估算 | error | 四个远端阶段逐一估算；超 72 h / 128 GiB 封顶报 `resource_capped`，超预算报 `resource_budget`；electrode_build 记「本地阶段不占预算」 |
-| 集群配置 | error | slurm-ssh 必须有 `host / remote_root / partition` |
+| 集群配置 | error | slurm-ssh 必须有 `host / partition，远端工作根为 ~/smj-runs` |
 | SSH 连通 / 远端目录 | error | `ssh true`、`test -d`、`test -w` 三步 |
 | 二进制/许可 | error | FHI-aims 可执行、aitranss 二进制；Gaussian 许可仅在 `opt_engine=gaussian` 时检查（dry-run 全跳过） |
 
@@ -103,7 +103,7 @@ molecule.xyz
 | `molecule.charge` | `0` | 非零时把总电荷均分成 per-atom `initial_charge` 写进 geometry.in：FHI-aims 要求 `charge` 等于这些行之和，而 221103 不认 `override_initial_charge_check`（实测 parse_control 停算） |
 | `molecule.multiplicity` | `1` | `>1` 时写 FHI-aims `spin collinear`（`spin` 只接受 `none`/`collinear`，不接受数字）并用 `fixed_spin_moment = multiplicity-1`（=2S，μB；与多重度不是同一个数）把总自旋在弛豫中固定住 |
 | `molecule.initial_moments` | `null` | 开壳层初始磁矩 `{1-based 原子序号: μB}`，写成 geometry.in 的 per-atom `initial_moment` 子 tag（独占一行）；FHI-aims 在 collinear 下要求初始自旋密度，未设只给警告。闭壳层设置会报错。结级 `aims_tip_relax`/`aims_scf` 会把分子坐标系的序号映射到结几何（去质子后自动左移） |
-| `molecule.fixed_spin_moment` | `true` | `false` 时结级 control.in 不写 `fixed_spin_moment`（=M−1），只留 `spin collinear` + 初猜，用于"解除总自旋约束"的 release 对照 |
+| `molecule.fixed_spin_moment` | `null`（依自旋态选择） | 普通开壳层的结级计算默认固定 (N_α−N_β=M−1)，BS 默认释放。BS 显式设为 `true` 时，FHI-aims 分子优化、尖端弛豫和整结 SCF 均固定净磁矩为零，同时允许两个中心保留反号局域矩。 |
 | `molecule.opt_functional` / `opt_basis` | `pbe` / `light` | `opt_basis` 只记录；实际基组由 species 目录决定，`smj species` / prepare 写出的 `species.json` 记录真实档位与逐文件 sha256 |
 | `molecule.opt_force_threshold` | `1.e-2` | 写进 `relax_geometry bfgs`；单位 **eV/Å**，判据是**最大力分量**（日志 `Maximum force component ... eV/A`），不是 Hartree/Bohr；合法范围 `(0, 0.1]` |
 | `electrode.vdw` | `true` | → `vdw_correction_hirshfeld`；只改能量/力（几何），不改固定几何的 T(E) |
@@ -363,7 +363,7 @@ smj ensemble --dir ensemble/ --report                             # 汇总 gap /
 
 `host/user/key/remote_root/partition/ntasks/gres/account/qos/species_dir/time_limit/mem` 默认全 `null`；`port 22`；`poll_seconds 60.0`；`timeout_hours 6.0`；`env {}`（键小写、区分大小写；值做 `~`/`${VAR}` 展开）。
 
-跨段校验：`slurm-ssh` 必须有 `host/remote_root/partition`；`local` 且无 `species_dir` 也无 `paths.species_defaults` → warning（本地真跑 AIMS 会失败）。
+跨段校验：`slurm-ssh` 必须有 `host/partition`；`local` 且无 `species_dir` 也无 `paths.species_defaults` → warning（本地真跑 AIMS 会失败）。
 
 ### 3.6 paths / review
 
@@ -397,7 +397,7 @@ smj ensemble --dir ensemble/ --report                             # 汇总 gap /
 |------|------|
 | `dry-run` | 只 `prepare`，不建传输层、不提交；整链干跑会停在缺上游产物的阶段（fail-closed） |
 | `local` | 本机 `bash` 同步执行；哨兵 `.dsh_done` 记退出码；超时 = `timeout_hours × 3600` |
-| `slurm-ssh` | 上传 → `sbatch` → 轮询 → 回取；需 `host/remote_root/partition` |
+| `slurm-ssh` | 上传 → `sbatch` → 轮询 → 回取；需 `host/partition` |
 
 退出码：`0` 成功/作业已结束；`1` 失败或配置/输入错误；`2` 未完成（`--wait` 超时、run 有阶段 waiting）、连接核对签署被拒绝、argparse 用法错误。
 

@@ -20,6 +20,7 @@ from typing import Any, Mapping
 import yaml
 
 from .errors import ConfigError
+from .cluster_paths import validate_run_name
 from .electrode_library import DEFAULT_CLUSTER
 from .junction.electrode import FCC_LATTICE_A
 
@@ -140,17 +141,13 @@ class MoleculeConfig:
     multiplicity: int = 1
     #: 开壳层初始磁矩（**1-based 原子序号 -> μB**）。``spin collinear`` 下 FHI-aims
     #: 要求给出初始自旋密度，否则默认初猜可能收敛到错误自旋分布（甚至更慢）。
-    #: 只影响收敛路径/落到哪个解，不改变 ``fixed_spin_moment``（=M−1）约束的总自旋；
-    #: 各分量之和不必等于 M−1，但引擎会在 notes 里提示。闭壳层设了会被拒绝。
+    #: 初猜影响收敛路径。普通开壳层的初矩之和可偏离 M−1，BS 要求合计为零。
     initial_moments: dict[int, float] | None = None
-    #: 是否写 ``fixed_spin_moment``（=M−1）把总自旋钉住。False = 解除约束的对照解：
-    #: 只写 ``spin collinear`` + 初始磁矩，让 SCF 自己决定自旋态（与固定解比较）。
-    fixed_spin_moment: bool = True
+    #: 开壳层结是否固定净磁矩 N↑−N↓=M−1。缺省时普通开壳层固定，BS 释放。
+    fixed_spin_moment: bool | None = None
     #: 破缺对称（broken-symmetry, BS）开壳层单重态：M=1，但写 ``spin collinear`` +
-    #: 两个自由基中心**反号**的 ``initial_moments``，且**不写** ``fixed_spin_moment``
-    #: （2S=M−1=0 会把它直接压回闭壳层）。要求 ``multiplicity: 1``、初矩合计 0、
-    #: 至少一正一负。FHI-aims 的单行列式只能给出 BS 近似解，且不打印 ⟨S²⟩：
-    #: 是否真的落到开壳层单重态，必须由自旋密度/自然轨道占据数另行确认。
+    #: 反号且合计为零的局域初始磁矩。显式固定净磁矩为零时，两套自旋密度仍可不同。
+    #: 收敛后的局域磁矩和自旋密度用于判断是否获得了 BS 解。
     broken_symmetry: bool = False
     method: str = "b3lyp"          # 仅 opt_engine=gaussian
     basis: str = "6-31g(d)"        # 仅 opt_engine=gaussian
@@ -164,6 +161,10 @@ class MoleculeConfig:
     #: 仅 Gaussian 分支：开壳层优化加 ``Stable=Opt``（先做波函数稳定性检查再优化），
     #: 用于怀疑当前解不是最低能量自旋态时。默认关闭——它让每次优化多一遍稳定性分析。
     stable_check: bool = False
+
+    def __post_init__(self) -> None:
+        if self.fixed_spin_moment is None:
+            self.fixed_spin_moment = not self.broken_symmetry
 
 
 @dataclass
@@ -230,6 +231,7 @@ class TransportConfig:
     自动判定），两种口径最终都在 ``aitranss_te`` 里化成 aitranss 需要的 Ha 绝对值。
     """
 
+    backend: str = field(default="aitranss", kw_only=True)
     temperature: float = 300.0
     #: [起点, 步长, 终点]，单位见 ``energy_window_unit``。默认 eV 且以 E_F 为参考：
     #: E − E_F ∈ [−2, +2] eV、步长 5 meV（801 点）。换金属后 E_F 会移动，但相对
@@ -305,6 +307,111 @@ class TransportConfig:
 
 
 @dataclass
+class ThermalElectrodeConfig:
+    """声子热导的电极几何。
+
+    **刻意不使用电子链的金字塔团簇**（``electrode`` 段继续管电子链，两者互不影响）：
+    声子 NEGF 需要半无限 lead 与横向元胞，只有二维周期板才给得出来（方案 §4.1）。
+    """
+
+    #: Au fcc 晶格常数(Å)。最近邻 = a/√2 = 2.8845 Å。
+    a_lattice: float = 4.078230
+    #: 面内超胞 (nx, ny)：3×3 给 9 原子/层，总原子数压到 ~90。
+    in_plane: tuple[int, int] = (3, 3)
+    #: 每侧 lead 层数。
+    layers: int = 4
+    #: 每侧参与位移的层数（靠近分子的那些层）；其余层用冻结 lead 力常数。
+    device_layers: int = 2
+    #: 沿 c 轴的真空厚度(Å)。二维板沿 c 是真空，所以 kz 恒为 1。
+    vacuum: float = 20.0
+    #: 表面 Au 平面到 S 的距离(Å)。
+    au_s_distance: float = 2.35
+    #: 两个 S 之间的距离(Å)。苯/萘二硫醇 8.0–8.7 Å。
+    gap: float = 8.4
+    element: str = "Au"
+    anchor_element: str = "S"
+    #: 建结前去 S–H。**默认必须为真**：molecule_opt 产出的是中性二硫醇，
+    #: 直接贴 Au 就是报告 §6 陷阱⑥。关掉只在明确想复现"带 H 的错模型"时用。
+    strip_thiol_h: bool = True
+    #: 弛豫时冻结的最外层数（每侧）。
+    freeze_outer_layers: int = 1
+
+
+@dataclass
+class ThermalFCConfig:
+    """有限位移力常数扫描的数值参数。"""
+
+    #: 中心差分位移幅度(Å)。0.01 Å 是 Sadeghi–Lambert 组的标准做法；
+    #: 本仓更小会让力噪声(1e-4 eV/Å)主导，更大则非谐截断误差上升。
+    displacement: float = 0.01
+    #: 冻结 lead 资产的截断半径(Å)。缺省使用资产值，显式指定时必须与资产一致。
+    cutoff: float | None = None
+    #: Slurm 数组并发数。gpu1 是 64 核、每作业 8 核 → 上限 8（不是 16）。
+    array_parallel: int = 8
+    array_time_limit: str = "06:00:00"
+    #: ``--mem``。实测 92 原子峰值 871.9 MB/task；12G×8=96G < 124.7G 物理内存。
+    memory: str = "12G"
+    #: ``sc_accuracy_forces``(eV/Å)：力的收敛阈值，必须与位移幅度配套。
+    sc_accuracy_forces: str = "5E-3"
+    #: 弛豫的 ``relax_geometry bfgs`` 阈值(eV/Å)。
+    relax_force_threshold: str = "1.e-2"
+    #: 面内 k 网格。``kz`` 必须是 1（沿 c 是真空）。
+    k_grid: tuple[int, int, int] = (3, 3, 1)
+
+
+@dataclass
+class ThermalNEGFConfig:
+    """声子 NEGF 的谱参数。
+
+    这两个数是**冻结的生产协议**（方案 D15），不是可随手调的收敛参数：
+
+    * η 是数值展宽，不是物理线宽。同一份力常数上 η 从 0.5 降到 0.05 meV，
+      ``G_ph(300 K)`` 从 10.9 单调升到 13.72 pW/K（η→0 外推 ≈13.8）；
+      0.3 meV 给 12.37。**跨分子比较必须用同一个 η**，否则 25% 的差别
+      全部来自这个参数。
+    * 步长再加密也压不下 1–2% 的梯形求积底噪（η=0.05/0.1/0.2/0.3 下分别
+      1.99%/1.58%/2.46%/2.21%），所以判据门限重标到 5%（D14），步长取 0.05
+      只是为了把谱画得准、不是为了收敛。
+    """
+
+    #: 虚部展宽 η(meV)。冻结协议值：0.05 meV。
+    eta_meV: float = 0.05
+    #: 能量步长(meV)。冻结协议值：0.05 meV（0–19.5 meV 共 391 点）。
+    energy_step_meV: float = 0.05
+    #: Au 声子带顶(meV)。实测 fcc-Au 最高支在 L 点 4.71 THz = 19.5 meV
+    #: (Lynn, Smith & Nicklow, PRB 8, 3493 (1973))。超过它的弹性透射必须为零。
+    band_top_meV: float = 19.5
+
+
+@dataclass
+class ThermalConfig:
+    """声子热导链的配置（``thermal`` 段）。
+
+    整段默认关闭：不写 ``thermal`` 段时 ``enabled=False``，电子链行为零变化。
+    """
+
+    enabled: bool = False
+    #: 计算温度(K)。``None`` = 继承 ``transport.temperature``（默认 300 K）。
+    temperature_K: float | None = None
+    #: 电极力常数（lead FC）的位置。``"auto"`` = 用随包发布的 Au(111) 资产
+    #: （``smj.phonon.assets``），写路径（目录或 JSON）则覆盖它。
+    #:
+    #: 为什么默认给资产而不是要求先算一次：电极是金、与分子无关，那份力常数
+    #: 只需要算一次（3×3×6 层、Γ、54 个 SCF）。要重算或换成自己的版本，
+    #: 用 ``smj lead-fc --export DIR`` 导出后按本字段指过去。
+    lead_fc: str | None = "auto"
+    electrode: ThermalElectrodeConfig = field(default_factory=ThermalElectrodeConfig)
+    fc: ThermalFCConfig = field(default_factory=ThermalFCConfig)
+    negf: ThermalNEGFConfig = field(default_factory=ThermalNEGFConfig)
+
+    def resolved_temperature(self, fallback: float = 300.0) -> float:
+        """``temperature_K`` 为 None 时回落到 ``transport.temperature``。"""
+        if self.temperature_K is not None:
+            return float(self.temperature_K)
+        return float(fallback)
+
+
+@dataclass
 class ClusterConfig:
     """Slurm / SSH 集群与外部程序部署路径。"""
 
@@ -312,7 +419,7 @@ class ClusterConfig:
     user: str | None = None
     port: int = 22
     key: str | None = None                # 私钥路径（None = ssh 默认）
-    remote_root: str | None = None        # 远端 run 根，如 /scratch/$USER/smj
+    remote_root: str | None = None        # 默认远端登录账户的 ~/smj-runs
     partition: str | None = None
     ntasks: int | None = None             # 覆盖 Gaussian/aims 的并行度（None = 自动）
     gres: str | None = None               # 如 gpu:1
@@ -420,6 +527,8 @@ class RunConfig:
     molecule: MoleculeConfig = field(default_factory=MoleculeConfig)
     electrode: ElectrodeConfig = field(default_factory=ElectrodeConfig)
     transport: TransportConfig = field(default_factory=TransportConfig)
+    thermal: ThermalConfig = field(default_factory=ThermalConfig)
+    siesta: dict[str, Any] = field(default_factory=dict, kw_only=True)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     review: ReviewConfig = field(default_factory=ReviewConfig)
@@ -466,7 +575,8 @@ class RunConfig:
 # --------------------------------------------------------------------------- #
 # 解析
 # --------------------------------------------------------------------------- #
-_KNOWN_SECTIONS = {"run", "molecule", "electrode", "transport", "cluster", "paths", "review"}
+_KNOWN_SECTIONS = {"siesta", "run", "molecule", "electrode", "transport", "thermal",
+                   "cluster", "paths", "review"}
 
 _RUN_KEYS = {"name", "dir", "mode", "clean", "keep_going"}
 _MOLECULE_KEYS = {
@@ -482,10 +592,21 @@ _ELECTRODE_KEYS = {
     "source", "library_dir", "library_cluster", "element", "a_lattice",
     "relax", "relax_force_threshold", "relax_freeze",
 }
-_TRANSPORT_KEYS = {"temperature", "energy_window", "energy_window_unit",
+_TRANSPORT_KEYS = {"backend", "temperature", "energy_window", "energy_window_unit",
                    "ener", "estep", "eend", "require_te_out", "allow_single_channel",
                    "extra_outputs", "occupation_width", "charge_mix_param",
                    "n_max_pulay"}
+_THERMAL_KEYS = {"enabled", "temperature", "lead_fc", "electrode", "fc", "negf"}
+_THERMAL_ELECTRODE_KEYS = {
+    "a_lattice", "in_plane", "layers", "device_layers", "vacuum",
+    "au_s_distance", "gap", "element", "anchor_element", "strip_thiol_h",
+    "freeze_outer_layers",
+}
+_THERMAL_FC_KEYS = {
+    "displacement", "cutoff", "array_parallel", "array_time_limit", "memory",
+    "sc_accuracy_forces", "relax_force_threshold", "k_grid",
+}
+_THERMAL_NEGF_KEYS = {"eta_mev", "energy_step_mev", "band_top_mev"}
 _CLUSTER_KEYS = {
     "host", "user", "port", "key", "remote_root", "partition", "ntasks", "gres",
     "account", "qos", "species_dir", "poll_seconds", "timeout_hours", "env",
@@ -505,6 +626,7 @@ def known_keys() -> dict[str, set[str]]:
     return {
         "run": set(_RUN_KEYS), "molecule": set(_MOLECULE_KEYS),
         "electrode": set(_ELECTRODE_KEYS), "transport": set(_TRANSPORT_KEYS),
+        "thermal": set(_THERMAL_KEYS),
         "cluster": set(_CLUSTER_KEYS), "paths": set(_PATHS_KEYS),
         "review": set(_REVIEW_KEYS),
     }
@@ -567,13 +689,13 @@ def _parse_initial_moments(value: Any) -> dict[int, float] | None:
 def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeConfig:
     _warn_unknown("molecule", data, _MOLECULE_KEYS, warnings)
     xyz = data.get("xyz")
+    fixed = data.get("fixed_spin_moment")
     cfg = MoleculeConfig(
         xyz=_as_str(xyz, "molecule.xyz", allow_empty=True) or None,
         charge=_as_int(data.get("charge", 0), "molecule.charge"),
         multiplicity=_as_int(data.get("multiplicity", 1), "molecule.multiplicity", minimum=1),
         initial_moments=_parse_initial_moments(data.get("initial_moments")),
-        fixed_spin_moment=_as_bool(
-            data.get("fixed_spin_moment", True), "molecule.fixed_spin_moment"),
+        fixed_spin_moment=None if fixed is None else _as_bool(fixed, "molecule.fixed_spin_moment"),
         broken_symmetry=_as_bool(
             data.get("broken_symmetry", False), "molecule.broken_symmetry"),
         method=_as_str(data.get("method") or "b3lyp", "molecule.method"),
@@ -607,8 +729,7 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
             "molecule.opt_force_threshold 应在 (0, 0.1] eV/Å（FHI-aims 的 relax_geometry "
             "判据是最大力分量，不是 Hartree/Bohr），实际是 %r" % cfg.opt_force_threshold)
     if cfg.broken_symmetry:
-        # BS 单重态的四条硬前提：M=1、有初矩、合计 0（N↑=N↓）、正负都要有
-        # （否则 SCF 从处处同号/为零的初猜出发只会落回闭壳层解）。
+        # BS 初猜约定：M=1，有反号局域磁矩，初矩合计为零。
         if cfg.multiplicity != 1:
             raise ConfigError(
                 "molecule.broken_symmetry=true 只适用于 multiplicity=1 的开壳层单重态，"
@@ -624,12 +745,12 @@ def _parse_molecule(data: Mapping[str, Any], warnings: list[str]) -> MoleculeCon
         if abs(total) > 1e-6:
             raise ConfigError(
                 "molecule.broken_symmetry=true 时 molecule.initial_moments 的合计应为 0"
-                "（BS 单重态 N↑=N↓），当前合计 %g μB" % total)
+                "（反号局域磁矩初猜），当前合计 %g μB" % total)
         if not (any(v > 0 for v in moments.values())
                 and any(v < 0 for v in moments.values())):
             raise ConfigError(
                 "molecule.broken_symmetry=true 时 molecule.initial_moments 至少要有一个"
-                "正、一个负分量；全同号的初猜收敛到的是固定自旋的另一种解")
+                "正、一个负分量，以提供反号局域磁矩初猜")
     return cfg
 
 
@@ -730,6 +851,7 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
             "transport.energy_window 跨度 %.1f eV 偏大（默认 ±2 eV）；太宽会让 aitranss "
             "点数暴涨且远离 E_F 的透射没有意义" % (eend - ener))
     cfg = TransportConfig(
+        backend=_as_choice(data.get("backend", "aitranss"), ("aitranss", "transiesta"), "transport.backend"),
         temperature=_as_float(data.get("temperature", 300.0), "transport.temperature"),
         energy_window=(ener, estep, eend),
         energy_window_unit=unit,
@@ -747,7 +869,7 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
                                    "transport.charge_mix_param"),
         n_max_pulay=_as_int(data.get("n_max_pulay", 10), "transport.n_max_pulay"),
     )
-    if cfg.temperature <= 0:
+    if not math.isfinite(cfg.temperature) or cfg.temperature < 0 or (cfg.temperature == 0 and cfg.backend != "transiesta"):
         raise ConfigError("transport.temperature 应 > 0 K，实际是 %s" % cfg.temperature)
     if not 0.0 < cfg.occupation_width <= 0.5:
         raise ConfigError("transport.occupation_width 应在 (0, 0.5] eV，实际是 %s"
@@ -758,6 +880,127 @@ def _parse_transport(data: Mapping[str, Any], warnings: list[str]) -> TransportC
     if cfg.n_max_pulay < 0:
         raise ConfigError("transport.n_max_pulay 应 >= 0，实际是 %s" % cfg.n_max_pulay)
     return cfg
+
+
+def _parse_thermal(data: Mapping[str, Any], warnings: list[str]) -> ThermalConfig:
+    """``thermal`` 段。整段缺省 = 关闭，电子链行为零变化。"""
+    _warn_unknown("thermal", data, _THERMAL_KEYS, warnings)
+
+    electrode_raw = _section(data, "electrode", "thermal", warnings)
+    fc_raw = _section(data, "fc", "thermal", warnings)
+    negf_raw = _section(data, "negf", "thermal", warnings)
+    # 2026-11-23：``_meV`` 这类键在文档里写成了 ``band_top_meV``（保留物理量写法），
+    # 而本仓其它段的键一律小写。两种写法都接受：先统一小写再校验、再取值。
+    negf_raw = {str(k).lower(): v for k, v in dict(negf_raw).items()}
+    _warn_unknown("thermal.electrode", electrode_raw, _THERMAL_ELECTRODE_KEYS, warnings)
+    _warn_unknown("thermal.fc", fc_raw, _THERMAL_FC_KEYS, warnings)
+    _warn_unknown("thermal.negf", negf_raw, _THERMAL_NEGF_KEYS, warnings)
+
+    in_plane = _as_pair(electrode_raw.get("in_plane", [3, 3]),
+                        "thermal.electrode.in_plane")
+    k_grid = _as_triple(fc_raw.get("k_grid", [3, 3, 1]), "thermal.fc.k_grid")
+    if k_grid[2] != 1:
+        raise ConfigError(
+            "thermal.fc.k_grid 的 kz 必须为 1（得到 %d）：器件是带真空的二维板，"
+            "沿 c 轴的 k 采样没有物理意义" % k_grid[2])
+
+    electrode = ThermalElectrodeConfig(
+        a_lattice=_as_float(electrode_raw.get("a_lattice", 4.078230),
+                            "thermal.electrode.a_lattice"),
+        in_plane=in_plane,
+        layers=_as_int(electrode_raw.get("layers", 4), "thermal.electrode.layers",
+                       minimum=2),
+        device_layers=_as_int(electrode_raw.get("device_layers", 2),
+                              "thermal.electrode.device_layers", minimum=1),
+        vacuum=_as_float(electrode_raw.get("vacuum", 20.0),
+                         "thermal.electrode.vacuum"),
+        au_s_distance=_as_float(electrode_raw.get("au_s_distance", 2.35),
+                                "thermal.electrode.au_s_distance"),
+        gap=_as_float(electrode_raw.get("gap", 8.4), "thermal.electrode.gap"),
+        element=_as_str(electrode_raw.get("element", "Au"),
+                        "thermal.electrode.element"),
+        anchor_element=_as_str(electrode_raw.get("anchor_element", "S"),
+                               "thermal.electrode.anchor_element"),
+        strip_thiol_h=_as_bool(electrode_raw.get("strip_thiol_h", True),
+                               "thermal.electrode.strip_thiol_h"),
+        freeze_outer_layers=_as_int(electrode_raw.get("freeze_outer_layers", 1),
+                                    "thermal.electrode.freeze_outer_layers",
+                                    minimum=0),
+    )
+    if electrode.layers - electrode.device_layers < 2:
+        raise ConfigError(
+            "thermal.electrode.layers(%d) 减去 device_layers(%d) 必须至少为 2，"
+            "以构造冻结主层及其外邻" % (electrode.layers, electrode.device_layers))
+
+    fc = ThermalFCConfig(
+        displacement=_as_float(fc_raw.get("displacement", 0.01),
+                               "thermal.fc.displacement"),
+        cutoff=(_as_float(fc_raw["cutoff"], "thermal.fc.cutoff")
+                if fc_raw.get("cutoff") is not None else None),
+        array_parallel=_as_int(fc_raw.get("array_parallel", 8),
+                               "thermal.fc.array_parallel", minimum=1),
+        array_time_limit=_as_str(fc_raw.get("array_time_limit", "06:00:00"),
+                                 "thermal.fc.array_time_limit"),
+        memory=_as_str(fc_raw.get("memory", "12G"), "thermal.fc.memory"),
+        sc_accuracy_forces=_as_str(fc_raw.get("sc_accuracy_forces", "5E-3"),
+                                   "thermal.fc.sc_accuracy_forces"),
+        relax_force_threshold=_as_str(fc_raw.get("relax_force_threshold", "1.e-2"),
+                                      "thermal.fc.relax_force_threshold"),
+        k_grid=k_grid,
+    )
+    if not 0.0 < fc.displacement <= 0.05:
+        raise ConfigError(
+            "thermal.fc.displacement 应在 (0, 0.05] Å，实际是 %s（0.01 Å 是标准值）"
+            % fc.displacement)
+    if fc.cutoff is not None and not 7.0 <= fc.cutoff < float("inf"):
+        raise ConfigError(
+            "thermal.fc.cutoff 应 >= 7.0 Å，实际是 %s：4 层 lead 沿 z 的跨度就是 7.06 Å，"
+            "更小的截断会把相邻层的耦合切掉" % fc.cutoff)
+
+    negf = ThermalNEGFConfig(
+        eta_meV=_as_float(negf_raw.get("eta_mev", 0.05), "thermal.negf.eta_mev"),
+        energy_step_meV=_as_float(negf_raw.get("energy_step_mev", 0.05),
+                                  "thermal.negf.energy_step_mev"),
+        band_top_meV=_as_float(negf_raw.get("band_top_mev", 19.5),
+                               "thermal.negf.band_top_mev"),
+    )
+    if negf.eta_meV <= 0:
+        raise ConfigError("thermal.negf.eta_mev 应 > 0，实际是 %s" % negf.eta_meV)
+    if negf.energy_step_meV <= 0:
+        raise ConfigError("thermal.negf.energy_step_mev 应 > 0，实际是 %s"
+                          % negf.energy_step_meV)
+
+    temperature = data.get("temperature")
+    temperature_K = None if temperature is None else _as_float(
+        temperature, "thermal.temperature")
+    if temperature_K is not None and temperature_K <= 0:
+        raise ConfigError("thermal.temperature 应 > 0 K，实际是 %s" % temperature_K)
+
+    lead_fc = data.get("lead_fc")
+    return ThermalConfig(
+        enabled=_as_bool(data.get("enabled", False), "thermal.enabled"),
+        temperature_K=temperature_K,
+        lead_fc=_as_str(lead_fc, "thermal.lead_fc") if lead_fc else "auto",
+        electrode=electrode,
+        fc=fc,
+        negf=negf,
+    )
+
+
+def _as_pair(raw: Any, where: str) -> tuple[int, int]:
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        raise ConfigError("%s 应为两个整数，实际是 %r" % (where, raw))
+    values = tuple(_as_int(v, "%s[%d]" % (where, i), minimum=1)
+                   for i, v in enumerate(raw))
+    return (values[0], values[1])
+
+
+def _as_triple(raw: Any, where: str) -> tuple[int, int, int]:
+    if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+        raise ConfigError("%s 应为三个整数，实际是 %r" % (where, raw))
+    values = tuple(_as_int(v, "%s[%d]" % (where, i), minimum=1)
+                   for i, v in enumerate(raw))
+    return (values[0], values[1], values[2])
 
 
 def _parse_extra_outputs(raw: Any) -> tuple[str, ...]:
@@ -826,7 +1069,7 @@ def _parse_cluster(data: Mapping[str, Any], warnings: list[str]) -> ClusterConfi
         user=(_as_str(data["user"], "cluster.user") if data.get("user") else None),
         port=_as_int(data.get("port", 22), "cluster.port", minimum=1),
         key=(_as_str(data["key"], "cluster.key") if data.get("key") else None),
-        remote_root=(_as_str(data["remote_root"], "cluster.remote_root") if data.get("remote_root") else None),
+        remote_root=data.get("remote_root"),  # 在 SSH 登录节点解析 ~ 和 $HOME
         partition=(_as_str(data["partition"], "cluster.partition") if data.get("partition") else None),
         ntasks=(_as_int(data["ntasks"], "cluster.ntasks", minimum=1) if data.get("ntasks") is not None else None),
         gres=(_as_str(data["gres"], "cluster.gres") if data.get("gres") else None),
@@ -914,6 +1157,8 @@ def load_config(path: str | Path | None = None) -> RunConfig:
         molecule=_parse_molecule(_section(raw, "molecule", "config", warnings), warnings),
         electrode=_parse_electrode(_section(raw, "electrode", "config", warnings), warnings),
         transport=_parse_transport(_section(raw, "transport", "config", warnings), warnings),
+        siesta=dict(_section(raw, "siesta", "config", warnings)),
+        thermal=_parse_thermal(_section(raw, "thermal", "config", warnings), warnings),
         cluster=_parse_cluster(_section(raw, "cluster", "config", warnings), warnings),
         paths=_parse_paths(_section(raw, "paths", "config", warnings), warnings),
         review=_parse_review(_section(raw, "review", "config", warnings), warnings),
@@ -925,11 +1170,25 @@ def load_config(path: str | Path | None = None) -> RunConfig:
     if config.mode == "slurm-ssh":
         if not config.cluster.host:
             raise ConfigError("run.mode=slurm-ssh 时必须设置 cluster.host（SSH 别名/主机名）")
-        if not config.cluster.remote_root:
-            raise ConfigError("run.mode=slurm-ssh 时必须设置 cluster.remote_root（远端 run 根目录）")
         if not config.cluster.partition:
             raise ConfigError("run.mode=slurm-ssh 时必须设置 cluster.partition（Slurm 分区）")
-    if config.mode == "local" and not config.cluster.species_dir and not config.paths.species_defaults:
+    if config.transport.backend == "transiesta":
+        from .siesta.stages import validate_settings
+        from .siesta.stages import DEFAULTS
+        known = set(DEFAULTS) | {"electrode", "contact", "pseudopotentials", "basis",
+                                 "tbtrans_kgrid", "electrode_reuse", "device_mixing_weight",
+                                 "reuse_relax_from", "reuse_scf_from"}
+        unknown = config.siesta.keys() - known
+        if unknown:
+            raise ConfigError(f"未知 siesta 配置字段: {', '.join(sorted(unknown))}")
+        validate_settings(config.siesta)
+    if config.siesta and config.transport.backend != "transiesta":
+        raise ConfigError("siesta 配置需要 transport.backend: transiesta")
+    if config.transport.backend == "transiesta" and any(getattr(config.transport, n) is not None for n in ("ener", "eend", "estep")):
+        raise ConfigError("SIESTA 能窗请用相对化学势的 transport.energy_window")
+    if config.transport.backend == "transiesta" and config.transport.energy_window_unit != "eV":
+        raise ConfigError("TBtrans 能窗采用相对共同化学势的 eV")
+    if config.mode == "local" and config.transport.backend == "aitranss" and not config.cluster.species_dir and not config.paths.species_defaults:
         # 只有本地真跑 AIMS 时才需要 species；这里只给 warning，不阻断 plan/prepare。
         warnings.append("未配置 cluster.species_dir / paths.species_defaults：本地真跑 AIMS 阶段会失败")
 
@@ -944,6 +1203,10 @@ def load_config(path: str | Path | None = None) -> RunConfig:
         config.paths.species_defaults = str(config.resolve(config.paths.species_defaults))
     if config.electrode.library_dir:
         config.electrode.library_dir = str(config.resolve(config.electrode.library_dir))
+    # "auto" 是关键字，不能当相对路径解析（否则会被拼成 yaml 目录下的
+    # 一个名叫 auto 的文件）。
+    if config.thermal.lead_fc and config.thermal.lead_fc != "auto":
+        config.thermal.lead_fc = str(config.resolve(config.thermal.lead_fc))
     return config
 
 
@@ -963,8 +1226,8 @@ molecule:
   charge: 0
   multiplicity: 1
   initial_moments: null     # 开壳层初始磁矩 {{1-based 原子序号: μB}}，如 {{7: 1.0}}；null = 不写 initial_moment
-  fixed_spin_moment: true   # 开壳层结是否钉住总自旋（M−1）；false = 解除约束的对照解
-  broken_symmetry: false    # M=1 的 BS 单重态：spin collinear + 反号 initial_moments，不写 fixed_spin_moment（需 initial_moments 合计 0）
+  fixed_spin_moment: null   # 净磁矩 N↑−N↓：true 固定为 M−1，false 释放；缺省普通开壳层固定，BS 释放
+  broken_symmetry: false    # M=1 的 BS 初猜使用 spin collinear 和反号且合计为零的 initial_moments
   opt_engine: aims          # aims = 与 tip/SCF 同为 FHI-aims PBE/NAO（推荐）；gaussian = 旧口径
   opt_functional: pbe       # 仅 opt_engine=aims
   opt_basis: light          # 仅 opt_engine=aims；实际 species 由 cluster.species_dir 决定
@@ -1010,7 +1273,7 @@ cluster:
   user: null
   port: 22
   key: null
-  remote_root: null         # 如 /scratch/$USER/smj
+  remote_root: ~/smj-runs   # 远端登录用户的工作根，可省略
   partition: null           # 如 normal
   ntasks: null              # 覆盖并行度；null = 按体系/阶段自动估算
   gres: null
@@ -1042,6 +1305,8 @@ def default_config_text(name: str = "my-run", xyz: str = "molecule.xyz", mode: s
         raise ConfigError("未知 mode: %r（可选 %s）" % (mode, "/".join(MODES)))
     if not _RUN_NAME_RE.match(name):
         raise ConfigError("run 名只允许字母/数字/._-: %r" % name)
+    if mode == "slurm-ssh":
+        validate_run_name(name)
     return DEFAULT_CONFIG_TEMPLATE.format(name=name, xyz=xyz, mode=mode)
 
 

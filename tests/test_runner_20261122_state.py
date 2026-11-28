@@ -41,7 +41,7 @@ class _UncertainSession:
     def stage_dir(self, stage: str) -> Path:
         return Path("/remote/runs/t") / stage
 
-    def submit(self, stage, stage_dir, *, script=None):
+    def submit(self, stage, stage_dir, *, script=None, sbatch_args=()):
         raise SubmitUncertain("sbatch 超时（120 s），无法确认作业是否已创建",
                               remote_dir=str(self.stage_dir(stage)))
 

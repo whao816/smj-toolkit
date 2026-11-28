@@ -99,6 +99,27 @@ _EXTRA_OUTPUT_LINES = {
 }
 
 
+def _validate_k_grid(k_grid) -> tuple[int, int, int]:
+    """二维周期板的 k 网格:三个正整数,且 **kz 必须是 1**。
+
+    器件沿 c 轴是 ~20 Å 真空,沿 c 采样只是把真空再算几遍;写成 kz>1 一定是把
+    三维体相的惯性写法搬过来了。kz≠1 直接拒绝,不静默放行。
+    """
+    if k_grid is None:
+        raise ValueError("thermal_relax / thermal_force 模式必须给 k_grid=(kx,ky,kz)")
+    try:
+        kx, ky, kz = (int(v) for v in k_grid)
+    except (TypeError, ValueError):
+        raise ValueError("k_grid 必须是 3 个整数,得到 %r" % (k_grid,)) from None
+    if min(kx, ky, kz) < 1:
+        raise ValueError("k_grid 分量必须 ≥1,得到 %r" % (k_grid,))
+    if kz != 1:
+        raise ValueError(
+            "kz 必须为 1(得到 %d):器件是带 ~20 Å 真空的二维板,"
+            "沿 c 轴的 k 采样没有物理意义" % (kz,))
+    return kx, ky, kz
+
+
 def make_control(
     geometry_path: str | Path,
     output_path: str | Path,
@@ -117,6 +138,9 @@ def make_control(
     vdw: str | None = None,
     spin_moment: float | None = None,
     extra_outputs: tuple[str, ...] | list[str] | None = None,
+    k_grid: tuple[int, int, int] | None = None,
+    sc_accuracy_forces: str = "5E-3",
+    sc_accuracy_rho: str = "1E-4",
 ) -> None:
     atoms = read_aims_geometry(geometry_path)
     if mode == "relax":
@@ -130,8 +154,18 @@ def make_control(
         if not states:
             raise ValueError("--states is required for orbital mode")
         extra = {"state_outputs": "\n".join(f"  output cube eigenstate {state}" for state in states)}
+    elif mode in ("thermal_relax", "thermal_force"):
+        # 声子热导链:二维周期板 + compute_forces。与 scf 模板的差别是**必须**有
+        # k_grid(周期板)与 compute_forces(否则 aims.out 里根本没有力块),
+        # 且**不要** aitranss/mulliken/restart(见模板内注释)。
+        template_name = "control_thermal_%s.in" % mode.split("_", 1)[1]
+        kx, ky, kz = _validate_k_grid(k_grid)
+        extra = {"kx": kx, "ky": ky, "kz": kz,
+                 "sc_accuracy_forces": sc_accuracy_forces,
+                 "sc_accuracy_rho": sc_accuracy_rho}
     else:
-        raise ValueError("mode must be relax, scf, or orbital")
+        raise ValueError(
+            "mode must be relax, scf, orbital, thermal_relax or thermal_force")
     text = read_template(template_name).format(
         xc=xc,
         spin=spin,

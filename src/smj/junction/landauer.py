@@ -24,6 +24,50 @@ H_EV_S = 4.135667662e-15
 FERMI_WINDOW_KBT = 4.0
 
 
+def te_fields(path: str | Path) -> Iterable[tuple[int, list[str]]]:
+    """逐行返回行号、数据字段。以表头或首行约束全谱列数。"""
+    width = None
+    with Path(path).open(encoding="utf-8-sig", errors="replace") as stream:
+        for lineno, line in enumerate(stream, 1):
+            data, _, comment = line.partition("#")
+            fields = data.split()
+            if not fields:
+                header = comment.strip().lower()
+                if header == "spin-polarized calculation" or "t(e).beta" in header.split():
+                    declared = 4
+                elif header == "non-spin-polarized calculation" or header.endswith("t(e) per spin"):
+                    declared = 3
+                else:
+                    continue
+                if width is not None and width != declared:
+                    raise ValueError(f"TE.dat 第 {lineno} 行表头与已有列数矛盾")
+                width = declared
+                continue
+            if len(fields) not in (3, 4) or (width is not None and len(fields) != width):
+                expected = width if width is not None else "3 或 4"
+                raise ValueError(f"TE.dat 第 {lineno} 行有 {len(fields)} 列，需要 {expected} 列")
+            width = len(fields)
+            yield lineno, fields
+
+
+def read_te_channels(path: str | Path) -> tuple[list[tuple[float, float, float, float]], int]:
+    """读取 (E_Ha, E−EF_eV, Tα, Tβ) 与通道数；单通道谱以 Tα=Tβ 表示。"""
+    rows = []
+    channels = 0
+    for lineno, fields in te_fields(path):
+        try:
+            values = [float(field.upper().replace("D", "E")) for field in fields]
+        except ValueError as exc:
+            raise ValueError(f"TE.dat 第 {lineno} 行含无效数值: {' '.join(fields)}") from exc
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError(f"TE.dat 含非有限数值(第 {lineno} 行: {' '.join(fields)})")
+        channels = len(values) - 2
+        rows.append((values[0], values[1], values[2], values[-1]))
+    if len(rows) < 2:
+        raise ValueError(f"Not enough TE data in {path}")
+    return rows, channels
+
+
 def read_te(path: str | Path) -> list[tuple[float, float, float]]:
     """TE.dat -> [(E_Ha, E-EF_eV, T)]。
 
@@ -35,38 +79,16 @@ def read_te(path: str | Path) -> list[tuple[float, float, float]]:
     G0 = 2e^2/h  =>  G/G0 = (1/2) * int (T_alpha + T_beta) w dE。
     退化情形(T_alpha = T_beta = T)自动回到单列结果, 与改动前**逐位一致**。
     """
-    rows = []
-    for lineno, line in enumerate(
-            Path(path).read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        fields = line.split()
-        if len(fields) >= 3:
-            try:
-                e_ha = float(fields[0].replace("D", "E"))
-                e_ev = float(fields[1].replace("D", "E"))
-                chans = [float(x.replace("D", "E")) for x in fields[2:4]]
-            except ValueError:
-                continue
-            # 2026-11-22 复审 P0-4：NaN/inf 会一路穿过 max()、trapz 和
-            # transport_moments 的 `if l0` 守卫，把 G/S/k_e/ZT 变成 NaN，
-            # 最后让机械判据输出"否证 H0"。损坏的证据必须在这里拒绝，
-            # 由调用方归到 te_present(missing=True) -> inconclusive。
-            if not all(math.isfinite(v) for v in (e_ha, e_ev, *chans)):
-                raise ValueError(
-                    "TE.dat 含非有限数值(第 %d 行: %s)；损坏的谱不能当物理结果"
-                    % (lineno, " ".join(fields[:4])))
-            rows.append((e_ha, e_ev, sum(chans) / len(chans)))
-    if len(rows) < 2:
-        raise ValueError(f"Not enough TE data in {path}")
-    return rows
+    rows, channels = read_te_channels(path)
+    return [(e, relative, alpha if channels == 1 else (alpha + beta) / 2)
+            for e, relative, alpha, beta in rows]
 
 
 def trapz(y: list[float], x: list[float]) -> float:
     return sum(0.5 * (y[i] + y[i - 1]) * (x[i] - x[i - 1]) for i in range(1, len(x)))
 
 
-def energy_order(rows: list[tuple[float, float, float]]) -> str:
+def energy_order(rows: list[tuple]) -> str:
     """E-E_F(eV) 列的行序: ``ascending`` / ``descending`` / ``unsorted``。
 
     TE.dat 的行序**不是物理量**: 积分只依赖 (E, T) 集合。但梯形求积的符号随 x 的

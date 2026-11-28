@@ -4,13 +4,13 @@
 动机(承 docs/taskcard-smj-bdt-benchmark.md §8 与 report §3 "未机械化部分"):
 旗舰算例 `bdt-trans-smj-aae585` 的 L0/L1/L2 一直只有**管线自身**的实现值
 (`tools/junction/landauer.py`)。科学结论要可证伪, 必须有一条**独立**算路:
-不同的解析器 + 不同的求积(Simpson vs 梯形) + CODATA 常数, 若两者一致, 才排除
+独立数值解析 + 不同的求积(Simpson vs 梯形) + CODATA 常数, 若两者一致, 才排除
 "解析→积分→命名"链上的单位/口径事故(本项目历史上出过 27x Hartree/eV 同类事故)。
 
 独立性**边界**(如实声明, 不夸大)
 ----------------------------------
 - 物理定义**相同**(同一 Landauer 公式), 本模块不是第二套物理;
-- 独立之处: ① 独立解析器(不复用 `landauer.read_te`); ② Simpson 求积(vs 梯形);
+- 独立之处: ① 独立解析数值并归并通道(与主管线共用文件列数校验); ② Simpson 求积(vs 梯形);
   ③ CODATA 2018 `k_B`; ④ 全程显式单位账(不做 `_like` 近似命名)。
 - 因此它能抓的是**实现级**事故(单位、常数、符号、权重、通道), 抓不到"物理模型选错"。
 
@@ -29,6 +29,11 @@ import json
 import math
 from pathlib import Path
 
+if __package__:
+    from .landauer import te_fields
+else:  # 支持直接运行 independent_check.py
+    from landauer import te_fields
+
 #: CODATA 2018 玻尔兹曼常数(eV/K) —— 与管线用的 8.6173324e-5 独立取源
 KB_EV_PER_K = 8.617333262e-5
 #: 对比容差(相对): 求积方案差异 + 常数 1e-7 量级 —— 1e-3 足以抓单位/口径事故
@@ -38,17 +43,13 @@ DEFAULT_RTOL = 1e-3
 def parse_te(path) -> list:
     """独立解析 TE.dat -> [(E_Ha, E_minus_Ef_eV, T)]; 表头以 # 起首, 数据列空格分隔。"""
     rows = []
-    for line in Path(path).read_text(encoding='utf-8', errors='ignore').splitlines():
-        s = line.strip()
-        if not s or s.startswith('#'):
-            continue
-        f = s.replace('D', 'E').split()
-        if len(f) < 3:
-            continue
+    for lineno, fields in te_fields(path):
         try:
-            vals = [float(x) for x in f]
-        except ValueError:
-            continue
+            vals = [float(x.replace('D', 'E').replace('d', 'e')) for x in fields]
+        except ValueError as exc:
+            raise ValueError(f'TE.dat 第 {lineno} 行含无效数值') from exc
+        if not all(math.isfinite(x) for x in vals):
+            raise ValueError(f'TE.dat 第 {lineno} 行含非有限数值')
         # 自旋口径: aitranss 非极化写 1 列, 极化写 2 列 -> 取通道均值(与物理定义一致)
         chans = vals[2:4]
         rows.append((vals[0], vals[1], sum(chans) / len(chans)))

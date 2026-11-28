@@ -105,6 +105,8 @@ def test_summarize_partitions_by_group(workdir: Path):
     electrode = summary["groups"]["electrode"]
     assert electrode["spin_moment"] == pytest.approx(0.0)
     assert electrode["fraction"] == pytest.approx(0.0)
+    assert electrode["sum_abs"] == pytest.approx(0.2)
+    assert electrode["abs_fraction"] == pytest.approx(0.2 / 1.2)
     assert summary["n_positive"] == 3
     assert summary["n_negative"] == 1
 
@@ -155,6 +157,10 @@ def test_review_reports_spin_partition(workdir: Path):
         "source": "aims.out",
         "total": 1.0,
         "atoms": 4,
+        "atom_moments": [
+            {"index": i, "spin_moment": m}
+            for i, m in enumerate([0.0028, 0.0028, 0.4972, 0.4972], start=1)
+        ],
         "groups": {
             "molecule": {"atoms": 2, "spin_moment": 0.0056, "fraction": 0.0056},
             "electrode": {"atoms": 2, "spin_moment": 0.9944, "fraction": 0.9944},
@@ -172,6 +178,7 @@ def test_review_reports_spin_partition(workdir: Path):
     assert "spin_localized_off_molecule" in result.codes()
     issue = next(i for i in result.issues if i["code"] == "spin_localized_off_molecule")
     assert issue["severity"] == "info"
+    assert "0.56%" in issue["message"] and "0.0056" in issue["message"]
 
 
 def test_summarize_flags_localized_antiparallel_moments(workdir: Path):
@@ -268,6 +275,7 @@ def test_review_reports_broken_symmetry_local_moments(workdir: Path):
     result = ReviewResult(run_id="t")
     _spin_review(result, run_dir, config)
     assert "broken_symmetry_local_moments" in result.codes()
+    assert "spin_localized_off_molecule" not in result.codes()
     issue = next(i for i in result.issues if i["code"] == "broken_symmetry_local_moments")
     assert issue["severity"] == "info"
     assert "局部反平行" in issue["message"]
@@ -278,6 +286,88 @@ def test_review_reports_broken_symmetry_local_moments(workdir: Path):
     result = ReviewResult(run_id="t")
     _spin_review(result, run_dir, config)
     assert "broken_symmetry_local_moments" not in result.codes()
+    assert "spin_localized_off_molecule" not in result.codes()
+
+
+def test_bs_legacy_sidecar_uses_molecular_local_evidence(workdir: Path):
+    from smj.report import _render_spin_section
+    from smj.review import ReviewResult, _spin_review
+    from smj.spin_report import build_spin_report, render_spin_report
+
+    molecule = dict(multiplicity=1, broken_symmetry=True, charge=0)
+    (workdir / "run_spec.json").write_text(json.dumps({"config": {"molecule": molecule}}))
+    (workdir / "aims_scf").mkdir()
+    # v1 sidecars saved by collect have raw atom moments and group counts.
+    # A tiny residual junction moment makes the signed fraction misleading.
+    partition = {
+        "total": 0.001, "missing_moments": 0, "atoms": 3,
+        "atom_moments": [
+            {"index": i, "spin_moment": m}
+            for i, m in enumerate([0.6, -0.6, 0.001], start=1)
+        ],
+        "groups": {
+            "molecule": {"atoms": 2, "spin_moment": 0.0, "fraction": 0.0},
+            "electrode": {"atoms": 1, "spin_moment": 0.001, "fraction": 1.0},
+        },
+    }
+    (workdir / "aims_scf" / "spin_partition.json").write_text(json.dumps(partition))
+    (workdir / "review.json").write_text(json.dumps({"issues": [
+        {"code": "spin_localized_off_molecule", "message": "开壳层自旋主要在电极侧"}
+    ]}))
+    result = ReviewResult(run_id="bs")
+    _spin_review(result, workdir, SimpleNamespace(molecule=SimpleNamespace(**molecule)))
+    assert "spin_localized_off_molecule" not in result.codes()
+    evidence = next(i for i in result.issues if i["code"] == "broken_symmetry_local_moments")
+    lines = []
+    _render_spin_section(lines, {"channels": 2, **molecule}, partition)
+    cli_text = render_spin_report(build_spin_report(workdir))
+    assert "spin_localized_off_molecule" not in cli_text
+    for text in (evidence["message"], "\n".join(lines), cli_text):
+        assert "局部反平行" in text
+        assert "#1 +0.6000" in text and "#2 -0.6000" in text
+        assert "1.2000" in text
+        assert "100.00%" not in text
+
+    molecule.update(multiplicity=2, broken_symmetry=False)
+    (workdir / "run_spec.json").write_text(json.dumps({"config": {"molecule": molecule}}))
+    cli_text = render_spin_report(build_spin_report(workdir))
+    assert "spin_localized_off_molecule" not in cli_text
+    assert "局部反平行判据" not in cli_text
+
+
+def test_missing_local_moments_do_not_support_localization(workdir: Path):
+    table = parse_hirshfeld(_write(workdir, _section([
+        (1, "C", 0.25), (2, "C", -0.25), (3, "C", None), (4, "Au", 0.5),
+    ])))
+    partition = summarize(table, default_groups(3, 4))
+    assert partition["localized_antiparallel"] is None
+    assert partition["groups"]["molecule"]["abs_fraction"] is None
+
+
+def test_bs_shows_mapped_seed_centers_when_other_sites_have_larger_moments(workdir: Path):
+    from smj.report import _render_spin_section, _spin_partition_block
+    from smj.review import ReviewResult, _spin_review
+    from smj.spin_report import build_spin_report, render_spin_report
+
+    molecule = {"multiplicity": 1, "broken_symmetry": True, "charge": 0,
+                "initial_moments": {"3": 1.0, "5": -1.0}}
+    (workdir / "run_spec.json").write_text(json.dumps({"config": {"molecule": molecule}}))
+    stage = workdir / "aims_scf"
+    stage.mkdir()
+    (stage / "input_summary.json").write_text(json.dumps({"initial_moments": {"2": 1, "4": -1}}))
+    table = parse_hirshfeld_text("\n".join(_section([
+        (1, "C", 0.6), (2, "N", 0.12), (3, "C", -0.6), (4, "N", -0.12), (5, "Au", 0.001),
+    ])))
+    partition = {**table.as_dict(), "groups": {"molecule": {"atoms": 4}, "electrode": {"atoms": 1}}}
+    (stage / "spin_partition.json").write_text(json.dumps(partition))
+    result = ReviewResult(run_id="bs")
+    _spin_review(result, workdir, SimpleNamespace(molecule=SimpleNamespace(**molecule)))
+    message = next(i["message"] for i in result.issues if i["code"] == "broken_symmetry_local_moments")
+    lines = []
+    _render_spin_section(lines, molecule, _spin_partition_block(None, workdir))
+    for text in (message, "\n".join(lines), render_spin_report(build_spin_report(workdir))):
+        assert "N#2 +0.1200" in text and "N#4 -0.1200" in text
+        assert "C#1 +0.6000" in text and "C#3 -0.6000" in text
 
 
 def test_render_shows_spin_partition_rows():

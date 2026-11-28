@@ -14,11 +14,10 @@ from pathlib import Path
 
 from ..junction.geometry import read_aims_geometry
 from ..junction.inputs import make_aitranss_input
-from ..junction.landauer import read_te_ordered
+from ..junction.landauer import energy_order, read_te_channels
 from ..junction.self_energy import make_self_energy
 from ..junction.tcontrol import parse_efermi, parse_mos_nsaos
 from ..errors import StageBlocked, StageError
-from ..landauer_spin import read_te_channels
 from ..provenance import (
     parse_aitranss_versions,
     record_observed_software,
@@ -169,7 +168,7 @@ class AitranssTeStage(Stage):
         stage_dir = Path(stage_dir)
         te = ctx.require_stage_file(self.name, "TE.dat")
         try:
-            rows, order = read_te_ordered(te)
+            rows, channels = read_te_channels(te)
         except ValueError as exc:
             raise StageError("aitranss_te 无法解析 TE.dat: %s" % exc) from exc
 
@@ -196,11 +195,7 @@ class AitranssTeStage(Stage):
         if not (stage_dir / "self.energy.in").is_file():
             notes.append("缺 self.energy.in：结果不可复现")
 
-        try:
-            _, channels = read_te_channels(te)
-        except ValueError:
-            channels = 1
-        # 2026-11-20 复审 P1-3: rows 已按 E−E_F 升序, order 是文件原始行序。
+        order = energy_order(rows)
         if order != "ascending":
             notes.append(
                 "TE.dat 能量列非升序(%s)：分析时已按 E-E_F 升序排序，S 符号不受行序影响"
@@ -228,7 +223,7 @@ class AitranssTeStage(Stage):
             "aitranss_te": {
                 "points": len(rows),
                 "te_bytes": te.stat().st_size,
-                "max_transmission": max(row[2] for row in rows),
+                "max_transmission": max((alpha + beta) / 2 for _, _, alpha, beta in rows),
                 "transmission_channels": channels,
                 "single_channel_allowed": single_channel_allowed,
                 "energy_order": order,
