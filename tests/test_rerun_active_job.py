@@ -21,7 +21,7 @@ from smj.runner import StageRunner
 from smj.testing import FakeTransport
 from smj.transport import CommandResult
 
-REMOTE_ROOT = "/remote/rerun"
+REMOTE_ROOT = "/home/u/smj-runs"
 
 
 class _FakeStage:

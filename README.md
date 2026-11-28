@@ -327,14 +327,16 @@ cluster:
 | 键 | 用途 | 默认 |
 |---|---|---|
 | `g16root` / `g16_module` | Gaussian 安装根 / module 名 | 空（`g16root` 或 `g16_module` 二选一） |
-| `g16_scratch` / `g16_mem` / `g16_walltime` / `g16_gres` | Gaussian 临时目录/内存/墙钟/GRES | `16G` / `01:00:00` / 空 |
+| `g16_scratch` | Gaussian 本地运行临时目录 | 本地需配置，Slurm 自动在阶段目录内创建独立临时目录 |
+| `g16_mem` / `g16_walltime` / `g16_gres` | Gaussian 内存/墙钟/GRES | `16G` / `01:00:00` / 空 |
 | `aims_prefix` / `aims_module` / `aims_bin` / `aims_ld_module` | FHI-aims 定位方式 | 空（三者择一） |
 | `aims_mem` / `aims_walltime` / `aims_gpus` | FHI-aims 资源 | `16G` / `02:00:00` / 空 |
 | `aitranss_bin` | aitranss 可执行文件 | 空 |
 | `mkl_lib` | aitranss 依赖的 MKL 库路径 | 空 |
 | `te_mem` / `te_walltime` / `te_gres` | aitranss 资源 | `8G` / `02:00:00` / 空 |
 
-缺省值不静默成功：输入渲染器在缺 `g16root`/`g16_scratch` 等键时，会把
+Slurm 提交旧 Gaussian 脚本时，如果提示 scratch 设置不符合要求，请重新运行
+`smj stage molecule_opt --prepare` 生成脚本。输入渲染器在缺少程序安装路径等必需配置时，会把
 `UNCONFIGURED` 写进作业脚本（例如 `export g16root=UNCONFIGURED`），这样的脚本在集群上会
 直接失败。`smj preflight` 在**非 `dry-run`** 模式下检查 Gaussian 许可、FHI-aims 与
 aitranss 可执行文件，缺一项即 error（退出码 1）；`molecule.opt_engine: aims` 时分子优化

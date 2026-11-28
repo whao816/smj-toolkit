@@ -12,7 +12,7 @@ from smj.config import ClusterConfig, MoleculeConfig, RunConfig, RunInfo
 from smj.runner import StageRunner
 from smj.testing import FakeTransport
 
-REMOTE = "/remote/runs/t/molecule_opt"
+REMOTE = "/home/u/smj-runs/t/molecule_opt"
 
 
 def _config(workdir: Path) -> RunConfig:
@@ -22,7 +22,7 @@ def _config(workdir: Path) -> RunConfig:
         run=RunInfo(name="t", dir=str(workdir / "run"), mode="slurm-ssh"),
         molecule=MoleculeConfig(xyz=str(xyz), opt_engine="aims"),
         cluster=ClusterConfig(
-            host="h", user="u", remote_root="/remote/runs",
+            host="h", user="u", remote_root="/home/u/smj-runs",
             poll_seconds=1.0, timeout_hours=0.5),
     )
 

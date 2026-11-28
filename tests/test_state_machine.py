@@ -102,7 +102,9 @@ def test_submit_refuses_unconfigured_placeholder(workdir):
 def test_submit_allows_failed_for_retry(workdir):
     runner = _runner(workdir, transport=_SbatchTransport())
     stage_dir = runner.layout.ensure_stage("gaussian_opt")
-    (stage_dir / "sub_g16.sh").write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    from smj.junction.inputs import SLURM_G16_SCRATCH
+    (stage_dir / "sub_g16.sh").write_text(
+        "#!/bin/sh\n" + SLURM_G16_SCRATCH + "\nsrun g16 \"$1\"\n", encoding="utf-8")
     (stage_dir / "mol.gjf").write_text("#p hf/sto-3g\n\n0 1\nH 0 0 0\n", encoding="utf-8")
     runner.state.set("gaussian_opt", status="failed", error="上一次 sbatch 失败")
     runner._save()
@@ -111,6 +113,31 @@ def test_submit_allows_failed_for_retry(workdir):
 
     assert submission["job_id"] == "424242"
     assert runner.state.status("gaussian_opt") == "submitted"
+
+
+@pytest.mark.parametrize("scratch", ["/data/tmp/g16", "/tmp/g16"])
+def test_submit_rejects_prepared_external_gaussian_scratch(workdir, scratch):
+    runner = _runner(workdir, transport=_SbatchTransport())
+    stage_dir = runner.layout.ensure_stage("gaussian_opt")
+    (stage_dir / "sub_g16.sh").write_text(
+        f'#!/bin/bash\nmkdir -p "{scratch}"\nexport GAUSS_SCRDIR={scratch}\nsrun g16 "$1"\n',
+        encoding="utf-8")
+    runner.state.set("gaussian_opt", status="prepared")
+    with pytest.raises(StageError, match="scratch"):
+        runner.submit("gaussian_opt")
+    assert runner.transport.commands == []
+
+
+def test_submit_rejects_gaussian_scratch_override(workdir):
+    from smj.junction.inputs import SLURM_G16_SCRATCH
+    runner = _runner(workdir, transport=_SbatchTransport())
+    stage_dir = runner.layout.ensure_stage("gaussian_opt")
+    (stage_dir / "sub_g16.sh").write_text(
+        SLURM_G16_SCRATCH + '\nexport GAUSS_SCRDIR=/tmp\nsrun g16 "$1"\n', encoding="utf-8")
+    runner.state.set("gaussian_opt", status="prepared")
+    with pytest.raises(StageError, match="scratch"):
+        runner.submit("gaussian_opt")
+    assert runner.transport.commands == []
 
 
 def test_submit_still_refuses_collected(workdir):

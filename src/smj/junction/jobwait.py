@@ -98,6 +98,11 @@ def parse_probe(out: str) -> dict:
             jid = line[len(_MARK_ID) + 1:].strip()
             if jid:
                 queued.add(jid)
+                # squeue %i lists array elements as 712_3 or 712_[0-11%2].
+                # sbatch returns their parent 712, which stays active for both.
+                parent, separator, _ = jid.partition('_')
+                if separator and parent.isdigit():
+                    queued.add(parent)
         elif line.startswith(_MARK_END):
             complete = True
     return {'sentinels': sentinels, 'queue_known': queue_known,

@@ -35,6 +35,7 @@ class GaussianEngine(Engine):
             charge=molecule.charge, multiplicity=molecule.multiplicity,
             method=molecule.method, basis=molecule.basis, env=env,
             stable_check=bool(getattr(molecule, "stable_check", False)),
+            stage_scratch=getattr(ctx.config, "mode", None) == "slurm-ssh",
         )
         gjf = Path(written["gjf"])
         ctx.log("molecule_opt: 已写 %s（%d 原子，%s/%s）"

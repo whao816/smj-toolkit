@@ -16,10 +16,7 @@
 {g16_setup}
 # Scratch must exist before g16 opens its files; a stale cluster path used to
 # abort the job with FIO/stdio error 2 before the first SCF step.
-# If {scratch} is still unset, runner._reject_unconfigured refuses submission
-# before this script ever runs.
-mkdir -p "{scratch}"
-export GAUSS_SCRDIR={scratch}
+{scratch_setup}
 srun g16 "$1"
 
 # --- completion sentinel (P0-3, AGD-2026-09-25-SMJ): 退出码+时间戳 ---

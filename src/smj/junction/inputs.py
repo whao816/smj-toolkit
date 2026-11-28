@@ -73,6 +73,13 @@ MAPPED_ENV_VARS = frozenset(env for _, env, _ in ENV_SPECS)
 DEFAULT_ENV = {key: os.environ.get(env, default) for key, env, default in ENV_SPECS}
 DEFAULT_ENV.update({'partition': 'main', 'ntasks': 1, 'nproc': 64})
 
+# Slurm sets SLURM_SUBMIT_DIR to the directory from which SMJ issued sbatch.
+# mktemp creates a new directory atomically, even across simultaneous submissions.
+SLURM_G16_SCRATCH = (
+    'GAUSS_SCRDIR=$(mktemp -d -- "${SLURM_SUBMIT_DIR:?}/scratch.XXXXXXXX") || exit 1\n'
+    'export GAUSS_SCRDIR'
+)
+
 
 def _env(env: dict | None) -> dict:
     merged = dict(DEFAULT_ENV)
@@ -98,7 +105,7 @@ def make_gaussian_input(xyz_path: str | Path, outdir: str | Path, name: str,
                         charge: int = 0, multiplicity: int = 1,
                         method: str = 'b3lyp', basis: str = '6-31g(d)',
                         env: dict | None = None,
-                        stable_check: bool = False) -> dict:
+                        stable_check: bool = False, *, stage_scratch: bool = False) -> dict:
     """分子 XYZ -> Gaussian opt+freq 输入(gjf + sub_g16.sh)。"""
     e = _env(env)
     atoms = read_xyz(xyz_path)
@@ -112,6 +119,9 @@ def make_gaussian_input(xyz_path: str | Path, outdir: str | Path, name: str,
             charge=charge, multiplicity=multiplicity, coordinates=coordinates,
             route_extra=' Stable=Opt' if stable_check else ''))
     sub = out / 'sub_g16.sh'
+    scratch = e['g16_scratch'] or 'UNCONFIGURED'
+    scratch_setup = (SLURM_G16_SCRATCH if stage_scratch else
+                     'mkdir -p "{0}"\nexport GAUSS_SCRDIR={0}'.format(scratch))
     # 高斯加载方式: env.g16_module(如 Gaussian/g16.c02)非空 -> module load;
     # 否则回退 g16root 路径方式(兼容既有测试/无 module 系统环境)。
     if str(e.get('g16_module') or '').strip():
@@ -132,7 +142,7 @@ def make_gaussian_input(xyz_path: str | Path, outdir: str | Path, name: str,
             gres_line=('#SBATCH %s' % _slurm_gres(e.get('g16_gres')))
             if _slurm_gres(e.get('g16_gres')) else '',
             g16_setup=g16_setup,
-            scratch=e['g16_scratch'] or 'UNCONFIGURED'))
+            scratch_setup=scratch_setup))
     summary = {'name': name, 'method': method, 'basis': basis, 'charge': charge,
                'multiplicity': multiplicity, 'nproc': e['nproc'],
                'partition': e['partition'], 'atom_count': len(atoms),
