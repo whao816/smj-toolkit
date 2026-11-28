@@ -32,7 +32,8 @@ __all__ = [
 ]
 
 #: 必须一致才能横向比较的字段；``temperature_K`` 允许通过 normalize 对齐。
-PROTOCOL_KEYS = ("eta_meV", "energy_step_meV", "band_top_meV", "lead_fc_sha256")
+PROTOCOL_KEYS = ("eta_meV", "energy_step_meV", "band_top_meV", "lead_fc_sha256",
+                 "right_lead_transform", "transport_matrix_protocol")
 
 
 @dataclass
@@ -53,7 +54,12 @@ class RunRecord:
 
     @property
     def protocol(self) -> dict:
-        return {key: self.payload.get(key) for key in PROTOCOL_KEYS}
+        protocol = {key: self.payload.get(key) for key in PROTOCOL_KEYS}
+        # 旧结果可能只记录配置步长，谱中的均匀能量网格保留了实际取样间距。
+        energy = self.payload["spectrum"]["energy_meV"]
+        protocol["energy_step_meV"] = float(format(
+            (energy[-1] - energy[0]) / (len(energy) - 1), ".12g"))
+        return protocol
 
     @property
     def environment_identity(self) -> dict:
@@ -82,7 +88,7 @@ class Comparison:
                 "g_quantum_pw_per_k": record.payload.get("g_quantum_pw_per_k"),
                 "temperature_K": record.payload.get("temperature_K"),
                 "eta_meV": record.payload.get("eta_meV"),
-                "energy_step_meV": record.payload.get("energy_step_meV"),
+                "energy_step_meV": record.protocol["energy_step_meV"],
                 "n_imaginary": (record.payload.get("imaginary_modes") or {}).get(
                     "count"),
                 "verdict": record.verdict,
@@ -157,7 +163,8 @@ def compare(records: list[RunRecord]) -> Comparison:
     for key in ("temperature_K",) + PROTOCOL_KEYS:
         values = {}
         for record in records:
-            value = record.payload.get(key)
+            value = (record.payload.get(key) if key == "temperature_K"
+                     else record.protocol[key])
             values.setdefault(repr(value), []).append(record.name)
         if len(values) > 1:
             mismatches[key] = ["%s: %s" % (", ".join(names), raw)

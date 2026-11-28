@@ -132,7 +132,7 @@ def test_evaluate_thermal_passes_when_evidence_complete():
     from smj.phonon.checks import evaluate_thermal
 
     outcome = evaluate_thermal(
-        _thermal(),
+        _thermal(transport_asr={"relative_residual": 1e-5}),
         relax_max_force=1.0e-3,
         relax_sc_accuracy_forces="5E-3",
         lead_cell_match=True,
@@ -188,6 +188,25 @@ def test_evaluate_thermal_inconclusive_on_imaginary_modes():
         lead_cell_match=True)
     assert outcome["verdict"] == "inconclusive"
     assert "ph_imaginary_modes" in outcome["inconclusive"]
+
+
+def test_review_needs_above_band_samples():
+    from smj.phonon.checks import evaluate_thermal
+
+    spectrum, g_ph = _spectrum(101)
+    result = evaluate_thermal(_thermal(spectrum=spectrum, g_ph_pw_per_k=g_ph))
+    assert "ph_band_top_zero" in result["inconclusive"]
+
+
+def test_review_quantum_bound_is_inclusive_and_channel_specific():
+    from smj.phonon.checks import evaluate_thermal
+    from smj.phonon.units import gq_pw_per_k
+
+    payload = _thermal(g_ph_pw_per_k=3 * gq_pw_per_k(300))
+    assert "ph_quantum_bound" not in evaluate_thermal(payload)["failed"]
+    payload["g_ph_pw_per_k"] = 3.99 * gq_pw_per_k(300)
+    assert "ph_quantum_bound" in evaluate_thermal(payload)["failed"]
+    assert "ph_quantum_bound" not in evaluate_thermal(payload, max_channels=4)["failed"]
 
 
 # -- M5-T2:review 集成 --------------------------------------------------------- #
@@ -271,7 +290,8 @@ def _asr_check(payload):
 def test_asr_judged_on_relative_residual_not_absolute():
     """绝对残差 1e-2 eV/A^2 但相对只有 1e-5 —— 旧口径会误判失败。"""
     item = _asr_check(_thermal(acoustic_sum_residual=1.0e-2,
-                               acoustic_sum_relative_residual=1.0e-5))
+                               acoustic_sum_relative_residual=1.0e-5,
+                               transport_asr={"relative_residual": 1.0e-5}))
     assert item["passed"] is True
     assert "相对残差" in item["detail"]
 
@@ -282,13 +302,33 @@ def test_asr_fails_when_relative_residual_exceeds_threshold():
     assert item["passed"] is False
 
 
+def test_raw_closure_cannot_mask_a_truncated_transport_violation():
+    payload = _thermal(acoustic_sum_relative_residual=0.,
+                       transport_matrix_protocol="reciprocal_principal_layer_v1",
+                       transport_asr={"relative_residual": .02,
+                                      "residual_after_ev_per_A2": 0.})
+    assert _asr_check(payload)["passed"] is False
+    del payload["transport_asr"]
+    assert _asr_check(payload)["passed"] is None
+
+
 def test_asr_falls_back_to_absolute_for_old_payloads():
-    """旧 thermal.json 没有相对残差时,退回 1e-6 绝对口径而不是判缺证据。"""
+    """旧文件的完整行残差可评估，但缺少输运分区证据。"""
     payload = _thermal(acoustic_sum_residual=1.0e-9)
     payload.pop("acoustic_sum_relative_residual")
     item = _asr_check(payload)
-    assert item["passed"] is True
+    assert item["passed"] is None
     assert "无相对残差记录" in item["detail"]
+    assert "输运分区 ASR 未记录" in item["detail"]
+
+
+def test_archived_negative_spectra_are_rejected_on_read(workdir):
+    from smj.analysis import read_thermal
+
+    payload = _thermal()
+    payload["spectrum"]["transmission"][6] = -.1
+    with pytest.raises(ValueError, match="负"):
+        read_thermal(_write(workdir / "thermal.json", payload))
 
 
 
@@ -408,13 +448,23 @@ def test_report_embeds_temperature_curve_and_soft_modes(workdir):
     assert (run / "thermal_analyze"
             / "thermal_conductance_vs_temperature.png").is_file()
     assert "G_ph(T)" in text
-    assert "与 `G ∝ T` 的量子极限一致" in text
+    assert "10 K" in text and "800 K" in text
     # 软模表：分子/器件 Au/lead 三列占比 + 参与比 + 刚体占比
     assert "软模归属" in text
     assert "| 1 | -21.30 |" in text
     assert "99.5%" in text
     assert "投影掉" in text
     assert "互易性" in text
+
+
+def test_report_handles_zero_conductance_curve(workdir):
+    from smj.report import render_report
+
+    run = workdir / "run"
+    payload = _thermal(g_ph_pw_per_k=0., g_ph_by_temperature={
+        "temperature_K": [10., 800.], "g_ph_pw_per_k": [0., 0.]})
+    _write(run / "thermal_analyze" / "thermal.json", payload)
+    assert "0.00 pW/K" in render_report({"run_id": "zero", "root": str(run)})
 
 
 def test_plot_thermal_vs_temperature_reports_reference_and_plateau(workdir):

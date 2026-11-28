@@ -134,7 +134,7 @@ def test_apply_asr_removes_translation_modes():
     dynamical = dynamical_matrix(matrix, MASSES)
     projected, residual = apply_asr(dynamical, MASSES)
 
-    assert residual == pytest.approx(0.05 * 9, rel=1e-6)  # 每行 9 列 × 0.05
+    assert residual == pytest.approx(0.05 * N, rel=1e-6)  # 每个平移方向 N 个原子
     eigenvalues = np.linalg.eigvalsh(projected)
     assert np.max(np.abs(eigenvalues[:3])) < 1e-10
     # 投影不能把光学模一起抹掉;D 的单位是 eV²(本征值即 (ħω)²),
@@ -203,7 +203,10 @@ def test_assemble_full_fc_places_blocks(workdir):
     full = assemble_full_fc(k_dev, lead, meta)
     assert full.shape == (36, 36)
     np.testing.assert_allclose(full[0:12, 0:12], lead.force_constants)
-    np.testing.assert_allclose(full[24:36, 24:36], lead.force_constants)
+    reflection = np.tile([1.0, 1.0, -1.0], lead.n_atoms)
+    expected_right = (reflection[:, None] * lead.force_constants
+                      * reflection[None, :])
+    np.testing.assert_allclose(full[24:36, 24:36], expected_right)
     np.testing.assert_allclose(full[12:18, :], k_dev)
     # 未分配原子(6,7)的**行**是 0;器件行仍会测到它们的力系数,所以列不为零
     assert np.all(full[18:24, :] == 0.0)
@@ -373,5 +376,38 @@ def test_asr_projection_with_rows_only_touches_subblock():
     assert report["projected"] is True
     # 区外耦合(原子 1 的 x 行 × 原子 0 的 x 列)保持原值
     assert report["dynamical"][3, 0] == pytest.approx(dynamical[3, 0], abs=1e-15)
+    assert report["residual_after_ev_per_A2"] < 1e-10
+
+
+def test_asr_detects_cancellation_between_translation_directions():
+    from smj.phonon.dynamical import acoustic_sum_residual, acoustic_sum_relative_residual
+
+    k = np.array([[1., -1., 0.], [-1., 1., 0.], [0., 0., 0.]])
+    assert acoustic_sum_residual(k) == pytest.approx(1.0)
+    d = dynamical_matrix(k, [12.])
+    assert acoustic_residual_of(d, [12.]) == pytest.approx(1.0)
+    assert apply_asr(d, [12.])[1] == pytest.approx(1.0)
+    assert asr_diagnostics(d, [12.])["projected"]
+
+    extended = np.zeros((6, 6))
+    extended[:3, :3] = k
+    extended[3, 3] = 10000.
+    rows = [0, 1, 2]
+    assert acoustic_sum_relative_residual(extended, rows=rows) == pytest.approx(1.0)
+    diag = asr_diagnostics(dynamical_matrix(extended, [12., 197.]), [12., 197.], rows=rows)
+    assert diag["relative_residual"] == pytest.approx(1.0)
+    assert diag["residual_after_ev_per_A2"] < 1e-12
+
+
+def test_device_asr_incompatible_fixed_coupling_is_reported():
+    # A single device atom would need K_xy=-1 and K_yx=0 to cancel the lead.
+    k = np.zeros((6, 6))
+    k[0, 4] = k[4, 0] = 1.
+    d = dynamical_matrix(k, [12., 197.])
+    diag = asr_diagnostics(d, [12., 197.], rows=[0, 1, 2])
+    assert diag["projected"] is False
+    assert diag["projection_reason"] == "incompatible_fixed_coupling"
+    assert diag["residual_ev_per_A2"] == pytest.approx(1.0)
+    np.testing.assert_array_equal(diag["dynamical"], d)
 
 

@@ -839,13 +839,13 @@ def plot_thermal_vs_temperature(
                     xy=(reference, value_at_reference), xytext=(6, -16),
                     textcoords="offset points", fontsize=8.5, color="#c00000")
     ax.axhline(plateau, color="#7f7f7f", ls=":", lw=0.9)
-    ax.annotate("high-T limit %.2f pW/K" % plateau, xy=(temperatures[0], plateau),
+    ax.annotate("%.0f K: %.2f pW/K" % (temperatures[-1], plateau), xy=(temperatures[0], plateau),
                 xytext=(2, 4), textcoords="offset points",
                 fontsize=8.0, color="#4d4d4d")
     ax.set_xlabel(r"$T$ (K)")
     ax.set_ylabel(r"$G_{\mathrm{ph}}$ (pW/K)")
     ax.set_xlim(0.0, max(temperatures) * 1.03)
-    ax.set_ylim(0.0, max(conductances) * 1.12)
+    ax.set_ylim(0.0, max(conductances) * 1.12 or 1.0)
     if title:
         ax.set_title(title, fontsize=10.5)
     fig.subplots_adjust(left=0.16, right=0.97, top=0.92, bottom=0.13)

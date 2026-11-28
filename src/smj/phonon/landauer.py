@@ -29,6 +29,23 @@ from . import units
 
 __all__ = ["bose_kernel", "thermal_conductance", "cumulative_thermal_conductance"]
 
+DEFAULT_MAX_CHANNELS = 3
+NEGATIVE_TRANSMISSION_TOL = 1.0e-12
+MAX_ABOVE_BAND_T = 1.0e-6
+ACOUSTIC_ENERGY_EV = 0.5e-3
+ACOUSTIC_TOL = 1.0e-6
+
+
+def above_band(energy_mev, band_top_mev):
+    return np.asarray(energy_mev) > band_top_mev + 1.0e-9
+
+
+def conductance_bound(temperature_k, max_channels):
+    """Upper bound in pW/K when at most max_channels modes transmit at any energy."""
+    if not math.isfinite(max_channels) or max_channels <= 0:
+        raise ValueError("max_channels 必须为正有限值")
+    return max_channels * units.gq_pw_per_k(temperature_k)
+
 
 def _trapz(y, x):
     """复合梯形积分(自带,不用 ``np.trapz``)。
@@ -67,7 +84,8 @@ def bose_kernel(x):
     return out
 
 
-def _validate_grid(omega_ev, t_ph):
+def validate_spectrum(omega_ev, t_ph):
+    """Validate the energy axis and clamp negative transmission within roundoff."""
     e = np.asarray(omega_ev, dtype=float)
     t = np.asarray(t_ph, dtype=float)
     if e.ndim != 1 or t.ndim != 1:
@@ -83,7 +101,9 @@ def _validate_grid(omega_ev, t_ph):
         raise ValueError("omega_ev 必须严格递增")
     if e[0] < 0:
         raise ValueError("omega_ev 不能为负")
-    return e, t
+    if np.any(t < -NEGATIVE_TRANSMISSION_TOL):
+        raise ValueError("T_ph 含显著负透射（最小值 %.3g）" % float(np.min(t)))
+    return e, np.maximum(t, 0.0)
 
 
 def thermal_conductance(
@@ -93,6 +113,7 @@ def thermal_conductance(
     *,
     band_top_mev: float = units.AU_BAND_TOP_MEV,
     max_acoustic: float = 3.0,
+    max_channels: float = DEFAULT_MAX_CHANNELS,
 ):
     """积分得 ``G_ph(T)``,单位 **pW/K**。
 
@@ -109,8 +130,10 @@ def thermal_conductance(
         频率**:分子内 100–400 meV 的模在 Au 里没有可透射通道,把它们算进去
         等于给弹性透射编造出不存在的通道(调研报告 §6 陷阱⑨)。
     max_acoustic : float
-        声学支数上限(3D lead = 3)。``T_ph(ω→0)`` 超过它、或总热导超过
-        ``max_acoustic·3·G_Q``,直接报错而不是返回一个数。
+        声学支数上限，用于检查低频极限。
+    max_channels : float
+        全能谱上的传输通道数上限。默认三通道协议取 3。含额外通道的
+        多模电极应按其色散及横向归一化提供适当上限。
 
     Returns
     -------
@@ -128,15 +151,15 @@ def thermal_conductance(
 
     1. 带顶之上非零 → 电极里没有那条支,透射是算错的(常见于自能构造错误);
     2. ``T_ph(0) > max_acoustic`` → 声学支计数错(常见于 k 求和未除 ``N_k``);
-    3. ``G > 3·max_acoustic·G_Q`` → 量级错了,调参不能救,必须回头查 NEGF。
+    3. ``G > max_channels·G_Q`` → 超过给定传输通道数可承载的热导。
     """
-    if temperature_k <= 0:
+    if not math.isfinite(temperature_k) or temperature_k <= 0:
         raise ValueError("温度必须为正:%r K" % (temperature_k,))
-    e, t = _validate_grid(omega_ev, t_ph)
+    e, t = validate_spectrum(omega_ev, t_ph)
 
     # 1) 带顶之上必须无通道
-    above = e * 1.0e3 > band_top_mev + 1.0e-9
-    if np.any(above) and float(np.max(np.abs(t[above]))) > 1.0e-6:
+    above = above_band(e * 1.0e3, band_top_mev)
+    if np.any(above) and float(np.max(np.abs(t[above]))) > MAX_ABOVE_BAND_T:
         worst = float(e[above][int(np.argmax(np.abs(t[above])))] * 1e3)
         raise ValueError(
             "T_ph 在电极声子带顶(%.2f meV)之上仍非零(最大在 %.2f meV);"
@@ -144,7 +167,7 @@ def thermal_conductance(
             % (band_top_mev, worst))
 
     # 2) 声学极限
-    if e[0] <= 1.0e-3 and t[0] > max_acoustic + 1.0e-6:
+    if e[0] <= ACOUSTIC_ENERGY_EV and t[0] > max_acoustic + ACOUSTIC_TOL:
         raise ValueError(
             "T_ph(ω→0)=%.4f 超过声学支数 %.1f;常见原因是横向 k 求和未除 N_k"
             % (t[0], max_acoustic))
@@ -159,12 +182,11 @@ def thermal_conductance(
     g_pw_per_k = g_w_per_k * 1.0e12
 
     # 3) 量子上限
-    bound = 3.0 * max_acoustic * units.gq_pw_per_k(temperature_k)
+    bound = conductance_bound(temperature_k, max_channels)
     if g_pw_per_k > bound:
         raise ValueError(
-            "G_ph=%.3f pW/K 超过 %.0f×G_Q(=%.1f pW/K);量级错误,检查动力学矩阵"
-            "单位(eV² 还是 eV²/amu)与声学支计数"
-            % (g_pw_per_k, 3.0 * max_acoustic, bound))
+            "G_ph=%.3f pW/K 超过给定通道数的上限 %g×G_Q(=%.1f pW/K)"
+            % (g_pw_per_k, max_channels, bound))
 
     return g_pw_per_k
 
@@ -175,9 +197,9 @@ def cumulative_thermal_conductance(omega_ev, t_ph, temperature_k: float):
     用于出图(方案 §6.6「累积热导」):把 ``G_ph`` 拆成「哪些频率贡献了多少」,
     这是判断结果是否被界面低频模主导的主要证据。
     """
-    if temperature_k <= 0:
+    if not math.isfinite(temperature_k) or temperature_k <= 0:
         raise ValueError("温度必须为正:%r K" % (temperature_k,))
-    e, t = _validate_grid(omega_ev, t_ph)
+    e, t = validate_spectrum(omega_ev, t_ph)
     kt = units.KB_EV_PER_K * temperature_k
     integrand = kt ** 2 * bose_kernel(e / kt) * t
     # 从 0 开始累积:trapz 在每段的贡献 = 0.5*(f_i+f_{i+1})*ΔE

@@ -717,7 +717,7 @@ def _resolve_retry_slots(spec: str, stage_dir: Path) -> list[int]:
     """
     text = str(spec).strip()
     lowered = text.lower()
-    if lowered in ("missing", "not-converged", "not_converged"):
+    if lowered in ("missing", "not-converged", "not_converged", "unknown"):
         summary_path = Path(stage_dir) / "fc_summary.json"
         if not summary_path.is_file():
             raise SmjError(
@@ -728,8 +728,10 @@ def _resolve_retry_slots(spec: str, stage_dir: Path) -> list[int]:
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise SmjError("读 %s 失败: %s" % (summary_path, exc)) from exc
-        key = "missing" if lowered == "missing" else "not_converged"
-        slots = [int(item) for item in (summary.get(key) or [])]
+        key = lowered.replace("-", "_")
+        slots = summary.get(key, []) if isinstance(summary, dict) else None
+        if not isinstance(slots, list) or any(type(s) is not int for s in slots):
+            raise SmjError("%s 的 %s 不是槽位下标列表" % (summary_path, key))
         if not slots:
             raise SmjError("%s 里 %s 为空：没有需要重跑的槽位" % (summary_path, key))
         return slots
@@ -742,10 +744,10 @@ def _resolve_retry_slots(spec: str, stage_dir: Path) -> list[int]:
         except ValueError:
             raise SmjError(
                 "--retry 的下标必须是整数（收到 %r）；也可以写 missing "
-                "或 not-converged" % part) from None
+                "、not-converged 或 unknown" % part) from None
     if not slots:
         raise SmjError("--retry 没给下标")
-    return slots
+    return sorted(set(slots))
 
 
 def cmd_thermal_compare(args: argparse.Namespace) -> int:
@@ -880,6 +882,10 @@ def _cmd_thermal_retry(args, config, runner, names) -> int:
         raise SmjError("--retry 只能用于 thermal_fc；加 --stage thermal_fc 或去掉 --stage")
     if config.mode != "slurm-ssh":
         raise SmjError("--retry 只在 slurm-ssh 模式有意义（local 模式会顺序重跑整批）")
+    status = runner.state.status("thermal_fc")
+    if not args.force and status in ("submitted", "waiting", "submit_unknown"):
+        raise SmjError("thermal_fc 上次提交的状态为 %s。先 --wait 或核对远端作业；"
+                       "确认已经结束后可用 --force --retry 重试" % status)
     stage_dir = Path(runner.layout.stage_dir("thermal_fc"))
     manifest = stage_dir / "displacements.json"
     if not manifest.is_file():
@@ -892,6 +898,11 @@ def _cmd_thermal_retry(args, config, runner, names) -> int:
     bad = sorted({slot for slot in slots if slot < 0 or slot >= count})
     if bad:
         raise SmjError("重跑下标越界: %s（有效范围 0–%d）" % (bad[:5], count - 1))
+    from .stages.thermal_fc import ThermalFcStage
+
+    natoms = ThermalFcStage.count_aims_atoms(stage_dir / "geometry.in")
+    estimate = runner.context.estimate("thermal_fc", natoms)
+    ThermalFcStage.write_job_files(runner.context, stage_dir, count, estimate)
     parallel = max(1, int(getattr(config.thermal.fc, "array_parallel", 8) or 8))
     array_spec = "--array=%s%%%d" % (",".join(str(slot) for slot in slots), parallel)
     payload = runner.submit("thermal_fc", force=True, sbatch_args=(array_spec,))
@@ -900,8 +911,7 @@ def _cmd_thermal_retry(args, config, runner, names) -> int:
     else:
         print("重跑 %d 个槽位: %s" % (len(slots), array_spec))
         _print_submission(payload, stage="thermal_fc")
-        print("跑完后 `smj thermal --stage thermal_fc --collect` 会重拼"
-              "forces_all.json / fc_summary.json。")
+        print("跑完后用 `smj thermal --stage thermal_fc --collect` 回取本次力与 SCF 汇总。")
     return EXIT_OK
 
 
@@ -947,7 +957,7 @@ def cmd_thermal(args: argparse.Namespace) -> int:
         return _cmd_thermal_sensitivity(args, config, runner)
 
     if args.retry is not None:
-        return _cmd_thermal_retry(args, config, runner, names)
+        return _cmd_thermal_retry(args, config, runner, names if args.stage else ("thermal_fc",))
 
     if action == "status":
         rows = []
@@ -1882,7 +1892,7 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--retry", metavar="SPEC", default=None,
                        help=("只重跑 thermal_fc 数组作业里失败/未收敛的槽位。"
                              "SPEC 是逗号分隔的下标（如 17,203），"
-                             "或 missing / not-converged（从 fc_summary.json 读）。"
+                             "或 missing / not-converged / unknown（从 fc_summary.json 读）。"
                              "重跑后收尾步骤会自动重拼 forces_all.json"))
     group.add_argument("--sensitivity", action="store_true",
                        help=("用已有 force_constants.npy 扫 η 与能量步长"

@@ -237,3 +237,23 @@ def test_sensitivity_covers_grid_and_records_rejections(workdir) -> None:
     row = [item for item in payload["rows"]
            if item["eta_meV"] == 0.05 and item["energy_step_meV"] == 0.05][0]
     assert extrapolated["g_ph_at_smallest_eta_pw_per_k"] == row["g_ph_pw_per_k"]
+
+
+def test_energy_grid_keeps_requested_step_above_band_top():
+    from smj.stages.thermal_analyze import _energy_grid
+
+    omega, energy = _energy_grid(19.5, 0.05)
+    assert energy[0] == 0.0
+    assert 24.375 <= energy[-1] < 24.425
+    np.testing.assert_allclose(np.diff(energy), 0.05)
+    np.testing.assert_allclose(omega, 1.0e-3 * energy)
+
+def test_compare_uses_saved_spectrum_spacing_and_electrode_frame(workdir):
+    old = _payload()
+    new = _payload(right_lead_transform="reflect_z")
+    new["spectrum"]["energy_meV"] = [0.05 * i for i in range(245)]
+    records = [load_run(_write_run(workdir, n, data, nested=False))
+               for n, data in (("old", old), ("new", new))]
+    result = compare(records)
+    assert set(result.mismatches) == {"energy_step_meV", "right_lead_transform"}
+    assert result.rows()[0]["energy_step_meV"] == pytest.approx(0.1)

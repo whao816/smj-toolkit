@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .dynamical import acoustic_sum_residual, acoustic_sum_residuals
 from .units import EV_PER_SQRT
 
 __all__ = [
@@ -141,37 +142,33 @@ def _rebuild_force_constants(dynamical_ev2, masses) -> np.ndarray:
         raise ValueError("dynamical_matrix 必须是方阵,得到 %r" % (matrix.shape,))
     n = matrix.shape[0]
     reps = n // 3
-    if mass.shape != (reps,):
+    if n % 3 or mass.shape != (reps,):
         raise ValueError(
             "质量数组长度应为 %d,得到 %d" % (reps, mass.shape[0] if mass.ndim else 1))
+    if not np.all(np.isfinite(matrix)):
+        raise ValueError("dynamical_matrix 含非有限数值")
+    if not np.all(np.isfinite(mass)) or np.any(mass <= 0):
+        raise ValueError("质量必须是有限正数")
     scale = np.repeat(mass, 3)
     return matrix * np.sqrt(np.outer(scale, scale)) / (EV_PER_SQRT ** 2)
+
+
+def _translation_basis(mass: np.ndarray) -> np.ndarray:
+    return (np.sqrt(mass)[:, None, None] * np.eye(3)).reshape(-1, 3)
 
 
 def apply_asr(dynamical_ev2, masses) -> tuple[np.ndarray, float]:
     """把三条质量加权平移模投影掉,返回 ``(D_proj, residual)``。
 
-    ``residual`` 是投影**之前**在力常数矩阵上算的 ``max_i |Σ_j K_ij|``
+    ``residual`` 是投影**之前**在力常数矩阵上算的 ``max_iαβ |Σ_j K_iα,jβ|``
     (eV/Å²)。先测残差再投影,否则这个指标会退化成恒为零 —— 详见方案 §5.1。
     """
     matrix = np.asarray(dynamical_ev2, dtype=float)
     mass = np.asarray(masses, dtype=float)
-    if not np.all(np.isfinite(matrix)):
-        raise ValueError("dynamical_matrix 含非有限数值")
-    if np.any(mass <= 0):
-        raise ValueError("质量必须为正")
-
     force_constants = _rebuild_force_constants(matrix, mass)
-    residual = float(np.max(np.abs(force_constants.sum(axis=1))))
-
-    reps = matrix.shape[0] // 3
-    shift = np.sqrt(mass)
-    basis = np.zeros((3 * reps, 3), dtype=float)
-    for axis in range(3):
-        basis[axis::3, axis] = shift
-    projector = basis @ np.linalg.pinv(basis.T @ basis) @ basis.T
-    identity = np.eye(3 * reps)
-    complement = identity - projector
+    residual = acoustic_sum_residual(force_constants)
+    basis = _translation_basis(mass)
+    complement = np.eye(matrix.shape[0]) - basis @ basis.T / mass.sum()
     projected = complement @ matrix @ complement
     return projected, residual
 
@@ -183,7 +180,7 @@ def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3,
     返回的 dict 同时带"投影前"和"投影后"两套指标:
 
     ``residual_ev_per_A2`` / ``relative_residual``
-        投影前在**力常数**矩阵上算的 ``max_i |Σ_j K_ij|`` 及其相对值
+        投影前在**力常数**矩阵上算的 ``max_iαβ |Σ_j K_iα,jβ|`` 及其相对值
         (``/ max|K|``)。判据 ``ph_asr_residual`` 判的就是这两个数 ——
         投影之后行和恒为机器零,拿投影后的值判等于没判。
     ``projected`` / ``projection_norm``
@@ -197,29 +194,23 @@ def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3,
 
     ``rows`` 是自由度下标,限定在**邻居集合完整**的区域上(拼接矩阵里只有
     器件区满足;lead 行来自被截断成两个主层的 lead 力常数,行和按构造不闭合)。
-    给了 ``rows`` 时,投影也只作用在 ``D[rows, rows]`` 子块上,不碰区外耦合。
+    给了 ``rows`` 时,只修改器件子块,计入固定区外耦合的平移响应。
+    如果无法用对称器件块抵消该响应,返回原矩阵并记录 projection_reason。
     """
     matrix = np.asarray(dynamical_ev2, dtype=float)
     mass = np.asarray(masses, dtype=float)
     force_constants = _rebuild_force_constants(matrix, mass)
 
     index = None if rows is None else np.asarray(rows, dtype=int).ravel()
-    row_sums = force_constants.sum(axis=1)
-    if index is None:
-        scale_block = force_constants
-    else:
-        if index.size == 0:
-            raise ValueError("rows 不能为空")
-        row_sums = row_sums[index]
-        scale_block = force_constants[index, :]
-    residual = float(np.max(np.abs(row_sums)))
-    scale = float(np.max(np.abs(scale_block))) if scale_block.size else 0.0
-    relative = residual / scale if scale > 0.0 else float("inf")
+    if index is not None:
+        index = np.unique(index)
+    residual, relative = acoustic_sum_residuals(force_constants, rows=index)
 
     report = {
         "residual_ev_per_A2": residual,
         "relative_residual": relative,
         "projected": False,
+        "projection_reason": None,
         "projection_norm": None,
         "residual_after_ev_per_A2": None,
         "dynamical": matrix,
@@ -230,11 +221,24 @@ def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3,
     if index is None:
         projected, _ = apply_asr(matrix, mass)
     else:
-        # apply_asr 要的是"每个原子一个质量",而 index 是自由度下标 —— 先折回原子。
-        atoms = np.unique(index // 3)
-        sub, _ = apply_asr(matrix[np.ix_(index, index)], mass[atoms])
+        basis = _translation_basis(mass)
+        outside = np.setdiff1d(np.arange(matrix.shape[0]), index)
+        device_basis = basis[index]
+        inverse = np.linalg.pinv(device_basis)
+        complement = np.eye(index.size) - device_basis @ inverse
+        # For D_cc T_c = -D_cl T_l, the action on translations is prescribed.
+        # Keep the optical-optical block and complete the cross terms by transpose.
+        required = -(matrix[np.ix_(index, outside)] @ basis[outside]) @ inverse
+        block = matrix[np.ix_(index, index)]
+        sub = complement @ block @ complement + required + required.T @ complement
         projected = matrix.copy()
-        projected[np.ix_(index, index)] = sub
+        projected[np.ix_(index, index)] = (sub + sub.T) * 0.5
+        # An asymmetric translation-translation target admits no reciprocal solution.
+        error = acoustic_residual_of(projected, mass, rows=index)
+        scale = float(np.max(np.abs(force_constants[index, :])))
+        if error > 32 * np.finfo(float).eps * matrix.shape[0] * scale:
+            report["projection_reason"] = "incompatible_fixed_coupling"
+            return report
     norm = float(np.linalg.norm(matrix))
     report.update(
         projected=True,
@@ -248,10 +252,7 @@ def asr_diagnostics(dynamical_ev2, masses, *, threshold: float = 1.0e-3,
 def acoustic_residual_of(dynamical_ev2, masses, *, rows=None) -> float:
     """投影后的残差:把 ``D`` 还原成 ``K`` 再取行和的最大绝对值(eV/Å²)。"""
     force_constants = _rebuild_force_constants(dynamical_ev2, masses)
-    row_sums = force_constants.sum(axis=1)
-    if rows is not None:
-        row_sums = row_sums[np.asarray(rows, dtype=int).ravel()]
-    return float(np.max(np.abs(row_sums)))
+    return acoustic_sum_residual(force_constants, rows)
 
 
 
@@ -383,7 +384,7 @@ class FullFCMeta:
             seen |= set(values)
 
 
-def _place_lead_block(fc: np.ndarray, lead: LeadFC, indices) -> None:
+def _place_lead_block(fc: np.ndarray, lead: LeadFC, indices, *, reflect_z=False) -> None:
     indices = tuple(indices)
     expected = lead.n_atoms
     if len(indices) != expected:
@@ -391,6 +392,11 @@ def _place_lead_block(fc: np.ndarray, lead: LeadFC, indices) -> None:
             "lead 区原子数 %d 与 lead 力常数原子数 %d 不符"
             % (len(indices), expected))
     block = lead.force_constants
+    if reflect_z:
+        # device.build_device mirrors z for every right-hand atom. Both Cartesian
+        # indices of K transform with Q = diag(1, 1, -1) under that reflection.
+        signs = np.tile([1., 1., -1.], expected)
+        block = block * signs[:, None] * signs[None, :]
     for a_pos, atom_a in enumerate(indices):
         for b_pos, atom_b in enumerate(indices):
             fc[3 * atom_a:3 * atom_a + 3, 3 * atom_b:3 * atom_b + 3] = \
@@ -415,7 +421,7 @@ def assemble_full_fc(k_dev: np.ndarray, lead: LeadFC, meta: FullFCMeta) -> np.nd
     n = int(meta.n_atoms)
     matrix = np.zeros((3 * n, 3 * n), dtype=float)
     _place_lead_block(matrix, lead, meta.left_indices)
-    _place_lead_block(matrix, lead, meta.right_indices)
+    _place_lead_block(matrix, lead, meta.right_indices, reflect_z=True)
 
     array = np.asarray(k_dev, dtype=float)
     expected = (3 * len(meta.device_indices), 3 * n)

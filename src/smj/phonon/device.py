@@ -62,12 +62,10 @@ class DeviceSpec:
     freeze_outer_layers: int = 1
 
     def __post_init__(self):
-        if self.electrode_layers < 2:
-            raise ValueError("electrode_layers 至少 2(表面层 + 至少一层 lead)")
-        if not 1 <= self.device_layers < self.electrode_layers:
+        if not 1 <= self.device_layers <= self.electrode_layers - 2:
             raise ValueError(
-                "device_layers 必须在 1..%d 之间(留至少一层给冻结 lead)"
-                % (self.electrode_layers - 1))
+                "每侧需要至少一层器件和两层冻结 lead：electrode_layers=%d, device_layers=%d"
+                % (self.electrode_layers, self.device_layers))
         if self.vacuum_A <= 0:
             raise ValueError("vacuum_A 必须为正")
         if self.in_plane[0] < 1 or self.in_plane[1] < 1:
@@ -207,8 +205,9 @@ def build_device(molecule_atoms: list[Atom], spec: DeviceSpec | None = None
 
     a1, a2 = fcc111_in_plane_vectors(spec.a_lattice_A, spec.in_plane)
     delta_z = DELTA_Z_PER_LAYER * (spec.a_lattice_A / 4.078230)
-    # ABC 堆垛:每层相对下一层沿 (a1+a2)/9 平移(最近邻的 1/3)
-    stack = ((a1[0] + a2[0]) / 9.0, (a1[1] + a2[1]) / 9.0)
+    # ABC 堆垛按两条原胞基矢之和的 1/3 平移，与超胞的面内尺寸无关。
+    nx, ny = spec.in_plane
+    stack = tuple((a1[k] / nx + a2[k] / ny) / 3.0 for k in (0, 1))
 
     layers = spec.electrode_layers
     surface_z = spec.au_s_distance_A  # 表面 Au 平面到 S 的距离

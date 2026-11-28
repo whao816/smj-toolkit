@@ -19,8 +19,9 @@ from typing import Any, Mapping
 import numpy as np
 
 from ..junction import criteria as _criteria
-from .landauer import thermal_conductance
-from .units import gq_pw_per_k
+from .landauer import (ACOUSTIC_ENERGY_EV, ACOUSTIC_TOL, DEFAULT_MAX_CHANNELS,
+                       MAX_ABOVE_BAND_T, NEGATIVE_TRANSMISSION_TOL, above_band,
+                       conductance_bound, thermal_conductance)
 
 __all__ = ["evaluate_thermal", "summarize"]
 
@@ -36,14 +37,8 @@ MAX_RELAX_FORCE = 1.0e-2
 #: 因此门限取实测底噪的两倍, 只用来抓"网格明显不够" (>5%) 这一档。
 MAX_GRID_DRIFT = 5.0e-2
 
-#: 带顶之上允许的最大透射（数值零）。
-MAX_ABOVE_BAND_T = 1.0e-6
-
 #: 声学支在 ω→0 的透射上限（k 平均口径，三条声学支）。
 MAX_ACOUSTIC_T = 3.0
-
-#: 能量低于此值才算"ω→0"（eV）。0.5 meV 远小于带顶 19.5 meV。
-ACOUSTIC_ENERGY_EV = 0.5e-3
 
 #: ASR 的**相对**残差门限（``max|Σ_j K_ij| / max|K|``，无量纲）。
 #:
@@ -73,6 +68,7 @@ def evaluate_thermal(
     relax_sc_accuracy_forces: str | None = None,
     lead_cell_match: bool | None = None,
     fc_asymmetry: float | None = None,
+    max_channels: float = DEFAULT_MAX_CHANNELS,
 ) -> dict:
     """按 ``CRITERIA`` 的十条热导判据评估一份 ``thermal.json``。
 
@@ -85,13 +81,12 @@ def evaluate_thermal(
     g_ph = float(thermal["g_ph_pw_per_k"])
     band_top_mev = float(thermal["band_top_meV"])
     temperature = float(thermal["temperature_K"])
-    band_top = band_top_mev * 1.0e-3
 
     checks: list[dict] = []
 
     checks.append(_check(
-        "ph_transmission_present", passed=True,
-        detail="spectrum 有 %d 个能量点（0-%.1f meV）" % (energy.size, energy[-1] * 1e3)))
+        "ph_transmission_present", passed=bool(np.all(t_ph >= -NEGATIVE_TRANSMISSION_TOL)),
+        detail="spectrum 有 %d 个能量点，最小透射 %.3g" % (energy.size, np.min(t_ph))))
 
     if relax_max_force is None:
         detail = "没找到 thermal_relax/aims.out 的力块，无法判定收敛"
@@ -105,24 +100,28 @@ def evaluate_thermal(
             relax_max_force, MAX_RELAX_FORCE, relax_sc_accuracy_forces)
     checks.append(_check("ph_relax_converged", passed=passed, detail=detail))
 
-    above = energy > band_top * (1.0 + 1.0e-9)
-    t_above = float(np.max(np.abs(t_ph[above]))) if np.any(above) else 0.0
-    checks.append(_check(
-        "ph_band_top_zero", passed=t_above < MAX_ABOVE_BAND_T,
-        detail="带顶 %.1f meV 之上 %d 点，max|T|=%.1e（门限 %.0e）"
-               % (band_top_mev, int(above.sum()), t_above, MAX_ABOVE_BAND_T)))
+    above = above_band(spectrum["energy_meV"], band_top_mev)
+    if np.any(above):
+        t_above = float(np.max(np.abs(t_ph[above])))
+        passed = t_above <= MAX_ABOVE_BAND_T
+        detail = "带顶 %.1f meV 之上 %d 点，max|T|=%.1e（门限 %.0e）" % (
+            band_top_mev, int(above.sum()), t_above, MAX_ABOVE_BAND_T)
+    else:
+        passed = None
+        detail = "带顶 %.1f meV 以上缺少采样" % band_top_mev
+    checks.append(_check("ph_band_top_zero", passed=passed, detail=detail))
 
-    g_q = gq_pw_per_k(temperature)
+    bound = conductance_bound(temperature, max_channels)
     checks.append(_check(
-        "ph_quantum_bound", passed=g_ph < 3.0 * g_q,
-        detail="G_ph=%.3f pW/K，3*G_Q(%.0f K)=%.3f pW/K"
-               % (g_ph, temperature, 3.0 * g_q)))
+        "ph_quantum_bound", passed=g_ph <= bound,
+        detail="G_ph=%.3f pW/K，%g 通道上限为 %.3f pW/K（%.1f K）"
+               % (g_ph, max_channels, bound, temperature)))
 
     low = energy <= ACOUSTIC_ENERGY_EV
     t_low = float(t_ph[0]) if t_ph.size else float("nan")
     checks.append(_check(
         "ph_acoustic_limit",
-        passed=(t_low <= MAX_ACOUSTIC_T) if low.any() else None,
+        passed=(t_low <= MAX_ACOUSTIC_T + ACOUSTIC_TOL) if low.any() else None,
         detail="T_ph(%.3f meV)=%.4f（k 平均口径，上限 %.0f）"
                % (energy[0] * 1e3, t_low, MAX_ACOUSTIC_T)))
 
@@ -140,6 +139,17 @@ def evaluate_thermal(
         norm = thermal.get("asr_projection_norm")
         detail += ("；已做 ASR 投影（相对投影量 %s）"
                    % ("%.2e" % float(norm) if isinstance(norm, (int, float)) else "未记录"))
+    transport = thermal.get("transport_asr") or {}
+    retained = transport.get("relative_residual")
+    if isinstance(retained, (int, float)) and math.isfinite(retained):
+        passed = passed and retained <= MAX_ASR_RELATIVE
+        detail += "；输运分区投影前相对残差 %.2e" % retained
+        if thermal.get("asr_projection_reason") == "incompatible_fixed_coupling":
+            detail += "；固定界面耦合与平移约束不相容"
+    else:
+        if passed:
+            passed = None
+        detail += "；输运分区 ASR 未记录"
     checks.append(_check("ph_asr_residual", passed=passed, detail=detail))
 
     if fc_asymmetry is None:      # 未显式给出时退回 thermal.json 里记录的值
@@ -179,7 +189,7 @@ def evaluate_thermal(
         if energy[coarse].size >= 2 and g_ph > 0.0:
             g_coarse = thermal_conductance(
                 energy[coarse], t_ph[coarse], temperature,
-                band_top_mev=band_top_mev)
+                band_top_mev=band_top_mev, max_channels=max_channels)
             drift = abs(g_coarse - g_ph) / g_ph
             passed = drift < MAX_GRID_DRIFT
             detail += "：ΔG/G=%.3e（门限 %.0e）" % (drift, MAX_GRID_DRIFT)

@@ -129,10 +129,7 @@ def test_thermal_fc_prepare_renders_array_script(workdir):
     script = (fc_dir / "sub_thermal_fc.sh").read_text(encoding="utf-8")
     assert "--array=0-323%8" in script
     assert ".finalize.lock" in script
-    # 汇总数的是隐藏文件 .done。写成 ../*/done 会永远数到 0,哨兵和
-    # forces_all.json 都不产生(job 26560 实际踩过)。
-    assert "../*/.done 2>/dev/null | wc -l" in script
-    assert "../*/done" not in script
+    assert "../%04d/.done" in script
     assert "concat_forces.py" in script
     assert "apply_displacement.py" in script
     assert "extract_forces.py" in script
@@ -142,6 +139,25 @@ def test_thermal_fc_prepare_renders_array_script(workdir):
     assert not any(line.strip().startswith("restart")
                    for line in control.splitlines())
     assert "k_grid 3 3 1" in control
+
+    # An archived prepared job can retry with current batching code without
+    # regenerating its displacement definitions or its electronic input.
+    from types import SimpleNamespace
+    from smj.cli import _cmd_thermal_retry
+
+    (fc_dir / "sub_thermal_fc.sh").write_text("# old script\n", encoding="utf-8")
+    (fc_dir / "concat_forces.py").write_text("# old helper\n", encoding="utf-8")
+    old_inputs = {name: (fc_dir / name).read_bytes()
+                  for name in ("geometry.in", "displacements.json", "control.in")}
+    runner.config.run.mode = "slurm-ssh"
+    submissions = []
+    runner.submit = lambda *args, **kwargs: submissions.append(kwargs)
+    args = SimpleNamespace(retry="0,2", force=False, json=True)
+    _cmd_thermal_retry(args, runner.config, runner, ("thermal_fc",))
+    assert submissions[0]["sbatch_args"] == ("--array=0,2%8",)
+    assert (fc_dir / "sub_thermal_fc.sh").read_text(encoding="utf-8") == script
+    assert "scan_aims" in (fc_dir / "concat_forces.py").read_text(encoding="utf-8")
+    assert all((fc_dir / name).read_bytes() == data for name, data in old_inputs.items())
 
 
 def _spring_fc(atoms, k=0.5, cutoff=2.9):
@@ -217,6 +233,9 @@ def test_thermal_analyze_writes_thermal_json(workdir):
     # ASR 残差是**诊断量**而不是硬零：器件行来自实测、lead 行来自冻结 lead，
     # 交界处本来就不闭合。这里只要求它被算出来、有限。
     assert np.isfinite(payload["acoustic_sum_residual"])
+    assert payload["transport_matrix_protocol"] == "reciprocal_principal_layer_v1"
+    assert payload["transport_asr"]["residual_ev_per_A2"] >= 0.
+    assert set(payload["discarded_device_lead_max_ev_per_A2"]) == {"left", "right"}
     assert 0.0 <= payload["acoustic_sum_relative_residual"] < 10.0
     assert 0.0 < payload["g_ph_pw_per_k"] < 3.0 * payload["g_quantum_pw_per_k"]
     spectrum = payload["spectrum"]
@@ -227,6 +246,34 @@ def test_thermal_analyze_writes_thermal_json(workdir):
         payload["g_ph_pw_per_k"], rel=1e-12)
     # 没有电子链结果时 zt 只报不可用,不编数
     assert payload["zt"]["available"] is False
+
+
+def test_transport_matrix_diagnoses_truncation_and_preserves_reciprocity():
+    from smj.stages.thermal_analyze import _transport_matrix, _curve_factory
+    from smj.phonon.dynamical import acoustic_sum_residual
+
+    # 0,5 = outer; 1,4 = principal; 2,3 = device. All raw x rows close.
+    scalar = np.diag([2.] * 6) - np.diag(np.ones(5), 1) - np.diag(np.ones(5), -1)
+    scalar[2, 0] = scalar[0, 2] = -.25
+    scalar[2, 3] -= .125
+    scalar[2, 2] += .375
+    k = np.kron(scalar, np.diag([1., 0., 0.]))
+    rows = np.arange(6, 12)
+    assert acoustic_sum_residual(k, rows) == 0.
+    diagnostics, omitted = _transport_matrix(k, np.ones(6), rows, [0], [5])
+    assert omitted == {"left": .25, "right": 0.}
+    assert diagnostics["residual_ev_per_A2"] == pytest.approx(.3125)
+    assert diagnostics["residual_after_ev_per_A2"] < 1e-12
+    d = diagnostics["dynamical"]
+    np.testing.assert_allclose(d, d.T, atol=1e-14)
+    assert not d[rows, :3].any()
+    built = dict(centre=rows, left_pl=[1], left_outer=[0], right_pl=[4], right_outer=[5])
+    swapped = dict(centre=rows, left_pl=[4], left_outer=[5], right_pl=[1], right_outer=[0])
+    energy = np.linspace(.01, .05, 7)
+    forward = _curve_factory(built, energy, .00005)(d)
+    reverse = _curve_factory(swapped, energy, .00005)(d)
+    assert forward.max() > .01
+    np.testing.assert_allclose(forward, reverse, atol=1e-11)
 
 
 def test_thermal_cli_help_and_disabled(workdir, capsys):
@@ -283,15 +330,21 @@ def test_thermal_criteria_registered():
     assert not (problems - set(KNOWN_GAPS)) & set(ph)
 
 
-def test_thermal_analyze_zt_folds_electronic(workdir):
-    """``ZT_total = ZT_e/(1+G_ph/k_e)``:电子链在时按这个式子折进去。"""
+@pytest.mark.parametrize("temperature", [300, 100, None])
+def test_thermal_analyze_zt_folds_electronic(workdir, temperature):
+    from types import SimpleNamespace
     from smj.stages.thermal_analyze import ThermalAnalyzeStage
 
-    assert ThermalAnalyzeStage._zt_payload  # 存在性
-    # 直接验证公式,避免依赖完整 run
-    zt_e, k_e, g_ph = 0.115479, 223.992, 20.0
-    zt_total = zt_e / (1.0 + g_ph / k_e)
-    assert zt_total == pytest.approx(0.1060132, abs=1e-6)
+    path = workdir / "results.json"
+    electronic = {"ZT_electronic": 0.5, "k_e_pW_per_K": 10}
+    if temperature is not None:
+        electronic["temperature_K"] = temperature
+    path.write_text(json.dumps(electronic), encoding="utf-8")
+    result = ThermalAnalyzeStage._zt_payload(SimpleNamespace(artifact=lambda *_: path), 10, 300)
+    if temperature == 300:
+        assert result["available"] and result["zt_total"] == 0.25
+    else:
+        assert not result["available"] and "温度" in result["reason"]
 
 def test_dof_indices_map_atoms_to_three_degrees_of_freedom():
     """D 是 3N×3N：原子下标必须先换算成自由度下标。

@@ -165,6 +165,14 @@ def test_adjacent_layers_keep_abc_stacking(device4):
             assert planar > 1.0, "层间原子在同一 xy 柱上(AA 堆垛)"
 
 
+def test_abc_offset_uses_primitive_vectors_in_rectangular_supercell():
+    atoms, meta = build_device(MOLECULE, DeviceSpec(in_plane=(2, 4)))
+    left = meta.left_lead_indices
+    surface_shift = np.array(atoms[left[8]].coord()) - atoms[left[0]].coord()
+    a, b = np.asarray(meta.lattice[:2])
+    np.testing.assert_allclose(surface_shift[:2], ((a / 2 + b / 4) / 3)[:2])
+
+
 def test_six_layers_gives_126_atoms():
     atoms, meta = build_device(MOLECULE, DeviceSpec(electrode_layers=6))
     assert meta.n_atoms == 18 + 2 * 6 * 9 == 126
@@ -176,6 +184,8 @@ def test_spec_validation():
         DeviceSpec(electrode_layers=1)
     with pytest.raises(ValueError):
         DeviceSpec(electrode_layers=4, device_layers=4)
+    with pytest.raises(ValueError):
+        DeviceSpec(electrode_layers=4, device_layers=3)
     with pytest.raises(ValueError):
         DeviceSpec(vacuum_A=0.0)
     with pytest.raises(ValueError):

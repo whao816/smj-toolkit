@@ -87,12 +87,23 @@ def test_rejects_more_acoustic_channels_than_exist():
 
 
 def test_rejects_conductance_above_quantum_bound():
-    """T_ph ≡ 10(但 t(0)=0 以绕过声学检查)必须被量子上限拦住。"""
+    """带内四通道可通过四通道协议，超过默认三通道总热导上限。"""
     e = _grid(300.0, x_max=30.0)
-    t = np.full_like(e, 10.0)
+    t = np.full_like(e, 4.0)
     t[0] = 0.0
     with pytest.raises(ValueError, match="G_Q"):
         landauer.thermal_conductance(e, t, 300.0, band_top_mev=1.0e9)
+    assert landauer.thermal_conductance(
+        e, t, 300.0, band_top_mev=1e9, max_channels=4) < 4 * units.gq_pw_per_k(300)
+
+
+@pytest.mark.parametrize("integrate", [landauer.thermal_conductance,
+                                       landauer.cumulative_thermal_conductance])
+def test_negative_transmission_integrals(integrate):
+    energy = np.linspace(0.0, 0.01, 11)
+    with pytest.raises(ValueError, match="负"):
+        integrate(energy, -np.ones_like(energy), 300)
+    assert np.all(integrate(energy, np.full_like(energy, -1e-15), 300) == 0)
 
 
 # --- 累积热导 -------------------------------------------------------------

@@ -344,8 +344,8 @@ class ThermalFCConfig:
     #: 中心差分位移幅度(Å)。0.01 Å 是 Sadeghi–Lambert 组的标准做法；
     #: 本仓更小会让力噪声(1e-4 eV/Å)主导，更大则非谐截断误差上升。
     displacement: float = 0.01
-    #: 力常数截断半径(Å)。<7 Å 直接拒绝：4 层 lead 沿 z 的跨度就是 7.06 Å。
-    cutoff: float = 10.0
+    #: 冻结 lead 资产的截断半径(Å)。缺省使用资产值，显式指定时必须与资产一致。
+    cutoff: float | None = None
     #: Slurm 数组并发数。gpu1 是 64 核、每作业 8 核 → 上限 8（不是 16）。
     array_parallel: int = 8
     array_time_limit: str = "06:00:00"
@@ -927,15 +927,16 @@ def _parse_thermal(data: Mapping[str, Any], warnings: list[str]) -> ThermalConfi
                                     "thermal.electrode.freeze_outer_layers",
                                     minimum=0),
     )
-    if electrode.device_layers >= electrode.layers:
+    if electrode.layers - electrode.device_layers < 2:
         raise ConfigError(
-            "thermal.electrode.device_layers(%d) 必须小于 layers(%d)："
-            "至少留一层给冻结 lead" % (electrode.device_layers, electrode.layers))
+            "thermal.electrode.layers(%d) 减去 device_layers(%d) 必须至少为 2，"
+            "以构造冻结主层及其外邻" % (electrode.layers, electrode.device_layers))
 
     fc = ThermalFCConfig(
         displacement=_as_float(fc_raw.get("displacement", 0.01),
                                "thermal.fc.displacement"),
-        cutoff=_as_float(fc_raw.get("cutoff", 10.0), "thermal.fc.cutoff"),
+        cutoff=(_as_float(fc_raw["cutoff"], "thermal.fc.cutoff")
+                if fc_raw.get("cutoff") is not None else None),
         array_parallel=_as_int(fc_raw.get("array_parallel", 8),
                                "thermal.fc.array_parallel", minimum=1),
         array_time_limit=_as_str(fc_raw.get("array_time_limit", "06:00:00"),
@@ -951,7 +952,7 @@ def _parse_thermal(data: Mapping[str, Any], warnings: list[str]) -> ThermalConfi
         raise ConfigError(
             "thermal.fc.displacement 应在 (0, 0.05] Å，实际是 %s（0.01 Å 是标准值）"
             % fc.displacement)
-    if fc.cutoff < 7.0:
+    if fc.cutoff is not None and not 7.0 <= fc.cutoff < float("inf"):
         raise ConfigError(
             "thermal.fc.cutoff 应 >= 7.0 Å，实际是 %s：4 层 lead 沿 z 的跨度就是 7.06 Å，"
             "更小的截断会把相邻层的耦合切掉" % fc.cutoff)

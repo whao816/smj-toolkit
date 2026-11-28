@@ -9,24 +9,25 @@ lead 只是它的头两段。用带真空的板会把表面弛豫效应混进本
 的做法相同（"a big cluster of several hundred atoms" 另算一次 + decimation），
 器件区与 lead 化学环境不一致是显式接受的近似（方案 §3.5）。
 
-为什么只位移一层：6 层周期胞里，层 0 与层 1 之间的力常数只有一个直接耦合
-（另一个方向的近邻在 5 层之外，超出 10 Å 截断），所以不存在 ± 两个像叠加的
-双计问题。层 1 的行块由平移对称性给出：``K(1,1) = K(0,0)``、``K(1,0) = K(0,1)^T``。
+分别位移层 0（A）与层 1（B）时，组装先比较实测 AB 与 BA 转置的差异，再对称化。
+只有 A 层位移时，沿用 BB=AA、BA=AB 转置的近似，并在资产来源中标明。
 
 为什么 k_grid 1 1 1：3×3 超胞 + Γ 等价于原胞 3×3 横向 k 网格；再叠 3×3×1
 k 点相当于原胞 9×9，对力常数没有意义，只是把机时乘 4（实测单迭代 53 s → 15 s）。
 
 用法::
 
-    python scripts/gen_au_lead_fc.py --out runs/au-lead-fc --species-dir demo/.../species
-    # 跑完后（作业目录里 324/54 个 force 文件齐全）
-    python scripts/gen_au_lead_fc.py --assemble runs/au-lead-fc --out src/smj/junction/data/au111_3x3_l4
+    python scripts/gen_au_lead_fc.py --out lead-a --species-dir demo/.../species
+    python scripts/gen_au_lead_fc.py --out lead-b --reference-layer 1 --species-dir demo/.../species
+    # 两套位移作业均有完整力文件后
+    python scripts/gen_au_lead_fc.py --assemble lead-a lead-b --out lead-asset
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import shutil
 import sys
 from pathlib import Path
@@ -36,15 +37,159 @@ import numpy as np
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "src"))
 
-from smj.junction.geometry import Atom, write_aims_geometry          # noqa: E402
+from smj.junction.geometry import Atom, read_aims_geometry, write_aims_geometry  # noqa: E402
 from smj.junction.tcontrol import make_control                       # noqa: E402
 from smj.phonon.fc import assemble_fc, make_displacements, save_lead_fc  # noqa: E402
+from smj.phonon.geometry import atom_distances                        # noqa: E402
+from smj.phonon.concat_forces import scan_aims                         # noqa: E402
+from smj.stages.thermal_fc import ThermalFcStage                      # noqa: E402
 from smj.stages._thermal_common import THERMAL_OCCUPATION_WIDTH_EV  # noqa: E402
 from smj.phonon.forces import read_forces                            # noqa: E402
-from smj.phonon.units import ELEMENT_MASS_AMU                        # noqa: E402
 
 A_LATTICE_AU = 4.078230
-DELTA_Z_PER_LAYER = A_LATTICE_AU / np.sqrt(3.0)      # 2.35455 Å，与 device.py 同源
+
+# Both the login-node submit command and each array worker use the same check.
+_LEAD_JOB_DIR = r"""
+if [[ ${1:-} != --submit ]]; then
+    cd -- "${SLURM_SUBMIT_DIR:?missing Slurm submit directory}" || exit 1
+fi
+_home=$(cd -P -- "${HOME:?missing home directory}" && pwd -P) || exit 1
+_stage=$(pwd -P) || exit 1
+_parent=${PWD%/*}
+_run=${_parent##*/}
+_rel="smj-runs/$_run/lead_fc"
+check_lead_dir() {
+    local LC_ALL=C
+    [[ $_run =~ ^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$ && ${#_run} -le 40 &&
+       $_stage == "$_home/$_rel" && ( $PWD == "$HOME/$_rel" || $PWD == "$_stage" ) ]]
+}
+if ! check_lead_dir; then
+    echo 'Run this job from $HOME/smj-runs/<run-name>/lead_fc.' >&2
+    exit 1
+fi
+# An old linked output or slot could redirect the calculation outside the stage.
+_link=$(find . -ignore_readdir_race -type l -print -quit) || exit 1
+if [[ -n $_link ]]; then
+    echo "Refusing symlink in lead_fc: $_link" >&2
+    exit 1
+fi
+if [[ ${1:-} == --submit ]]; then
+    if [[ $# -ne 1 ]]; then
+        echo 'Usage: bash sub_lead_fc.sh --submit' >&2
+        exit 1
+    fi
+    exec sbatch --chdir="$_stage" --output='slurm-%A_%a.out' --error='slurm-%A_%a.out' sub_lead_fc.sh
+fi
+"""
+
+
+def _geometry(path: Path):
+    atoms = read_aims_geometry(path)
+    if any(atom.element != "Au" for atom in atoms):
+        raise ValueError(f"{path}: expected only Au atoms")
+    vectors = [line.split()[1:4] for line in path.read_text(encoding="utf-8").splitlines()
+               if line.split()[:1] == ["lattice_vector"]]
+    return np.asarray(vectors, dtype=float), np.array([atom.coord() for atom in atoms])
+
+
+def _read_reference(case: Path):
+    meta = json.loads((case / "lead_case.json").read_text(encoding="utf-8"))
+    in_plane = meta["in_plane"]
+    n_atoms = meta["n_atoms"]
+    layers = meta["layers"]
+    if (len(in_plane) != 2 or any(type(v) is not int or v < 1 for v in in_plane)
+            or type(layers) is not int or layers < 3 or layers % 3
+            or n_atoms != layers * math.prod(in_plane)
+            or not math.isfinite(meta["a_lattice_A"]) or meta["a_lattice_A"] <= 0):
+        raise ValueError(f"{case}: invalid Au supercell metadata")
+    lattice, positions = _geometry(case / "geometry.in")
+    if (positions.shape != (n_atoms, 3) or lattice.shape != (3, 3)
+            or not np.isfinite(positions).all() or not np.isfinite(lattice).all()):
+        raise ValueError(f"{case}: invalid geometry.in")
+
+    records = json.loads((case / "displacements.json").read_text(encoding="utf-8"))
+    if isinstance(records, dict):
+        records = records["displacements"]
+    per = math.prod(in_plane)
+    if len(records) != 6 * per or meta["n_displacements"] != len(records):
+        raise ValueError(f"{case}: incomplete displacement manifest")
+    atoms = sorted({record["atom"] for record in records})
+    layer = atoms[0] // per
+    if (layer not in (0, 1) or atoms != layer_indices(in_plane, layers, layer)
+            or sorted(meta["surface_layer_indices"]) != atoms
+            or meta.get("reference_layer", layer) != layer):
+        raise ValueError(f"{case}: displaced atoms must match reference layer 0 or 1")
+    slots = [rec["slot"] for rec in records]
+    if sorted(slots) != list(range(len(records))):
+        raise ValueError(f"{case}: invalid or duplicated displacement slots")
+    records = sorted(records, key=lambda rec: rec["slot"])
+    atoms = sorted({record["atom"] for record in records})
+    step = abs(records[0]["delta_A"])
+    if not math.isfinite(step) or step == 0.0:
+        raise ValueError(f"{case}: non-finite or zero displacement step")
+    bundle_path = case / "forces_all.json"
+    summary_path = case / "fc_summary.json"
+    if bundle_path.is_file():
+        force_blocks, summary = ThermalFcStage._read_force_data(
+            case, len(records), n_atoms)
+        source = "forces_all.json"
+        evidence = "converged (summary)" if summary is not None else "unknown (bundle without summary)"
+    else:
+        force_blocks = []
+        summary = ThermalFcStage._read_json(summary_path) if summary_path.is_file() else None
+        if summary is not None:
+            ThermalFcStage._check_scf(summary, len(records))
+            evidence = "converged (summary)"
+        else:
+            evidence = "unknown"
+        sources = set()
+        log_status = []
+        for rec in records:
+            slot_dir = case / "fc" / ("%04d" % rec["slot"])
+            forces_path = slot_dir / "forces.json"
+            log_path = slot_dir / "aims.out"
+            if forces_path.is_file():
+                payload = json.loads(forces_path.read_text(encoding="utf-8"))
+                if payload.get("n_atoms", n_atoms) != n_atoms:
+                    raise ValueError(f"{forces_path}: atom count does not match")
+                force = np.asarray(payload["forces"], dtype=float)
+                sources.add("forces.json")
+            elif log_path.is_file():
+                force = read_forces(log_path, n_atoms=n_atoms)
+                sources.add("aims.out")
+            else:
+                raise FileNotFoundError(f"{slot_dir}: missing forces.json and aims.out")
+            force_blocks.append(force)
+            if summary is None and log_path.is_file():
+                log_status.append(scan_aims(
+                    log_path.read_text(encoding="utf-8", errors="replace"))["converged"])
+        if summary is None and log_status:
+            if False in log_status:
+                raise ValueError(f"{case}: explicit unconverged SCF evidence in aims.out")
+            if len(log_status) == len(records) and all(status is True for status in log_status):
+                evidence = "converged (aims.out)"
+        source = "+".join(sorted(sources))
+        if len(sources) > 1:
+            source = "mixed " + source
+    forces = []
+    for rec, force in zip(records, force_blocks):
+        if (type(rec["atom"]) is not int or type(rec["axis"]) is not int
+                or rec["axis"] not in (0, 1, 2) or type(rec["slot"]) is not int
+                or rec["sign"] not in (-1, 1) or rec["delta_A"] != rec["sign"] * step):
+            raise ValueError(f"{case}: invalid displacement at slot {rec['slot']}")
+        if force.shape != (n_atoms, 3) or not np.isfinite(force).all():
+            raise ValueError(f"{case}: invalid force data at slot {rec['slot']}")
+        forces.append(force)
+    # assemble_fc enumerates the measured atoms in sorted order. The equality
+    # above establishes the actual row IDs even if slots are interleaved.
+    fc = assemble_fc(records, forces, n_atoms)
+    return layer, fc, meta, step, positions, lattice, source, evidence
+
+
+def _directional_asr(matrix):
+    """逐笛卡尔平移方向检查实测矩阵行，可接受未测全的矩形矩阵。"""
+    sums = np.asarray(matrix).reshape(matrix.shape[0], -1, 3).sum(axis=1)
+    return float(np.max(np.abs(sums)))
 
 
 def in_plane_vectors(a_lattice: float, in_plane: tuple[int, int]):
@@ -65,17 +210,20 @@ def build_bulk_cell(layers: int = 6, in_plane: tuple[int, int] = (3, 3),
     if layers < 3 or layers % 3:
         raise SystemExit("layers 必须是 3 的倍数（ABC 堆垛周期），得到 %d" % layers)
     n0, n1 = in_plane
+    if n0 < 1 or n1 < 1 or not math.isfinite(a_lattice) or a_lattice <= 0:
+        raise ValueError("面内尺寸和晶格常数必须为正")
     a1, a2 = in_plane_vectors(a_lattice, in_plane)
-    shift = (a1 + a2) / (3.0 * n0)          # 面内 ABC 堆垛位移（原胞 (a1+a2)/3）
+    shift = a1 / (3.0 * n0) + a2 / (3.0 * n1)
+    dz = a_lattice / np.sqrt(3.0)
     atoms = []
     for layer in range(layers):
-        z = layer * DELTA_Z_PER_LAYER - (layers - 1) * DELTA_Z_PER_LAYER / 2.0
+        z = layer * dz - (layers - 1) * dz / 2.0
         offset = shift * (layer % 3)
         for i in range(n0):
             for j in range(n1):
                 p = a1 * (i / n0) + a2 * (j / n1) + offset
                 atoms.append(Atom("Au", float(p[0]), float(p[1]), float(z)))
-    lattice = (tuple(a1), tuple(a2), (0.0, 0.0, layers * DELTA_Z_PER_LAYER))
+    lattice = (tuple(a1), tuple(a2), (0.0, 0.0, layers * dz))
     return atoms, lattice
 
 
@@ -86,12 +234,14 @@ def layer_indices(in_plane: tuple[int, int], layers: int, layer: int):
 
 def generate(out: Path, *, species_dir: Path, layers: int, in_plane: tuple[int, int],
              ntasks: int, partition: str, mem: str, walltime: str,
-             array_parallel: int, module_load: str) -> Path:
+             array_parallel: int, module_load: str, reference_layer: int = 0) -> Path:
     atoms, lattice = build_bulk_cell(layers, in_plane)
     out.mkdir(parents=True, exist_ok=True)
     write_aims_geometry(out / "geometry.in", atoms, lattice=lattice)
 
-    surface = layer_indices(in_plane, layers, 0)
+    if reference_layer not in (0, 1) or reference_layer >= layers:
+        raise ValueError("reference_layer 只能为 0 或 1")
+    surface = layer_indices(in_plane, layers, reference_layer)
     disps = make_displacements(len(atoms), surface, 0.01)
     # 与 thermal_fc 阶段同格式:裸数组。apply_displacement.load_manifest 只收
     # 数组,写成 {"displacements": [...]} 会让每个数组任务在第一步就退出。
@@ -112,7 +262,7 @@ def generate(out: Path, *, species_dir: Path, layers: int, in_plane: tuple[int, 
                 / "sub_thermal_fc.sh").read_text(encoding="utf-8")
     script = template.format(
         partition=partition, ntasks=ntasks, mem=mem, walltime=walltime,
-        module_load=module_load, exe_define="",
+        module_load=_LEAD_JOB_DIR + module_load, exe_define="",
         # gpu1 的节点带 Gres=gpu:4，不显式要 gpu:0 时 Slurm 会把整节点 4 张卡
         # 都算给该作业，于是数组任务之间无法并行（详见 _thermal_common._gres_line）。
         gres_line="--gres=gpu:0",
@@ -122,112 +272,104 @@ def generate(out: Path, *, species_dir: Path, layers: int, in_plane: tuple[int, 
         last=len(disps) - 1, parallel=array_parallel, count=len(disps))
     with open(out / "sub_lead_fc.sh", "w", encoding="utf-8", newline="\n") as handle:
         handle.write(script)
-    for name in ("apply_displacement.py", "extract_forces.py"):
+    for name in ("apply_displacement.py", "extract_forces.py", "concat_forces.py"):
         shutil.copyfile(_ROOT / "src" / "smj" / "phonon" / name, out / name)
 
     meta = {"layers": layers, "in_plane": list(in_plane), "n_atoms": len(atoms),
             "a_lattice_A": A_LATTICE_AU, "n_displacements": len(disps),
-            "surface_layer_indices": surface}
+            "surface_layer_indices": surface, "reference_layer": reference_layer}
     (out / "lead_case.json").write_text(json.dumps(meta, indent=2) + "\n",
                                         encoding="utf-8")
     return out
 
 
-def assemble(case: Path, out: Path, *, cutoff: float = 10.0) -> int:
-    meta = json.loads((case / "lead_case.json").read_text(encoding="utf-8"))
-    in_plane = tuple(meta["in_plane"])
-    layers = int(meta["layers"])
-    n_atoms = int(meta["n_atoms"])
-    per = in_plane[0] * in_plane[1]
-    _manifest = json.loads((case / "displacements.json").read_text(encoding="utf-8"))
-    disps = _manifest["displacements"] if isinstance(_manifest, dict) else _manifest
+def assemble(case: Path | list[Path], out: Path, *, cutoff: float = 10.0) -> int:
+    cases = [case] if isinstance(case, (Path, str)) else case
+    if len(cases) not in (1, 2) or not math.isfinite(cutoff) or cutoff <= 0.0:
+        raise ValueError("Provide one or two reference layers and a positive finite cutoff")
+    measured = {}
+    sources = {}
+    force_inputs = {}
+    for path in map(Path, cases):
+        layer, rows, meta, step, positions, lattice, force_source, scf_evidence = _read_reference(path)
+        if layer in measured:
+            raise ValueError("Duplicate reference layer %d" % layer)
+        settings = (meta["layers"], meta["in_plane"], meta["a_lattice_A"], step)
+        if measured:
+            if (settings != first_settings or not np.array_equal(positions, first_positions)
+                    or not np.array_equal(lattice, first_lattice)):
+                raise ValueError("Reference cases have different supercells or displacement settings")
+            control = (path / "control.in").read_text(encoding="utf-8")
+            if control != (Path(cases[0]) / "control.in").read_text(encoding="utf-8"):
+                raise ValueError("Reference cases have different control.in settings")
+        else:
+            first_settings, first_positions, first_lattice = settings, positions, lattice
+        measured[layer] = rows
+        sources[layer] = str(path)
+        force_inputs[layer] = {"source": force_source, "scf_evidence": scf_evidence}
+    if 0 not in measured:
+        raise ValueError("A layer-1 case requires its matching layer-0 case")
 
-    forces = []
-    for rec in disps:
-        path = case / "fc" / ("%04d" % rec["slot"]) / "forces.json"
-        if not path.exists():
-            raise SystemExit("数组作业没跑完: %s 不存在" % path)
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        # extract_forces 写的是 {"n_atoms", "forces", "block_index", "n_blocks"}
-        forces.append(np.asarray(payload["forces"], dtype=float))
-    full = assemble_fc(disps, forces, n_atoms)      # (3*n_surface, 3*n_atoms)
-    rows_l0 = np.arange(3 * per)
-    cols_l0 = np.arange(3 * per)
-    cols_l1 = np.arange(3 * per, 6 * per)
-    k00 = full[np.ix_(rows_l0, cols_l0)]
-    k01 = full[np.ix_(rows_l0, cols_l1)]
-
-    # 层 1 的行块由平移对称性给出：K(1,1) = K(0,0)、K(1,0) = K(0,1)^T
-    block = np.zeros((6 * per, 6 * per), dtype=float)
-    block[:3 * per, :3 * per] = k00
-    block[:3 * per, 3 * per:] = k01
-    block[3 * per:, :3 * per] = k01.T
-    block[3 * per:, 3 * per:] = k00
-    block = 0.5 * (block + block.T)                 # 张量对称化
-
-    # 截断：面内按最小像折算，再叠上真实层间距
-    positions = np.array([[a.x, a.y, a.z] for a in build_bulk_cell(layers, in_plane)[0]])
-    a1, a2 = in_plane_vectors(A_LATTICE_AU, in_plane)
-    cell2 = np.array([[a1[0], a1[1]], [a2[0], a2[1]]])
-    inverse = np.linalg.inv(cell2)
-    dropped = 0
+    layers, in_plane, a_lattice, step = first_settings
+    per = math.prod(in_plane)
+    split = 3 * per
+    aa, ab = measured[0][:, :split], measured[0][:, split:2 * split]
+    intra_reciprocity = None
+    inter_reciprocity = None
+    if 1 in measured:
+        ba, bb = measured[1][:, :split], measured[1][:, split:2 * split]
+        intra_a = float(np.max(np.abs(aa - aa.T)))
+        intra_b = float(np.max(np.abs(bb - bb.T)))
+        intra_reciprocity = max(intra_a, intra_b)
+        inter_reciprocity = float(np.max(np.abs(ab - ba.T)))
+        method = "measured A+B rows, reciprocal pairs averaged"
+    else:
+        ba, bb = ab.T, aa
+        method = "A-only approximation (BB=AA, BA=AB.T)"
+    raw = np.block([[aa, ab], [ba, bb]])
+    block = 0.5 * (raw + raw.T)
     pair = 2 * per
-    for row in range(pair):
-        for col in range(pair):
-            atom_a = row // 3 + (per if row >= 3 * per else 0)
-            atom_b = col // 3 + (per if col >= 3 * per else 0)
-            delta = positions[atom_a] - positions[atom_b]
-            frac = inverse @ delta[:2]
-            wrapped = (frac - np.round(frac)) @ cell2
-            distance = float(np.linalg.norm(np.array([wrapped[0], wrapped[1], delta[2]])))
-            if distance > cutoff:
-                block[3 * row:3 * row + 3, 3 * col:3 * col + 3] = 0.0
-                dropped += 1
+    drop = atom_distances(first_positions[:pair], first_lattice) > cutoff
+    block[drop.repeat(3, axis=0).repeat(3, axis=1)] = 0.0
 
-    save_lead_fc(out, block, element="Au", a_lattice_A=A_LATTICE_AU,
+    source = (f"gen_au_lead_fc.py: {in_plane[0]}x{in_plane[1]}x{layers} bulk, "
+              f"{step:g} A central differences, {method}")
+    save_lead_fc(out, block, element="Au", a_lattice_A=a_lattice,
                  n_atoms_per_layer=per, layers=2, in_plane=in_plane,
-                 fc_cutoff_A=cutoff,
-                 source="gen_au_lead_fc.py: bulk 3x3x%d, Gamma, 0.01 A central differences"
-                        % layers)
-    residual = float(np.max(np.abs(block.sum(axis=1))))
-
-    # 有意义的是**完整 6 层周期胞**的 ASR —— 每层都有上下两个邻居,行和才可能
-    # 闭合。截断成 2 层的块按构造不闭合(丢掉 layer -1 与 layer 2 的耦合),
-    # 那个数只作参考,不能当质量指标。完整胞由 z 方向平移对称性从 layer 0
-    # 的行块拼出:K(i, j) = K(0, (j - i) mod layers)。
-    n_block = layers * per
-    full_cell = np.zeros((3 * n_block, 3 * n_block), dtype=float)
-    for i in range(layers):
-        for j in range(layers):
-            shift = (j - i) % layers
-            rows = np.arange(3 * per) + 3 * per * i
-            cols = np.arange(3 * per) + 3 * per * j
-            src = np.arange(3 * per) + 3 * per * shift
-            full_cell[np.ix_(rows, cols)] = full[np.ix_(rows_l0, src)]
-    full_cell = 0.5 * (full_cell + full_cell.T)
-    residual_full = float(np.max(np.abs(full_cell.sum(axis=1))))
-    scale_full = float(np.max(np.abs(full_cell))) or 1.0
+                 fc_cutoff_A=cutoff, source=source)
+    full_rows = np.vstack(list(measured.values()))
+    residual = _directional_asr(full_rows)
+    relative = residual / (float(np.max(np.abs(full_rows))) or 1.0)
+    details = {
+        "measured_layers": sorted(measured), "source_cases_by_layer": sources,
+        "force_inputs_by_layer": force_inputs,
+        "raw_intralayer_reciprocity_max_ev_per_A2": intra_reciprocity,
+        "raw_intralayer_AA_reciprocity_max_ev_per_A2": intra_a if 1 in measured else None,
+        "raw_intralayer_BB_reciprocity_max_ev_per_A2": intra_b if 1 in measured else None,
+        "raw_interlayer_reciprocity_max_ev_per_A2": inter_reciprocity,
+        "raw_reciprocity_max_ev_per_A2": max(
+            value for value in (intra_reciprocity, inter_reciprocity)
+            if value is not None) if 1 in measured else None,
+        "asr_residual_full_cell_ev_per_A2": residual,
+        "asr_relative_full_cell": relative,
+        "asr_residual_two_layer_block_ev_per_A2": _directional_asr(block),
+        "n_layers": layers,
+        "note": "ASR uses each measured row with all bulk atoms before truncation and symmetrization. "
+                "Raw intralayer reciprocity is max abs(AA-AA.T, BB-BB.T); raw interlayer "
+                "reciprocity is max abs(AB-BA.T).",
+    }
     (out / "lead_asr.json").write_text(
-        json.dumps({"asr_residual_full_cell_ev_per_A2": residual_full,
-                    "asr_relative_full_cell": residual_full / scale_full,
-                    "n_layers": layers,
-                    "asr_residual_two_layer_block_ev_per_A2": residual,
-                    "note": "two-layer block is truncated by construction; only "
-                            "the full-cell number is a quality indicator"},
-                   ensure_ascii=False, indent=2),
-        encoding="utf-8")
-    print("lead 力常数已写入 %s（%d×%d，截断半径 %.1f Å 丢掉 %d/%d 个原子对）"
-          % (out, 3 * pair, 3 * pair, cutoff, dropped, pair ** 2))
-    print("  ASR：完整 %d 层周期胞 %.3e eV/Å²（相对 %.2e）← 质量指标"
-          % (layers, residual_full, residual_full / scale_full))
-    print("      截断成 2 层的块 %.3e eV/Å²（按构造不闭合，仅供参考）" % residual)
+        json.dumps(details, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"lead 力常数已写入 {out}（{method}，截断半径 {cutoff:g} Å "
+          f"丢掉 {np.count_nonzero(drop)}/{pair ** 2} 个原子对）")
+    print(f"  实测行对完整 {layers} 层周期胞的逐方向 ASR 残差 {residual:.3e} eV/Å²")
     return 0
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", required=True, help="生成目录 / 输出目录")
-    ap.add_argument("--assemble", metavar="CASE", help="从已有工况目录组装")
+    ap.add_argument("--assemble", metavar="CASE", nargs="+", help="从一个或两个参考层工况组装")
     ap.add_argument("--species-dir", help="FHI-aims species 目录（生成时必需）")
     ap.add_argument("--layers", type=int, default=6)
     ap.add_argument("--in-plane", type=int, nargs=2, default=(3, 3), metavar=("N0", "N1"))
@@ -238,19 +380,24 @@ def main(argv=None) -> int:
     ap.add_argument("--walltime", default="06:00:00")
     ap.add_argument("--module-load", default="module load fhi-aims/221103-cuda12.8-oneapi2025.3")
     ap.add_argument("--cutoff", type=float, default=10.0)
+    ap.add_argument("--reference-layer", type=int, choices=(0, 1), default=0,
+                    help="生成第 0 层或第 1 层的独立有限位移")
     args = ap.parse_args(argv)
 
     if args.assemble:
-        return assemble(Path(args.assemble), Path(args.out), cutoff=args.cutoff)
+        return assemble([Path(case) for case in args.assemble],
+                        Path(args.out), cutoff=args.cutoff)
     if not args.species_dir:
         ap.error("生成工况时必须给 --species-dir")
     path = generate(Path(args.out), species_dir=Path(args.species_dir),
                     layers=args.layers, in_plane=tuple(args.in_plane),
                     ntasks=args.ntasks, partition=args.partition, mem=args.mem,
                     walltime=args.walltime, array_parallel=args.array_parallel,
-                    module_load=args.module_load)
+                    module_load=args.module_load, reference_layer=args.reference_layer)
     print("工况已生成: %s" % path)
-    print("提交: cd %s && sbatch sub_lead_fc.sh" % path)
+    example = "au-lead-a" if args.reference_layer == 0 else "au-lead-b"
+    print("将工况文件复制到集群 ~/smj-runs/<run-name>/lead_fc/。示例提交命令：\n"
+          f'  cd "$HOME/smj-runs/{example}/lead_fc" && bash sub_lead_fc.sh --submit')
     return 0
 
 

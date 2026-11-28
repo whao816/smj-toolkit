@@ -169,6 +169,23 @@ def test_cutting_below_the_span_drops_pairs():
     assert tight["pairs_kept"] == 4
 
 
+def test_equivalent_cutoff_matrices_share_one_transmission(monkeypatch):
+    from smj.stages import thermal_analyze as stage
+
+    calls = []
+    omega, _ = stage._energy_grid(40.0, 2.0)
+
+    def curve(matrix):
+        calls.append(matrix)
+        return np.zeros_like(omega)
+
+    monkeypatch.setattr(stage, "_curve_factory", lambda *args: curve)
+    result = stage.cutoff_sensitivity(_chain_built(), omega, 0.0005, temperature=300,
+                                      band_top=40, cutoffs=(7, 20, 25, 40))
+    assert len(calls) == 2
+    assert len(result["rows"]) == 4
+
+
 def test_convergence_does_not_call_a_covering_cutoff_unconverged():
     """名义截断覆盖块内全部非零对时，不能判"未收敛"。
 
@@ -202,3 +219,43 @@ def test_convergence_does_not_call_a_covering_cutoff_unconverged():
     assert axis["nominal_covers_span"] is True
     assert axis["beyond_nominal_checked"] is False
     assert axis["converged"] is None
+
+
+def test_cutoff_uses_the_uncut_result_for_a_nonmonotonic_scan():
+    from types import SimpleNamespace
+    from smj.stages.thermal_analyze import convergence_axes
+
+    built = {"lead": SimpleNamespace(fc_cutoff_A=10.0)}
+    block = {"effective_span_A": 11., "uncut_g_ph_pw_per_k": 10.,
+             "rows": [{"cutoff_A": 8., "g_ph_pw_per_k": 20.},
+                      {"cutoff_A": 10., "g_ph_pw_per_k": 10.},
+                      {"cutoff_A": 12., "g_ph_pw_per_k": 10.}]}
+    axis = convergence_axes(built, block)["fc_cutoff"]
+    assert axis["nominal_shortfall"] == 0.
+    assert axis["converged"] is True
+    block["rows"][1]["g_ph_pw_per_k"] = 12.
+    axis = convergence_axes(built, block)["fc_cutoff"]
+    assert np.isclose(axis["nominal_shortfall"], 0.2)
+    assert axis["converged"] is False
+
+
+def test_curve_evaluates_frequency_batches_and_agrees_with_single_points(monkeypatch):
+    from smj.stages import thermal_analyze as stage
+
+    built = _chain_built()
+    built["centre"] = stage._dof_indices([2, 3])
+    omega = np.linspace(.001, .035, 16)
+    matrix = built["dynamical"]
+    reference = [stage._curve_factory(built, np.array([w]), .0005)(matrix)[0]
+                 for w in omega]
+    sizes = []
+    original = stage.transmission
+
+    def measured(w, *args, **kwargs):
+        sizes.append(np.size(w))
+        return original(w, *args, **kwargs)
+
+    monkeypatch.setattr(stage, "transmission", measured)
+    spectrum = stage._curve_factory(built, omega, .0005)(matrix)
+    assert max(sizes) > 1
+    np.testing.assert_allclose(spectrum, reference, atol=1e-9, rtol=1e-8)

@@ -144,7 +144,7 @@ def test_thermal_disabled_by_default(workdir):
     assert thermal.electrode.device_layers == 2
     assert thermal.electrode.strip_thiol_h is True
     assert thermal.fc.displacement == pytest.approx(0.01)
-    assert thermal.fc.cutoff == pytest.approx(10.0)
+    assert thermal.fc.cutoff is None  # 未指定时使用冻结资产的 cutoff
     assert thermal.fc.array_parallel == 8
     assert thermal.fc.k_grid == (3, 3, 1)
     # D15 冻结协议：η 与步长都取 0.05（见 ThermalNEGFConfig 的 docstring）
@@ -191,6 +191,7 @@ thermal:
 @pytest.mark.parametrize("extra", [
     "thermal:\n  fc:\n    k_grid: [3, 3, 4]\n",       # kz 必须是 1
     "thermal:\n  electrode:\n    layers: 4\n    device_layers: 4\n",
+    "thermal:\n  electrode:\n    layers: 4\n    device_layers: 3\n",
     "thermal:\n  fc:\n    displacement: 0.0\n",
     "thermal:\n  fc:\n    displacement: 0.2\n",
     "thermal:\n  fc:\n    cutoff: 6.5\n",              # 4 层 lead 跨度就是 7.06 Å

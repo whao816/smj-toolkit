@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,43 @@ def test_plan_applies_constants_and_rejects_duplicate_axis(workdir):
     with pytest.raises(scan.ScanError):
         scan.build_plan(base, [("electrode.nlayers", [3]), ("electrode.nlayers", [4])],
                         workdir / "scan")
+
+
+def test_slurm_variant_names_are_short_stable_and_scoped_to_the_study(workdir):
+    scan = _scan_script()
+    base = _base_config(workdir)
+    out = workdir / "scan"
+    name = "TPM-B-" + "x" * 32
+    source = base.read_text(encoding="utf-8").replace("name: base", f"name: {name}")
+    source = source.replace("  mode: local\n", "")  # slurm-ssh is the default
+    source += "cluster:\n  host: test\n  partition: normal\n  remote_root: ~/smj-runs\n"
+    base.write_text(source, encoding="utf-8")
+    axes = [("cluster.species_dir", ["/a/基组.v1", "/b/基组.v1"])]
+    plan = scan.build_plan(base, axes, out)
+    variants = scan.load_manifest(scan.write_plan(plan))["variants"]
+    names = [scan.load_config(Path(v["config"])).run.name for v in variants]
+    assert len(set(names)) == 2
+    assert all(len(n) <= 40 and re.fullmatch(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*", n)
+               for n in names)
+    assert all(n.startswith("TPM-B-") for n in names)
+
+    def first_name(base_path=base, scan_dir=out, **kwargs):
+        return scan.build_plan(base_path, axes, scan_dir, **kwargs)["variants"][0]["name"]
+
+    assert first_name() == names[0]
+    assert first_name(scan_dir=workdir / "other-study") != names[0]
+    other_base = workdir / "other.yaml"
+    other_base.write_text(source, encoding="utf-8")
+    assert first_name(base_path=other_base) != names[0]
+    assert first_name(constants={"electrode.nlayers": 5}) != names[0]
+
+
+@pytest.mark.parametrize("mode", ["dry-run", "local"])
+def test_non_slurm_variant_names_keep_the_axis_labels(workdir, mode):
+    scan = _scan_script()
+    plan = scan.build_plan(_base_config(workdir), [("electrode.nlayers", [3])],
+                           workdir / "scan", constants={"run.mode": mode})
+    assert plan["variants"][0]["config"]["run"]["name"] == "v001__nlayers-3"
 
 
 def test_compare_marks_converged_only_when_successive_steps_are_small(workdir):

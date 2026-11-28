@@ -4,7 +4,7 @@
 :mod:`smj.junction.independent_check`）的**薄封装**，只做三件事：
 
 1. 调 vendored ``analyze_te`` 得到固定字段的统计摘要；
-2. 可选跑独立复核（独立解析器 + Simpson 求积 + CODATA 常数），抓实现级单位/
+2. 可选跑独立复核（独立数值解析 + Simpson 求积 + CODATA 常数），抓实现级单位/
    口径事故（见 vendored ``independent_check`` 的独立性边界声明）；
 3. 落 ``analysis.json``，可选出图（``matplotlib`` 属 extra ``plot``，未装时
    优雅跳过并说明），可选与参考值 compare（默认容差：log10(G/G0) 绝对 0.1、
@@ -27,6 +27,7 @@ import json
 import math
 import os
 import re
+from itertools import islice
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -139,7 +140,7 @@ def _tolerance_for(key: str, tolerances: Mapping[str, Any] | None) -> dict[str, 
 # --------------------------------------------------------------------------- #
 def independent_check(result: Mapping[str, Any], te_path: str | Path, *,
                       temperature: float | None = None) -> dict:
-    """独立的 L0/L1/L2 复核（不同解析器 + Simpson 求积 + CODATA 常数）。
+    """独立的 L0/L1/L2 复核（独立数值解析 + Simpson 求积 + CODATA 常数）。
 
     返回 ``{ok, L0, L1, L2, G_over_G0, S_uV_per_K, ZT_electronic, comparison}``；
     独立复核失败不影响主管线结果，调用方在 ``warnings`` 里记录原因。
@@ -368,9 +369,11 @@ def read_analysis(path: str | Path) -> dict:
 
 def te_header(te_path: str | Path) -> dict:
     """从 TE.dat 表头/数据行提取 ``bias`` / ``efermi`` / ``points``（不臆断）。"""
+    from .junction.landauer import read_te_channels
+
     te = resolve_te(te_path)
-    text = Path(te).read_text(encoding="utf-8", errors="ignore")
-    header = text.splitlines()[:8]
+    with te.open(encoding="utf-8-sig", errors="replace") as stream:
+        header = list(islice(stream, 8))
     out: dict[str, Any] = {"source": str(te)}
     for line in header:
         m = re.search(r"efermi\s*=\s*([-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?)", line,
@@ -381,21 +384,8 @@ def te_header(te_path: str | Path) -> dict:
                       re.IGNORECASE)
         if m:
             out["bias_V"] = float(m.group(1))
-    points = 0
-    for line in text.splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        parts = s.split()
-        if len(parts) >= 3:
-            try:
-                float(parts[0].replace("D", "E"))
-                float(parts[1].replace("D", "E"))
-                float(parts[2].replace("D", "E"))
-            except ValueError:
-                continue
-            points += 1
-    out["points"] = points
+    rows, _ = read_te_channels(te)
+    out["points"] = len(rows)
     return out
 
 
@@ -428,6 +418,9 @@ THERMAL_SPECTRUM_KEYS = ("energy_meV", "transmission", "cumulative_g_ph_pw_per_k
 #: 允许出现在 thermal.json 里但不在必需键中的附加键（多出来的保留并告警）。
 THERMAL_OPTIONAL_KEYS = ("relax_max_force_ev_per_A", "lead_fc_sha256", "fc_asymmetry", "notes",
                          # D13：ASR 投影记录。旧文件没有这三个键，故列为可选。
+                         "right_lead_transform", "asr_projection_reason",
+                         "transport_matrix_protocol", "transport_asr",
+                         "discarded_device_lead_max_ev_per_A2",
                          "asr_projected", "asr_projection_norm",
                          "asr_residual_after_ev_per_A2", "asr_region",
                          # 软模归属（modes.describe_soft_modes）。解释性字段，
@@ -487,6 +480,10 @@ def read_thermal(path: str | Path) -> tuple[dict, list[str]]:
         for value in spectrum[key]:
             if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
                 raise ValueError("thermal.json 的 spectrum.%s 含非有限数值" % key)
+    from .phonon.landauer import validate_spectrum
+    _, transmission = validate_spectrum([v * 1.e-3 for v in spectrum["energy_meV"]],
+                                        spectrum["transmission"])
+    spectrum["transmission"] = transmission.tolist()
     for key in ("g_ph_pw_per_k", "g_quantum_pw_per_k", "n_channels_effective"):
         try:
             number = float(data[key])

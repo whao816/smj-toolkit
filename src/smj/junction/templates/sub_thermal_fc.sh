@@ -28,50 +28,43 @@ _d=$(printf 'fc/%04d' "$_i")
 mkdir -p "$_d" || exit 1
 cd "$_d" || exit 1
 
-cp ../../control.in . || exit 1
-python ../../apply_displacement.py --geometry ../../geometry.in \
-    --manifest ../../displacements.json --index "$_i" --out geometry.in || exit 1
+# A direct sbatch rerun (e.g. sub_lead_fc.sh) bypasses the submission helper.
+# No worker can finalize until every current worker has removed the old bundle.
+_job=${{SLURM_ARRAY_JOB_ID:?missing Slurm array job id}}
+_tasks=${{SLURM_ARRAY_TASK_COUNT:?missing Slurm array size}}
+rm -f .done forces.json aims.out ../../.dsh_done ../../forces_all.json ../../fc_summary.json || exit 1
 
-{aims_bin}
+run_slot() {{
+    cp ../../control.in . || return 1
+    python ../../apply_displacement.py --geometry ../../geometry.in \
+        --manifest ../../displacements.json --index "$_i" --out geometry.in || return 1
+    {aims_bin}
+    _aims_rc=$?
+    [ "$_aims_rc" -eq 0 ] || return "$_aims_rc"
+    python ../../extract_forces.py aims.out forces.json
+}}
+
+run_slot
 _rc=$?
-if [ "$_rc" -eq 0 ]; then
-    python ../../extract_forces.py aims.out forces.json || _rc=1
-fi
-printf '%s %s\n' "$_rc" "$(date -Is)" > .done
+printf '%s %s %s\n' "$_rc" "$(date -Is)" "$_job" > .done.tmp && mv .done.tmp .done || exit 1
 
-# --- 阶段级哨兵:最后一个完成的任务负责汇总 ---
-# 每个任务写完自己的 .done 后数一次 fc/*/.done 的份数;数到 {count} 的那个
-# 任务再抢 .finalize.lock(原子性 mkdir),抢到的在锁内**重新数一次**并汇总退出码。
-# 注意:数的是隐藏文件 .done。glob 里漏掉那个点(写成不带点的 done)会永远
-# 数到 0,哨兵与 forces_all.json 就都不会产生(2026-11-25 job 26560 实际踩过)。
-_count=$(ls -1 ../*/.done 2>/dev/null | wc -l)
-if [ "$_count" -ge {count} ]; then
-    if mkdir ../.finalize.lock 2>/dev/null; then
-        _total=$(ls -1 ../*/.done 2>/dev/null | wc -l)
-        _agg=0
-        if [ "$_total" -ge {count} ]; then
-            for _f in ../*/.done; do
-                _v=$(cat "$_f" 2>/dev/null)
-                _v=${{_v%% *}}
-                case "$_v" in
-                    0) ;;
-                    *) _agg=1 ;;
-                esac
-            done
-        else
-            _agg=1
-        fi
-        # 把 {count} 份 forces.json 拼成一个文件:回取计划里就只有一个文件,
-        # 不会因为漏 scp 其中一份而让力常数矩阵少行。
-        #
-        # --allow-missing:某个槽位失败时也要落盘 fc_summary.json。否则一次失败
-        # 就意味着"没有任何汇总产物",只能靠人工进 fc/ 逐个看 aims.out
-        # (2026-11-25 首次跑 324 个位移时正是这样排查的)。现在失败槽位会被写进
-        # summary,collect 的报错直接给出 `smj thermal --stage thermal_fc --retry N`。
-        python ../../concat_forces.py ../ {count} ../../forces_all.json \
-            --summary ../../fc_summary.json --allow-missing || _agg=1
-        printf '%s %s\n' "$_agg" "$(date -Is)" > ../../.dsh_done
-        rmdir ../.finalize.lock 2>/dev/null || true
-    fi
+# 逐个检查本批次的槽位，旧批次的额外目录不能顶替未完成的位移点。
+_agg=0
+_current=0
+for ((_slot=0; _slot<{count}; _slot++)); do
+    printf -v _marker '../%04d/.done' "$_slot"
+    [ -f "$_marker" ] || exit "$_rc"
+    read -r _status _stamp _owner < "$_marker" || exit 1
+    [ "$_status" = 0 ] || _agg=1
+    if [ "$_owner" = "$_job" ]; then ((_current+=1)); fi
+done
+[ "$_current" -eq "$_tasks" ] || exit "$_rc"
+
+# 每批次只允许一个任务汇总，即使慢任务在发布后才走到这里。
+if mkdir "../.finalize.lock.$_job" 2>/dev/null; then
+    python ../../concat_forces.py ../ {count} ../../forces_all.json \
+        --summary ../../fc_summary.json --allow-missing || _agg=1
+    printf '%s %s\n' "$_agg" "$(date -Is)" > ../../.dsh_done.tmp \
+        && mv ../../.dsh_done.tmp ../../.dsh_done || exit 1
 fi
 exit "$_rc"

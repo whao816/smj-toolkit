@@ -29,6 +29,7 @@ __all__ = [
     "imaginary_modes",
     "acoustic_sum_residual",
     "acoustic_sum_relative_residual",
+    "acoustic_sum_residuals",
 ]
 
 
@@ -120,8 +121,8 @@ def imaginary_modes(dynamical_ev2, *, cm1_tol: float = -10.0):
     }
 
 
-def acoustic_sum_residual(force_constants, rows=None) -> float:
-    """``max_i |Σ_j K_ij|``,单位 eV/Å² —— 声学求和(平移不变性)的绝对残差。
+def acoustic_sum_residuals(force_constants, rows=None) -> tuple[float, float]:
+    """逐平移方向求和,返回绝对残差 max_iαβ |Σ_j K_iα,jβ| (eV/Å²) 和相对残差。
 
     对完全收敛的有限位移集,这个数应在 ``1e-4`` 量级以下;若与 ``max|K|`` 同量级,
     说明截断半径太小或位移-力配对错位。
@@ -132,28 +133,30 @@ def acoustic_sum_residual(force_constants, rows=None) -> float:
     这些行上(见 :func:`smj.phonon.fc.asr_diagnostics`)。
     """
     k = np.asarray(force_constants, dtype=float)
-    if k.ndim != 2 or k.shape[0] != k.shape[1]:
-        raise ValueError("force_constants 必须是方阵,得到 %r" % (k.shape,))
-    row_sums = k.sum(axis=1)
+    if k.ndim != 2 or k.shape[0] != k.shape[1] or not k.size or k.shape[1] % 3:
+        raise ValueError("force_constants 必须是非空 3N×3N 方阵,得到 %r" % (k.shape,))
     if rows is not None:
         index = np.asarray(rows, dtype=int).ravel()
         if index.size == 0:
             raise ValueError("rows 不能为空")
-        if index.min() < 0 or index.max() >= row_sums.size:
+        if index.min() < 0 or index.max() >= k.shape[0]:
             raise ValueError("rows 越界: 最大 %d,矩阵只有 %d 行"
-                             % (index.max(), row_sums.size))
-        row_sums = row_sums[index]
-    return float(np.max(np.abs(row_sums)))
+                             % (index.max(), k.shape[0]))
+        k = k[index, :]
+    sums = k.reshape(k.shape[0], -1, 3).sum(axis=1)
+    absolute = float(np.max(np.abs(sums)))
+    scale = float(np.max(np.abs(k)))
+    return absolute, absolute / scale if scale else 0.0
+
+
+def acoustic_sum_residual(force_constants, rows=None) -> float:
+    """ASR 绝对残差 max_iαβ |Σ_j K_iα,jβ| (eV/Å²)。"""
+    return acoustic_sum_residuals(force_constants, rows)[0]
 
 
 def acoustic_sum_relative_residual(force_constants, rows=None) -> float:
-    """ASR 残差相对 ``max|K|`` 的比值(无量纲),用于跨体系比较。"""
-    k = np.asarray(force_constants, dtype=float)
-    abs_sum = acoustic_sum_residual(k, rows=rows)
-    scale = float(np.max(np.abs(k))) if k.size else 0.0
-    if scale <= 0.0:
-        return 0.0 if abs_sum == 0.0 else float("inf")
-    return abs_sum / scale
+    """ASR 残差除以受检行的 max|K| (无量纲)。"""
+    return acoustic_sum_residuals(force_constants, rows)[1]
 
 
 def masses_from_elements(elements) -> "np.ndarray":

@@ -33,9 +33,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -134,6 +136,17 @@ def variant_name(index: int, values: dict[str, object]) -> str:
     return "__".join(pieces)
 
 
+def _slurm_variant_name(base_path: Path, out_dir: Path, config: dict, index: int) -> str:
+    """远端共用 run 根目录，用基线和扫描目录区分研究，用完整配置区分工况。"""
+    identity = [str(base_path.resolve()), str(out_dir.resolve()), config]
+    encoded = yaml.safe_dump(identity, sort_keys=True).encode("utf-8")
+    digest = hashlib.sha256(encoded).hexdigest()[:12]
+    suffix = f"-v{index:03d}-{digest}"
+    base_name = str(config["run"].get("name") or "scan")
+    prefix = re.sub(r"[^A-Za-z0-9]+", "-", base_name).strip("-") or "scan"
+    return prefix[:40 - len(suffix)].rstrip("-") + suffix
+
+
 def _absolute(value: object, base_dir: Path) -> object:
     """把路径字符串扩成绝对路径；其余值原样返回。"""
     if not isinstance(value, str) or not value:
@@ -214,7 +227,11 @@ def build_plan(base_path: Path, axes: list[tuple[str, list[object]]],
         config.setdefault("run", {})
         if not isinstance(config["run"], dict):
             raise ScanError("配置里的 run 段不是 mapping")
-        config["run"]["name"] = variant_name(index, values)
+        mode = os.path.expandvars(str(config["run"].get("mode") or "slurm-ssh")).strip()
+        if mode == "slurm-ssh":
+            config["run"]["name"] = _slurm_variant_name(base_path, out_dir, config, index)
+        else:
+            config["run"]["name"] = variant_name(index, values)
         config["run"]["dir"] = "run"
         variants.append({"index": index, "name": config["run"]["name"],
                          "values": values, "config": config})

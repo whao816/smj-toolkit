@@ -185,15 +185,14 @@ CRITERIA = [
      'implemented': True, 'band': [None, 1.0e-6],
      'source': dict(LYN, locator='fcc-Au 声子色散, L 点最高支 4.71 THz'),
      'note': 'Au 声子带顶 4.71 THz = 19.5 meV(全 BZ 最高)之上不许有透射: '
-             'T_ph(hw > 带顶) 必须 < 1e-6。分子内 100-400 meV 高频模在带顶之上'
+             '须有带顶以上采样，且 T_ph(hw > 带顶) ≤ 1e-6。分子内 100-400 meV 高频模在带顶之上'
              '弹性透射严格为零, 若出现非零值是电极 FC 或自能接错了(不是物理)'},
 
     {'name': 'ph_quantum_bound', 'kind': 'physical', 'gate': 'error',
      'implemented': True, 'band': None,
      'source': dict(SCH, locator='单通道量子热导 G_Q = pi^2 kB^2 T / 3h'),
-     'note': 'G_ph < 3*G_Q(T)(三条声学支的量子上限)。300 K 时 G_Q=283.9 pW/K, '
-             '实测分子结 10-100 pW/K; 超过上限说明 k 求和未除 N_k 或自能'
-             '放大, 是数值错误而非新物理'},
+     'note': '每个传输通道最多贡献 G_Q(T)。默认三通道协议采用 G_ph ≤ 3*G_Q(T)，'
+             '多模电极须根据全谱传输通道数及横向归一化选取上限。'},
 
     {'name': 'ph_acoustic_limit', 'kind': 'physical', 'gate': 'error',
      'implemented': True, 'band': [None, 3.0],
@@ -204,12 +203,8 @@ CRITERIA = [
 
     {'name': 'ph_asr_residual', 'kind': 'engineering', 'gate': 'warn',
      'implemented': True, 'band': [None, 1.0e-3], 'source': None,
-     'note': '声学求和规则**相对**残差 max|sum_j K_ij| / max|K| < 1e-3(D13)。'
-             '绝对门限 1e-6 eV/A^2 不可用: 有限差分与基组噪声本身就在 '
-             '1e-3~1e-1 eV/A^2 量级。必须在**完整**(器件+lead)矩阵上算 —— '
-             '只有器件行时行和不闭合, 算出来是伪指标。先测残差; 超过门限时'
-             'thermal_analyze 做一次 ASR 投影并把投影前后的残差与投影范数写进 '
-             'thermal.json, 本条判的是**投影前**的值(投影后恒为机器零, 不能拿来判)'},
+     'note': '对三个刚性平移方向，完整器件行与互易输运分区的投影前相对残差都须 ≤ 1e-3。'
+             '输运分区只保留器件到主层的接触耦合。缺分区证据时标记为未定。'},
 
     {'name': 'ph_fc_symmetry', 'kind': 'engineering', 'gate': 'warn',
      'implemented': True, 'band': [None, 5.0e-2], 'source': None,

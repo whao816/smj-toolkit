@@ -824,10 +824,24 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
     spectrum = data.get("spectrum") or {}
     energies = [float(v) for v in spectrum.get("energy_meV") or []]
     transmission = [float(v) for v in spectrum.get("transmission") or []]
-    above = [abs(t) for e, t in zip(energies, transmission) if e > band_top]
+    from .phonon.landauer import above_band
+    above = [abs(t) for t, keep in zip(transmission, above_band(energies, band_top)) if keep]
     lines.append("| T_ph(ω>带顶 %.1f meV) | %s |"
                  % (band_top, "—" if not above else "%.2e" % max(above)))
-    lines.append("| ASR 残差 (eV/Å²) | %s |" % _fmt(data.get("acoustic_sum_residual"), "%.3e"))
+    lines.append("| 完整器件行 ASR 残差 (eV/Å²) | %s |"
+                 % _fmt(data.get("acoustic_sum_residual"), "%.3e"))
+    transport_asr = data.get("transport_asr") or {}
+    lines.append("| 输运分区投影前 ASR 残差 (eV/Å²) | %s |"
+                 % _fmt(transport_asr.get("residual_ev_per_A2"), "%.3e"))
+    if data.get("asr_projected") and transport_asr:
+        lines.append("| 输运分区投影后 ASR 残差 (eV/Å²) | %s |"
+                     % _fmt(transport_asr.get("residual_after_ev_per_A2"), "%.3e"))
+    if data.get("asr_projection_reason") == "incompatible_fixed_coupling":
+        lines.append("| ASR 投影 | 固定界面耦合与平移约束不相容，保留投影前矩阵 |")
+    omitted = data.get("discarded_device_lead_max_ev_per_A2") or {}
+    if omitted:
+        lines.append("| 舍弃的器件–非主层耦合最大绝对值 (eV/Å²) | 左 %s，右 %s |"
+                     % (_fmt(omitted.get("left"), "%.3e"), _fmt(omitted.get("right"), "%.3e")))
     modes = data.get("imaginary_modes") or {}
     worst = modes.get("worst_cm1")
     lines.append("| 虚频 | %d 个（最差 %s cm⁻¹） |"
@@ -875,19 +889,9 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
             lines.append("| %s | %.2f | %.0f |"
                          % (label, energy_mev, energy_mev * 1.0e-3 * EV_TO_CM1))
         lines.append("")
-        lines.append("分位分别落在界面骨架模（Au–S/S–C 伸缩弯曲、环扭转）区间；"
-                     "分子内 C–C 伸缩（~190 meV）远在 lead 带顶之上，弹性透射严格"
-                     "为零，不参与热输运。")
-        lines.append("")
 
     lines.append(
-        "η（`eta_meV`）是**数值正则化参数，不是物理线宽**：它只给表面格林函数"
-        "一个虚部，把窄的法布里-珀罗共振展宽。η 越小、共振越尖，`G_ph` 单调"
-        "升高并外推到 η→0 的弹道上限。因此本方法的系统不确定性主要来自 η，"
-        "量级可与非谐修正（文献 ~15%）相比；两项都不在本方法内，报告 `G_ph` "
-        "时必须一起说明。量级参照：η 由 0.5 降到 0.05 meV，同一份力常数下 "
-        "`G_ph` 可由 10.9 升到 13.7 pW/K。横向对比时请对齐 η，或统一声明为"
-        "“η→0 外推值”。")
+        "η（`eta_meV`）控制格林函数的数值展宽。比较不同分子时应核对 η 和实际能量步长。")
     lines.append("")
 
     curve = data.get("g_ph_by_temperature") or {}
@@ -903,19 +907,12 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
     if curve_image.is_file():
         lines.append("![声子热导随温度](%s)" % curve_rel)
         lines.append("")
-    if len(curve_values) >= 2:
-        plateau = curve_values[-1]
-        reference_k = float(data.get("temperature_K", 300.0))
+    curve_temperatures = curve.get("temperature_K") or []
+    if len(curve_values) >= 2 and len(curve_temperatures) == len(curve_values):
         lines.append(
-            "`G_ph(T)`：%.0f K 时已达高温平台（%.2f pW/K）的 %.1f%%，"
-            "低温端 %.0f→%.0f K 由 %.2f 升到 %.2f pW/K（比值 %.2f，"
-            "与 `G ∝ T` 的量子极限一致）。谐波近似下 `T_ph(ω)` 与温度无关，"
-            "这条曲线只换玻色因子，不额外花机时——它同时是 300 K 取值够不够"
-            "收敛、低温端有没有物理错误的免费检验。"
-            % (reference_k, plateau,
-               100.0 * float(data.get("g_ph_pw_per_k", 0.0)) / plateau,
-               float(curve["temperature_K"][0]), float(curve["temperature_K"][1]),
-               curve_values[0], curve_values[1], curve_values[1] / curve_values[0]))
+            "对同一透射谱积分得到的 `G_ph(T)` 在 %.0f K 为 %.2f pW/K，"
+            "在 %.0f K 为 %.2f pW/K。"
+            % (curve_temperatures[0], curve_values[0], curve_temperatures[-1], curve_values[-1]))
         lines.append("")
 
     soft = data.get("soft_modes") or []
@@ -942,14 +939,11 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
         if impact is not None and removed is not None and symmetric is not None:
             lines.append(
                 "把**全部负本征值投影掉**再算一遍：`G_ph` 由 %.3f 变 %.3f pW/K"
-                "（%+.2f%%），远小于 η 带来的 5–25%% 的漂移，故不改变结论。"
-                "权重集中在分子、lead 占比 ~0，最大键伸缩只 ~0.01 Å（单位范数"
-                "位移场下），说明它们是分子骨架的浅弯曲/扭转（PES 在该方向上轻微"
-                "凹），既不是键拉伸，也不是 lead 截断假象。"
+                "（%+.2f%%）。"
                 % (symmetric, removed, 100.0 * float(impact)))
             lines.append("")
         asymmetry = data.get("fc_asymmetry")
-        if asymmetry is not None:
+        if asymmetry is not None and not data.get("transport_matrix_protocol"):
             lines.append(
                 "互易性：力常数矩阵不对称度 %.2f%%（有限差分噪声 + 器件/lead 两侧"
                 "分开算）。对称化后再积分，`G_ph` 由 %.3f 变 %.3f pW/K；该差别"
@@ -993,7 +987,7 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
                 if production and abs(float(row["cutoff_A"]) - float(production)) < 1e-9:
                     mark = "（生产）"
                 if value is None:
-                    cells = f"| {float(row['cutoff_A']):.1f}{mark} | — | 带顶闸门拒绝 |"
+                    cells = f"| {float(row['cutoff_A']):.1f}{mark} | — | {_cell(row.get('rejected') or '无有效值')} |"
                 else:
                     cells = f"| {float(row['cutoff_A']):.1f}{mark} | {float(value):.3f} | |"
                 lines.append(cells)
@@ -1001,22 +995,15 @@ def _thermal_section(lines: list[str], man: Mapping[str, Any]) -> None:
             spread = cutoff.get("relative_spread")
             if spread is not None:
                 lines.append(
-                    f"4–12 Å 范围内 `G_ph` 的相对散布 {100.0 * float(spread):.1f}%。"
-                    "这条轴零机时可得：切的是已组装好的矩阵，不碰 DFT。")
+                    f"上述截断扫描中有效热导的相对散布为 {100.0 * float(spread):.1f}%。")
                 if cutoff.get("nominal_covers_span"):
                     lines.append(
-                        "名义截断已覆盖两层块内的全部非零耦合：本次实测 8/10/12 Å "
-                        "三档逐位相同，剩余散布来自把 r_c 刻意切到 6 Å 以下——"
-                        "切掉的是真实近邻，不是名义 `fc_cutoff_A` 不足。")
+                        "名义截断已覆盖当前电极块内的全部非零耦合。")
                 lines.append("")
             shortfall = cutoff.get("nominal_shortfall")
-            if shortfall:
+            if shortfall is not None and cutoff.get("uncut_g_ph_pw_per_k") is not None:
                 lines.append(
-                    f"> **截断半径未收敛**：名义 `fc_cutoff_A` = "
-                    f"{float(cutoff.get('production_A') or 0.0):.1f} Å，但组装矩阵里"
-                    f"最远的非零元素在 {float(cutoff.get('effective_span_A') or 0.0):.2f} Å"
-                    f"——按名义值再切一刀会丢掉 {100.0 * float(shortfall):.1f}% 的 `G_ph`。"
-                    "要把它变成真收敛的数，得把 `fc_cutoff_A` 提上去重算电极力常数。")
+                    f"按名义半径截断后，热导相对于当前完整矩阵的偏差为 {100.0 * float(shortfall):.2f}%。")
                 lines.append("")
             if cutoff.get("beyond_nominal_checked") is False:
                 lines.append(
@@ -1262,11 +1249,11 @@ def render_report(manifest: Mapping[str, Any]) -> str:
             _cell(molecule.get("charge")), _cell(molecule.get("multiplicity"))))
         if molecule.get("broken_symmetry"):
             lines.append("| 自旋态 | 破缺对称单重态（M=1，broken_symmetry；"
-                         "反号 initial_moments，不写 fixed_spin_moment） |")
-        elif (molecule.get("multiplicity") or 1) > 1:
+                         "反号 initial_moments） |")
+        if molecule.get("broken_symmetry") or (molecule.get("multiplicity") or 1) > 1:
             fixed = molecule.get("fixed_spin_moment")
             lines.append("| 总自旋约束 | %s |" % (
-                "fixed_spin_moment（钉住 2S = M−1）" if fixed
+                "fixed_spin_moment（固定 Nα−Nβ = M−1）" if fixed
                 else "未钉住（release 解，自旋可离域到电极）"))
     electrode = inputs.get("electrode") or {}
     lines.append("| 建结阶段 | %s |" % _cell(electrode.get("stage")))

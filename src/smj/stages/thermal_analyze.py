@@ -21,12 +21,14 @@ from pathlib import Path
 import numpy as np
 
 from ..errors import StageBlocked, StageError
-from ..phonon.dynamical import (acoustic_sum_relative_residual,
-                               acoustic_sum_residual, dynamical_matrix,
-                               imaginary_modes, masses_from_elements)
+from ..phonon.assets import (lead_boundary, read_device_structure,
+                             resolve_lead_fc_path as _lead_fc_path)
+from ..phonon.dynamical import (acoustic_sum_residuals, dynamical_matrix, imaginary_modes,
+                                masses_from_elements)
 from ..phonon.checks import MAX_ASR_RELATIVE
 from ..phonon.fc import (FullFCMeta, asr_diagnostics, assemble_full_fc,
                          load_lead_fc)
+from ..phonon.geometry import atom_distances as _atom_distances
 from ..phonon.landauer import cumulative_thermal_conductance, thermal_conductance
 from ..phonon.modes import describe_soft_modes
 from ..phonon.negf import transmission
@@ -38,47 +40,11 @@ SCHEMA = "smj.thermal.v1"
 
 def _fc_asymmetry(force_constants) -> float:
     """`||K - K^T|| / ||K||`（Frobenius）。供判据 `ph_fc_symmetry`。"""
-    import numpy as np
-
     matrix = np.asarray(force_constants, dtype=float)
     scale = float(np.linalg.norm(matrix))
     if scale <= 0.0:
         return 0.0
     return float(np.linalg.norm(matrix - matrix.T) / scale)
-
-
-
-def _lead_fc_path(value: str | Path | None) -> Path:
-    """``thermal.lead_fc`` 可以写成目录(用其中的 ``lead_fc.json``)或直接写文件。
-
-    ``save_lead_fc`` 落盘的是 ``lead_fc.npy`` + ``lead_fc.json`` 两个文件,
-    用户按目录配置更自然,这里两种都接受。
-
-    ``None`` / ``"auto"`` 解析到**随包发布的 Au(111) 资产**（``smj.phonon.assets``）：
-    电极是金、与分子无关，那份力常数只需算一次，不该让每个使用者先搭一套
-    体相计算才能跑分子。
-    """
-    if value is None or str(value) == "auto":
-        from ..phonon.assets import lead_fc_dir
-        return lead_fc_dir() / "lead_fc.json"
-    path = Path(value)
-    if path.is_dir():
-        candidate = path / "lead_fc.json"
-        if candidate.is_file():
-            return candidate
-    return path
-
-
-def _structure(geometry: Path) -> tuple[list[str], np.ndarray]:
-    """读 FHI-aims ``geometry.in`` 的元素序列与坐标（Å，只取 ``atom`` 行）。"""
-    elements: list[str] = []
-    coords: list[list[float]] = []
-    for line in Path(geometry).read_text(encoding="utf-8").splitlines():
-        parts = line.split()
-        if len(parts) >= 5 and parts[0] == "atom":
-            coords.append([float(parts[1]), float(parts[2]), float(parts[3])])
-            elements.append(parts[4])
-    return elements, np.asarray(coords, dtype=float)
 
 
 def _dof_indices(atoms) -> np.ndarray:
@@ -93,9 +59,26 @@ def _dof_indices(atoms) -> np.ndarray:
 
 def _energy_grid(band_top: float, step: float) -> tuple[np.ndarray, np.ndarray]:
     """能量网格：到 ``1.25 × 带顶``，给闸门留出"带顶以上必须为零"的取样点。"""
-    n_points = int(round(band_top / step)) + 1
-    energy_mev = np.linspace(0.0, band_top * 1.25, max(n_points, 2))
+    if not np.isfinite([band_top, step]).all() or min(band_top, step) <= 0:
+        raise ValueError("带顶和能量步长必须是正的有限值")
+    n_intervals = int(np.ceil(1.25 * band_top / step))
+    energy_mev = np.arange(n_intervals + 1) * step
     return energy_mev * 1.0e-3, energy_mev
+
+
+def _transport_matrix(full, masses, centre, omitted_left, omitted_right):
+    """Use reciprocal FCs and retain only device contacts entering the lead self-energies."""
+    reciprocal = (full + full.T) * 0.5
+    discarded = {}
+    for side, atoms in (("left", omitted_left), ("right", omitted_right)):
+        columns = _dof_indices(atoms)
+        contact = np.ix_(centre, columns)
+        discarded[side] = float(np.max(np.abs(full[contact]), initial=0.0))
+        reciprocal[contact] = 0.0
+        reciprocal[np.ix_(columns, centre)] = 0.0
+    diagnostics = asr_diagnostics(dynamical_matrix(reciprocal, masses, symmetrize=False),
+                                  masses, threshold=MAX_ASR_RELATIVE, rows=centre)
+    return diagnostics, discarded
 
 
 def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
@@ -110,43 +93,17 @@ def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
     lead = load_lead_fc(_lead_fc_path(thermal.lead_fc))
 
     n_atoms = int(device_meta["n_atoms"])
-    elements, positions = _structure(Path(geometry_path))
-    if len(elements) != n_atoms:
-        raise StageError(
-            "thermal_analyze 的元素数(%d)与 device_metadata 的 n_atoms(%d) 不一致"
-            % (len(elements), n_atoms))
+    elements, positions, lattice = read_device_structure(Path(geometry_path))
+    try:
+        (left_outer, left_pl), (right_outer, right_pl) = lead_boundary(
+            lead, device_meta, elements, lattice, thermal.fc.cutoff)
+    except ValueError as exc:
+        raise StageError(f"thermal_analyze: {exc}") from exc
     masses = masses_from_elements(elements)
-
     device_indices = [int(i) for i in device_meta["device_indices"]]
     lead_indices = [int(i) for i in device_meta["lead_indices"]]
-    layers = device_meta["layer_index"]
-    sides = device_meta["side"]
-    # 主层(principal layer)= 紧挨器件区的那一层;它外面还有一层用来给
-    # decimation 提供层间耦合 V_lead。**这两层**才是 lead 力常数要覆盖的
-    # 范围 —— lead_fc 存的是「两个主层」的块(18 原子 × 2 层 = 54 维),
-    # 而不是器件侧全部 4 层冻结 lead(36 原子)。传全部 36 个会让
-    # _place_lead_block 直接报「lead 区原子数 36 与 lead 力常数原子数 18 不符」。
-    left_pl = [i for i in lead_indices if layers[i] == 1 and sides[i] == "left"]
-    right_pl = [i for i in lead_indices if layers[i] == 1 and sides[i] == "right"]
-    left_outer = [i for i in lead_indices if layers[i] == 0 and sides[i] == "left"]
-    right_outer = [i for i in lead_indices if layers[i] == 0 and sides[i] == "right"]
-    if not (left_pl and right_pl and left_outer and right_outer):
-        raise StageError(
-            "thermal_analyze 找不到两侧的主层或最外层：layers=%s 时每侧至少需要 2 层"
-            % sorted(set(layers)))
-    # 顺序必须是「次外层 + 主层」,不能是「主层 + 次外层」。lead_fc.npy 由
-    # gen_au_lead_fc.py 按参考层 0 → 参考层 1 排列(前 3N 是层 0、后 3N 是
-    # 层 1,层间块为 K(0,1));器件里 layer 0 是最外层、layer 1 是主层,所以
-    # 层 0 对应 outer、层 1 对应 principal。反过来传会把 K(0,1) 当成
-    # K(1,0) —— 矩阵依旧对称、检查全过,但方向错了一次转置,实测 G_ph 从
-    # 15.93 掉到 13.72 pW/K(−14%)。
     left_block = left_outer + left_pl
     right_block = right_outer + right_pl
-    if len(left_block) != lead.n_atoms or len(right_block) != lead.n_atoms:
-        raise StageError(
-            "lead 力常数覆盖 %d 个原子，但器件侧的主层+次外层是 %d 个（左）/%d 个（右）："
-            "两者必须一致，否则拼不出完整矩阵"
-            % (lead.n_atoms, len(left_block), len(right_block)))
     meta = FullFCMeta(n_atoms=n_atoms, device_indices=device_indices,
                       left_indices=left_block, right_indices=right_block)
     full = assemble_full_fc(k_dev, lead, meta)
@@ -154,13 +111,11 @@ def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
     # 力常数,它们与第三层及更远的耦合不在矩阵里,行和按构造不可能闭合
     # (实测 lead 块自身相对残差 0.6)。器件区的邻居集合是完整的,才可判。
     centre = _dof_indices(device_indices)
-    residual = acoustic_sum_residual(full, rows=centre)
-    relative = acoustic_sum_relative_residual(full, rows=centre)
-    # symmetrize=False:器件↔lead 交叉块已由 assemble_full_fc 补了转置,
-    # 再走一次对称化只会把 lead 侧那两块按构造不闭合的行平均进器件行,
-    # 凭空造出 0.1% 的"合规则违反"(实测 2.6e-13 → 7.5e-2 eV/Å²)。
-    asr = asr_diagnostics(dynamical_matrix(full, masses, symmetrize=False),
-                          masses, threshold=MAX_ASR_RELATIVE, rows=centre)
+    residual, relative = acoustic_sum_residuals(full, rows=centre)
+    sides = device_meta["side"]
+    left_omitted = [i for i in lead_indices if sides[i] == "left" and i not in left_pl]
+    right_omitted = [i for i in lead_indices if sides[i] == "right" and i not in right_pl]
+    asr, discarded = _transport_matrix(full, masses, centre, left_omitted, right_omitted)
     dynamical = asr["dynamical"]
     imag = imaginary_modes(dynamical)
     # 虚频只报波数没有意义：把本征矢拆成「谁在动、动的是哪类键」。
@@ -204,6 +159,7 @@ def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
         "asr": asr,
         "residual": residual,
         "relative": relative,
+        "discarded": discarded,
         "imag": imag,
         "soft_modes": soft_modes,
         "lead": lead,
@@ -213,34 +169,10 @@ def _build(fc_path, device_meta_path, geometry_path, thermal) -> dict:
     }
 
 
-def _atom_distances(positions: np.ndarray, lattice=None) -> np.ndarray:
-    """原子对距离矩阵（Å）。3×3 板只有 90 个原子，直接暴力算。
-
-    ``lattice`` 给出时对**前两个晶格矢量**做最小像折算（板沿第三条矢量有真空，
-    折返会造出不存在的近邻，所以不折 z）。lead 块来自周期体相：nap-sh 里
-    (18, 35) 的裸距是 11.89 Å，最小像是 3.11 Å。用裸距做截断判据会在名义
-    10 Å 处把跨边界的真实近邻切掉，造出 4.3% 的伪差异。
-    """
-    positions = np.asarray(positions, dtype=float)
-    delta = positions[:, None, :] - positions[None, :, :]
-    if lattice is not None:
-        vectors = np.asarray(lattice, dtype=float)
-        if vectors.ndim != 2 or vectors.shape[0] < 2 or vectors.shape[1] != 3:
-            raise ValueError("lattice 必须是至少两条三维矢量，得到 %r"
-                             % (vectors.shape,))
-        cell = vectors[:2, :2]
-        if abs(float(np.linalg.det(cell))) < 1.0e-12:
-            raise ValueError("面内晶格矢量线性相关，无法做最小像折算")
-        frac = delta[:, :, :2] @ np.linalg.inv(cell)
-        wrapped = (frac - np.round(frac)) @ cell
-        delta = delta.copy()
-        delta[:, :, :2] = wrapped
-    return np.sqrt(np.einsum("ijk,ijk->ij", delta, delta))
-
-
 def cutoff_sensitivity(built: dict, omega: np.ndarray, eta: float, *,
                        temperature: float, band_top: float,
-                       cutoffs: tuple[float, ...] | None = None) -> dict:
+                       cutoffs: tuple[float, ...] | None = None,
+                       uncut_g_ph: float | None = None) -> dict:
     """电极力常数截断半径的敏感性（零机时：只切现有矩阵）。
 
     切**只切 lead 的 lead×lead 块**（``d_L``/``d_R`` 与 ``V_L``/``V_R``）。
@@ -258,46 +190,50 @@ def cutoff_sensitivity(built: dict, omega: np.ndarray, eta: float, *,
     # 拿力常数当输入会让每个频率都跑到带顶以上，透射恒为 0（第一版就踩了这个）。
     # 零化的元素位置两者一一对应，D_ij = K_ij/√(m_i m_j)，所以切法等价。
     matrix = np.asarray(built["dynamical"], dtype=float)
-    distances = _atom_distances(positions, built.get("lattice"))
     curve = _curve_factory(built, omega, eta)
 
     lead_dofs = _dof_indices(built["lead_indices"])
     lead_atoms = list(built["lead_indices"])
-    lead_mask = distances[np.ix_(lead_atoms, lead_atoms)]
+    lead_mask = _atom_distances(positions[lead_atoms], built.get("lattice"))
 
     if cutoffs is None:
         cutoffs = (4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0)
+        nominal = getattr(built.get("lead"), "fc_cutoff_A", None)
+        if nominal is not None:
+            cutoffs = tuple(sorted(set((*cutoffs, float(nominal)))))
 
     # 组装矩阵里 lead 块最远的**非零**元素（面内最小像）有多远。名义截断
     # 10 Å 通常大于两层块的面内跨度，所以这个数只用来说明"这个块里到底有哪些
     # 距离在起作用"，不能拿它证明 10 Å 对**体相**力常数已经足够。
-    block = matrix[np.ix_(lead_dofs, lead_dofs)]
-    span = 0.0
-    for i, atom_i in enumerate(lead_atoms):
-        for j, atom_j in enumerate(lead_atoms):
-            if np.abs(block[3 * i:3 * i + 3, 3 * j:3 * j + 3]).max() > 0.0:
-                span = max(span, float(lead_mask[i, j]))
+    lead_block_indices = np.ix_(lead_dofs, lead_dofs)
+    block = matrix[lead_block_indices]
+    n_lead = len(lead_atoms)
+    coupled = block.reshape(n_lead, 3, n_lead, 3).any(axis=(1, 3))
+    span = float(lead_mask[coupled].max(initial=0.0))
 
+    def conductance(candidate):
+        try:
+            value = thermal_conductance(omega, curve(candidate), temperature,
+                                        band_top_mev=band_top)
+            return float(value), None
+        except ValueError as exc:
+            return None, str(exc)
+
+    uncut = conductance(matrix) if uncut_g_ph is None else (float(uncut_g_ph), None)
+    evaluated = {np.ones(np.count_nonzero(coupled), dtype=bool).tobytes(): uncut}
     rows = []
     for cutoff in cutoffs:
         keep = lead_mask <= float(cutoff)
-        truncated = matrix.copy()
-        lead_block = truncated[np.ix_(lead_dofs, lead_dofs)]
-        keep_dof = np.repeat(np.repeat(keep, 3, axis=0), 3, axis=1)
-        truncated[np.ix_(lead_dofs, lead_dofs)] = np.where(keep_dof, lead_block, 0.0)
-        entry = {"cutoff_A": float(cutoff), "g_ph_pw_per_k": None,
-                 "rejected": None,
-                 "pairs_kept": int(keep.sum() - len(lead_atoms))}
-        try:
-            transmission_curve = curve(truncated)
-            entry["g_ph_pw_per_k"] = float(
-                thermal_conductance(omega, transmission_curve, temperature,
-                                    band_top_mev=band_top))
-        except ValueError as exc:
-            # 切得太狠会造出带顶以上的伪通道 —— 这本身就是该 r_c 不可用的
-            # 证据，记下来而不是丢掉。
-            entry["rejected"] = str(exc)
-        rows.append(entry)
+        # 掩码只在原本为零的耦合上不同时，动力学矩阵和整条透射谱都相同。
+        key = keep[coupled].tobytes()
+        if key not in evaluated:
+            truncated = matrix.copy()
+            keep_dof = np.repeat(np.repeat(keep, 3, axis=0), 3, axis=1)
+            truncated[lead_block_indices] = np.where(keep_dof, block, 0.0)
+            evaluated[key] = conductance(truncated)
+        g_ph, rejected = evaluated[key]
+        rows.append({"cutoff_A": float(cutoff), "g_ph_pw_per_k": g_ph,
+                     "rejected": rejected, "pairs_kept": int(keep.sum() - n_lead)})
 
     accepted = [(row["cutoff_A"], row["g_ph_pw_per_k"]) for row in rows
                 if row["g_ph_pw_per_k"] is not None]
@@ -310,7 +246,9 @@ def cutoff_sensitivity(built: dict, omega: np.ndarray, eta: float, *,
         "values_A": [float(c) for c in cutoffs],
         "rows": rows,
         "relative_spread": spread,
-        "effective_span_A": round(span, 3),
+        "effective_span_A": span,
+        "uncut_g_ph_pw_per_k": uncut[0],
+        "uncut_rejected": uncut[1],
         "method": "只对 lead×lead 块按面内最小像距离置零后重算 NEGF（不碰 DFT）",
     }
 
@@ -337,21 +275,21 @@ def convergence_axes(built: dict, cutoff_block: dict) -> dict:
     #   span > cutoff 且按名义值切会改变结果 → converged=False（有确凿短差）
     #   span > cutoff 但影响 <1%            → converged=True
     #   span ≤ cutoff                       → converged=None（beyond unverified）
-    covers = bool(cutoff and span <= cutoff + 1.0e-9)
+    covers = bool(cutoff and span <= cutoff)
     gap = None
+    converged = None
     if cutoff and not covers:
         nominal = next((row for row in cutoff_block.get("rows", [])
                         if abs(row["cutoff_A"] - cutoff) < 1e-9), None)
-        full = max((row["g_ph_pw_per_k"] for row in cutoff_block.get("rows", [])
-                    if row["g_ph_pw_per_k"] is not None), default=None)
-        if nominal and nominal.get("g_ph_pw_per_k") and full:
-            gap = float(1.0 - nominal["g_ph_pw_per_k"] / full)
-    if gap is not None:
-        converged: bool | None = bool(gap <= 0.01)
-    elif covers:
-        converged = None
-    else:
-        converged = False
+        full = cutoff_block.get("uncut_g_ph_pw_per_k")
+        value = nominal.get("g_ph_pw_per_k") if nominal else None
+        if full is not None and value is not None:
+            if full > 0:
+                gap = abs(value - full) / full
+                converged = gap <= 0.01
+            else:
+                converged = value == 0
+                gap = 0.0 if converged else None
     return {
         "fc_cutoff": dict(cutoff_block, production_A=cutoff,
                           nominal_shortfall=gap,
@@ -380,22 +318,24 @@ def convergence_axes(built: dict, cutoff_block: dict) -> dict:
 def _curve_factory(built: dict, omega: np.ndarray, eta: float):
     """给一份动力学矩阵算整条 ``T_ph(ω)``（η 在这里定，便于扫参）。"""
     centre = built["centre"]
-    dofs = _dof_indices
-    left_pl, right_pl = built["left_pl"], built["right_pl"]
-    left_outer, right_outer = built["left_outer"], built["right_outer"]
+    left, right = (_dof_indices(built[key]) for key in ("left_pl", "right_pl"))
+    left_outer, right_outer = (_dof_indices(built[key])
+                               for key in ("left_outer", "right_outer"))
+    pairs = [(centre, centre), (left, left), (right, right), (centre, left),
+             (centre, right), (left, left_outer), (right, right_outer)]
+    blocks = [np.ix_(rows, cols) for rows, cols in pairs]
+    # Bound the working set of complex matrices used in the batched inversions.
+    width = max(len(centre), len(left), len(right))
+    batch_size = max(1, (32 * 1024 ** 2) // (8 * 16 * width ** 2))
 
     def curve(matrix) -> np.ndarray:
-        return np.array([
-            transmission(float(w),
-                         matrix[np.ix_(centre, centre)],
-                         matrix[np.ix_(dofs(left_pl), dofs(left_pl))],
-                         matrix[np.ix_(dofs(right_pl), dofs(right_pl))],
-                         matrix[np.ix_(centre, dofs(left_pl))],
-                         matrix[np.ix_(centre, dofs(right_pl))],
-                         eta ** 2,
-                         v_lead_l=matrix[np.ix_(dofs(left_pl), dofs(left_outer))],
-                         v_lead_r=matrix[np.ix_(dofs(right_pl), dofs(right_outer))])
-            for w in omega])
+        dc, dl, dr, vl, vr, vl_lead, vr_lead = (matrix[index] for index in blocks)
+        values = np.empty(len(omega))
+        for start in range(0, len(omega), batch_size):
+            batch = slice(start, start + batch_size)
+            values[batch] = transmission(omega[batch], dc, dl, dr, vl, vr, eta ** 2,
+                                         v_lead_l=vl_lead, v_lead_r=vr_lead)
+        return values
 
     return curve
 
@@ -502,13 +442,6 @@ class ThermalAnalyzeStage(Stage):
             raise StageBlocked(
                 self.name, "缺 thermal_fc/force_constants.npy：请先跑 finite_fc 并 collect",
                 [str(fc_path)])
-        if thermal.lead_fc is None:
-            raise StageBlocked(
-                self.name,
-                "配置缺 thermal.lead_fc：声子 NEGF 需要冻结 lead 力常数（方案 D4）。"
-                "把 thermal.lead_fc 写成 auto（用随包资产），或用 "
-                "`smj lead-fc --export DIR` 导出后指向该目录。",
-                [])
         path = _lead_fc_path(thermal.lead_fc)
         if not path.is_file():
             raise StageBlocked(
@@ -516,10 +449,13 @@ class ThermalAnalyzeStage(Stage):
                 "thermal.lead_fc 指向的文件不存在: %s（若用 auto，"
                 "请用 `smj lead-fc --show` 确认随包资产是否完整）" % path,
                 [str(path)])
-        from ..phonon.assets import lead_fc_info
         try:
-            lead_info = lead_fc_info(path.parent)
-        except (OSError, ValueError) as exc:
+            lead = load_lead_fc(path)
+            device_meta = json.loads(Path(ctx.artifact(
+                "thermal_device", "device_metadata.json")).read_text(encoding="utf-8"))
+            elements, _, lattice = read_device_structure(Path(ctx.artifact("thermal_fc", "geometry.in")))
+            lead_boundary(lead, device_meta, elements, lattice, thermal.fc.cutoff)
+        except (KeyError, IndexError, OSError, TypeError, ValueError) as exc:
             raise StageBlocked(self.name, "与 thermal.lead_fc 自检失败: %s" % exc,
                                [str(path)]) from exc
         return self.prepared(
@@ -528,13 +464,11 @@ class ThermalAnalyzeStage(Stage):
             notes=[
                 "本阶段为纯本地后处理：读力常数、算透射、做 Landauer 积分，"
                 "不提交任何作业",
-                "温度 %.3f K；N_k=1（3×3 超胞的 Γ，Γ 已把 9 个原胞 q 点折叠进来）"
+                "温度 %.3f K；N_k=1（面内超胞的 Γ 点）"
                 % thermal.resolved_temperature(ctx.config.transport.temperature),
                 "电极力常数：%s（面内 %s，%d 层，sha256 %s）"
-                % (lead_info["path"], "×".join(str(v) for v in
-                                               lead_info.get("in_plane", [])),
-                   int(lead_info.get("layers", 0)),
-                   str(lead_info.get("sha256", ""))[:12]),
+                % (path, "×".join(str(v) for v in lead.in_plane), lead.layers,
+                   lead.sha256[:12]),
             ],
             commands=[],
             parent_stage="thermal_fc",
@@ -553,9 +487,6 @@ class ThermalAnalyzeStage(Stage):
         n_atoms = built['n_atoms']
         device_indices = built['device_indices']
         lead_indices = built['lead_indices']
-        left_pl, right_pl = built['left_pl'], built['right_pl']
-        left_outer, right_outer = built['left_outer'], built['right_outer']
-        centre = built['centre']
         full = built['full']
         dynamical = built['dynamical']
         asr = built['asr']
@@ -579,22 +510,16 @@ class ThermalAnalyzeStage(Stage):
         # 同一套切块的对照（多花一遍 NEGF 时间，不碰 DFT），比"虚频不可传播
         # 所以无所谓"这种断言可靠。
         #
-        # 基准取**对称化**后的矩阵：本征分解要求厄米，而有限差分给的 K 不是
-        # 严格对称的（互易性残差 ~0.5%）。若拿非对称 D 当基准，这个残差会混
-        # 进 "+1.1%"，看起来像虚频的影响（实测对称化后是 +0.58%）。
+        # 生产矩阵已经互易,直接以生产热导为基准。
         soft_impact = None
         g_symmetric = None
         g_removed = None
-        symmetric = 0.5 * (dynamical + dynamical.T)
-        eigenvalues = np.linalg.eigvalsh(symmetric)
+        eigenvalues, eigenvectors = np.linalg.eigh(dynamical)
         if (eigenvalues < 0.0).any():
-            _, eigenvectors = np.linalg.eigh(symmetric)
             negative = eigenvalues < 0.0
             basis = eigenvectors[:, negative]
-            cleaned = symmetric - basis @ np.diag(eigenvalues[negative]) @ basis.T
-            g_symmetric = thermal_conductance(
-                omega, transmission_curve(symmetric), temperature,
-                band_top_mev=band_top)
+            cleaned = dynamical - basis @ np.diag(eigenvalues[negative]) @ basis.T
+            g_symmetric = g_ph
             g_removed = thermal_conductance(
                 omega, transmission_curve(cleaned), temperature,
                 band_top_mev=band_top)
@@ -623,9 +548,13 @@ class ThermalAnalyzeStage(Stage):
             "acoustic_sum_relative_residual": relative,
             # 判据只对器件区行成立：lead 行是截断块，行和按构造不闭合。
             "asr_region": "device_rows",
-            # D13：投影是"超阈值才做"，所以这三个字段要能表达"没投影"。
-            # 判据 ph_asr_residual 判的是上面那两个**投影前**的值。
+            "transport_matrix_protocol": "reciprocal_principal_layer_v1",
+            "transport_asr": {key: asr[key] for key in (
+                "residual_ev_per_A2", "relative_residual", "residual_after_ev_per_A2")},
+            "discarded_device_lead_max_ev_per_A2": built["discarded"],
+            # 投影应用于输运分区；判据保留完整器件行与输运分区的投影前残差。
             "asr_projected": bool(asr["projected"]),
+            "asr_projection_reason": asr["projection_reason"],
             "asr_projection_norm": asr["projection_norm"],
             "asr_residual_after_ev_per_A2": asr["residual_after_ev_per_A2"],
             "imaginary_modes": imag,
@@ -651,19 +580,19 @@ class ThermalAnalyzeStage(Stage):
             # 力常数的对称性偏差：判据 ph_fc_symmetry 用它（M5-T2）。
             # 中心差分的力应当对称；明显不对称说明力噪声大或正负没配对。
             "fc_asymmetry": _fc_asymmetry(full),
-        # 跨 run 比较时要确认用的是同一份电极力常数(smj thermal-compare 会查)。
-        "lead_fc_sha256": built["lead"].sha256,
+            "lead_fc_sha256": built["lead"].sha256,
+            "right_lead_transform": "reflect_z",
             "spectrum": {
                 "energy_meV": energy_mev.tolist(),
                 "transmission": t_ph.tolist(),
                 "cumulative_g_ph_pw_per_k": cumulative.tolist(),
             },
         }
-        payload["zt"] = self._zt_payload(ctx, g_ph)
+        payload["zt"] = self._zt_payload(ctx, g_ph, temperature)
         # 三条收敛轴：截断半径可后处理（零机时），另两条只登记为未测并写清
         # 代价。它回答的是"13.7 这个数对哪几个开关最不敏感"。
         cutoffs = cutoff_sensitivity(built, omega, eta, temperature=temperature,
-                                     band_top=band_top)
+                                     band_top=band_top, uncut_g_ph=g_ph)
         payload["convergence"] = convergence_axes(built, cutoffs)
         # 环境清单：决定数值的输入与工具。单独落盘是因为它比 thermal.json
         # 长得快（species 目录有几十份文件），digest 才进主文件。
@@ -703,6 +632,7 @@ class ThermalAnalyzeStage(Stage):
             "temperature_K": temperature,
             "acoustic_sum_relative_residual": relative,
             "n_imaginary": imag["count"],
+            "transport_asr_relative_residual": asr["relative_residual"],
             "worst_imaginary_cm1": imag["worst_cm1"],
             "zt_total": payload["zt"].get("zt_total"),
         }}
@@ -710,29 +640,27 @@ class ThermalAnalyzeStage(Stage):
             "G_ph(%.0f K) = %.3f pW/K（有效通道数 %.3f，占单通道上限的 %.1f%%）"
             % (temperature, g_ph, g_ph / gq_pw_per_k(temperature),
                100.0 * g_ph / gq_pw_per_k(temperature)),
-            "ASR 残差 %.3e eV/Å²（相对 %.3e）；虚频 %d 个（最差 %.1f cm⁻¹）"
-            % (residual, relative, imag["count"], imag["worst_cm1"]),
-            "G_ph(T)：%.0f K 时是高温平台（%.3f pW/K）的 %.1f%%"
-            % (temperature, g_ph_by_temperature[-1],
-               100.0 * g_ph / g_ph_by_temperature[-1]),
+            "完整器件行 ASR 残差 %.3e eV/Å²；输运分区残差 %.3e eV/Å²"
+            "（投影前相对 %.3e，门限 %.0e）；虚频 %d 个（最差 %.1f cm⁻¹）"
+            % (residual, asr["residual_ev_per_A2"], asr["relative_residual"],
+               MAX_ASR_RELATIVE, imag["count"], imag["worst_cm1"]),
+            "G_ph(%.0f K) = %.3f pW/K" % (temperature_grid[-1], g_ph_by_temperature[-1]),
         ]
         spread = cutoffs.get("relative_spread")
         span = cutoffs.get("effective_span_A")
         nominal = payload["convergence"]["fc_cutoff"].get("production_A")
         shortfall = payload["convergence"]["fc_cutoff"].get("nominal_shortfall")
         if spread is None:
-            notes.append("收敛轴：力常数截断扫描中途有组合被带顶闸门拒，"
-                         "见 thermal.json 的 convergence.fc_cutoff.rows")
+            notes.append("截断扫描缺少可比较的非零热导，见 convergence.fc_cutoff.rows")
         else:
             notes.append(
-                "收敛轴：力常数截断 4–12 Å 范围内 G_ph 相对散布 %.1f%%；"
+                "收敛轴：力常数截断扫描的 G_ph 相对散布 %.1f%%；"
                 "lead 层数与器件区大小仍未测（需重跑位移集）"
                 % (100.0 * spread))
-        if shortfall:
+        if shortfall is not None and shortfall > 0.01:
             notes.append(
                 "收敛轴警告：名义截断 %.1f Å，但组装矩阵里最远非零元素在 %.2f Å，"
-                "按名义值切一刀会丢 %.1f%% —— 这个截断半径**没有收敛**，"
-                "应把 fc_cutoff_A 提高后重算电极力常数（约 54 个 SCF）"
+                "按名义值截断后的热导与当前完整矩阵相差 %.1f%%"
                 % (nominal or 0.0, span or 0.0, 100.0 * shortfall))
         if plot_note:
             notes.append(plot_note)
@@ -747,7 +675,7 @@ class ThermalAnalyzeStage(Stage):
 
     # -- 内部 -------------------------------------------------------------- #
     @staticmethod
-    def _zt_payload(ctx, g_ph: float) -> dict:
+    def _zt_payload(ctx, g_ph: float, temperature: float) -> dict:
         """从 ``junction_analyze/results.json`` 读电子量,给出总 ZT。
 
         缺电子结果时返回 ``{"available": False, ...}`` —— 声子链不依赖电子链,
@@ -759,14 +687,24 @@ class ThermalAnalyzeStage(Stage):
         except (OSError, ValueError):
             return {"available": False,
                     "reason": "缺 junction_analyze/results.json（电子链未跑）"}
-        block = data.get("junction", data)
+        block = data.get("junction", data) if isinstance(data, dict) else {}
+        try:
+            electronic_temperature = float(block["temperature_K"])
+        except (KeyError, TypeError, ValueError):
+            return {"available": False, "reason": "results.json 缺有效电子温度 temperature_K"}
+        if not np.isfinite(electronic_temperature) or electronic_temperature <= 0:
+            return {"available": False, "reason": "results.json 电子温度无效"}
+        if not np.isclose(electronic_temperature, temperature, atol=0, rtol=1e-10):
+            return {"available": False, "reason": "电子与声子温度不一致",
+                    "electronic_temperature_K": electronic_temperature,
+                    "phonon_temperature_K": temperature}
         try:
             zt_e = float(block["ZT_electronic"])
             k_e = float(block["k_e_pW_per_K"])
         except (KeyError, TypeError, ValueError):
             return {"available": False, "reason": "results.json 缺 ZT_electronic/k_e"}
-        if k_e <= 0:
-            return {"available": False, "reason": "k_e 非正，无法定义 ZT_total"}
+        if not np.isfinite([zt_e, k_e]).all() or k_e <= 0:
+            return {"available": False, "reason": "电子 ZT 或 k_e 无效，无法定义 ZT_total"}
         return {
             "available": True,
             "zt_electronic": zt_e,

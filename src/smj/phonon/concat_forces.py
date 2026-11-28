@@ -43,8 +43,12 @@ def scan_aims(text: str) -> dict:
         stripped = line.strip()
         if stripped.startswith("Self-consistency cycle"):
             n_cycles += 1
-    converged = (CONVERGED in text) and (NOT_CONVERGED not in text)
-    return {"converged": bool(converged), "n_cycles": n_cycles}
+    converged = None
+    if NOT_CONVERGED in text:
+        converged = False
+    elif CONVERGED in text:
+        converged = True
+    return {"converged": converged, "n_cycles": n_cycles}
 
 
 def _read_summary(fc_dir: str, slot: int) -> dict:
@@ -103,6 +107,7 @@ def concat(fc_dir: str, count: int, *, allow_missing: bool = False,
             "count": count,
             "missing": missing,
             "not_converged": not_converged,
+            "unknown": [s["slot"] for s in slots if s["converged"] is None],
             "slots": slots,
         }
     return out
@@ -147,10 +152,11 @@ def main(argv=None) -> int:
     if summary_path:
         write_summary(payload, summary_path)
     summary = payload.get("summary")
-    if summary and (summary.get("missing") or summary.get("not_converged")):
+    if summary and (summary["missing"] or summary["not_converged"] or summary["unknown"]):
         print("缺失槽位: %s" % (summary.get("missing") or "-"), file=sys.stderr)
         print("未收敛槽位: %s" % (summary.get("not_converged") or "-"),
               file=sys.stderr)
+        print("SCF 证据缺失: %s" % (summary["unknown"] or "-"), file=sys.stderr)
         return 1
     return 0
 

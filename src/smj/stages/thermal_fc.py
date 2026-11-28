@@ -88,19 +88,8 @@ class ThermalFcStage(Stage):
             n_max_pulay=20,
             vdw="hirshfeld" if getattr(ctx.config.electrode, "vdw", True) else None,
         )
-        for name in _HELPERS:
-            shutil.copy2(_HERE / name, stage_dir / name)
         estimate = ctx.estimate(self.name, natoms)
-        env = ctx.stage_env(self.name, estimate)
-        script = write_script(
-            stage_dir / self.script,
-            render_thermal_sub(
-                self.script, env, ntasks=int(env.get("ntasks") or 8),
-                extra={"last": len(disps) - 1,
-                       "parallel": int(fc_cfg.array_parallel),
-                       "count": len(disps),
-                       "walltime": str(fc_cfg.array_time_limit),
-                       "mem": str(fc_cfg.memory)}))
+        script = self.write_job_files(ctx, stage_dir, len(disps), estimate)
         notes = [
             "%d 原子，器件区 %d 个原子 → %d 个位移点（±%g Å ×3 轴）"
             % (natoms, len(device_indices), len(disps), fc_cfg.displacement),
@@ -123,6 +112,18 @@ class ThermalFcStage(Stage):
             parent_fingerprint=sha256_file(source),
         )
 
+    @classmethod
+    def write_job_files(cls, ctx, stage_dir: Path, count: int, estimate: dict) -> Path:
+        """刷新作业脚本及 Python 工具，直接复用已准备的计算输入。"""
+        fc_cfg = ctx.config.thermal.fc
+        for name in _HELPERS:
+            shutil.copy2(_HERE / name, stage_dir / name)
+        env = ctx.stage_env(cls.name, estimate)
+        return write_script(stage_dir / cls.script, render_thermal_sub(
+            cls.script, env, ntasks=int(env.get("ntasks") or 8),
+            extra={"last": count - 1, "count": count, "parallel": int(fc_cfg.array_parallel),
+                   "walltime": str(fc_cfg.array_time_limit), "mem": str(fc_cfg.memory)}))
+
     def collect(self, ctx, stage_dir: Path) -> Collected:
         stage_dir = Path(stage_dir)
         manifest = stage_dir / "displacements.json"
@@ -130,7 +131,7 @@ class ThermalFcStage(Stage):
             raise StageError("thermal_fc 缺 displacements.json")
         disps = json.loads(manifest.read_text(encoding="utf-8"))
         n_atoms = self.count_aims_atoms(stage_dir / "geometry.in")
-        forces = self._read_forces(stage_dir, len(disps), n_atoms)
+        forces, summary = self._read_force_data(stage_dir, len(disps), n_atoms)
         try:
             k_dev = assemble_fc(disps, forces, n_atoms)
         except ValueError as exc:
@@ -138,11 +139,8 @@ class ThermalFcStage(Stage):
         np.save(stage_dir / "force_constants.npy", k_dev)
 
         elements = self._elements(stage_dir / "geometry.in")
-        summary = self._read_summary(stage_dir)
-        slugs = [s for s in ((summary or {}).get("slots") or [])
-                 if isinstance(s, dict)]
-        cycles = [int(s.get("n_cycles") or 0) for s in slugs
-                  if s.get("converged") is True and s.get("n_cycles")]
+        cycles = [s["n_cycles"] for s in (summary or {}).get("slots", [])
+                  if type(s.get("n_cycles")) is int and s["n_cycles"] > 0]
         results = {
             "thermal_fc": {
                 "n_atoms": n_atoms,
@@ -154,9 +152,7 @@ class ThermalFcStage(Stage):
                 "n_elements": len(set(elements)),
                 # 收敛证据:没有 fc_summary.json 时是 None(老 run 兼容),
                 # 有则是远端逐槽位读 aims.out 的结果。
-                "scf_converged": (
-                    None if summary is None
-                    else not (summary.get("not_converged") or summary.get("missing"))),
+                "scf_converged": True if summary is not None else None,
                 "scf_cycles_min": min(cycles) if cycles else None,
                 "scf_cycles_max": max(cycles) if cycles else None,
             }
@@ -166,8 +162,8 @@ class ThermalFcStage(Stage):
                  % (k_dev.shape[0], k_dev.shape[1],
                     results["thermal_fc"]["fc_max_abs"])]
         if cycles:
-            notes.append("SCF：%d 个位移点全部收敛，自洽圈数 %d–%d"
-                         % (len(cycles), min(cycles), max(cycles)))
+            notes.append("SCF：%d 个位移点收敛，其中 %d 个有圈数记录（%d–%d）"
+                         % (len(disps), len(cycles), min(cycles), max(cycles)))
         return self.collected(
             ctx, stage_dir,
             artifacts=[name for name in ("displacements.json", "force_constants.npy")
@@ -185,81 +181,90 @@ class ThermalFcStage(Stage):
         return [int(i) for i in (meta.get("device_indices") or [])]
 
     @staticmethod
-    def _read_summary(stage_dir: Path) -> dict | None:
-        path = stage_dir / "fc_summary.json"
-        if not path.is_file():
-            return None
+    def _read_json(path: Path) -> dict:
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-        return payload if isinstance(payload, dict) else None
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise StageError("thermal_fc 读取 %s 失败: %s" % (path, exc)) from exc
+        if not isinstance(data, dict):
+            raise StageError("thermal_fc 的 %s 格式错误，应为 JSON 对象" % path)
+        return data
 
     @staticmethod
-    def _retry_hint(missing: list[int]) -> str:
-        head = ",".join(str(int(slot)) for slot in missing[:10])
-        more = "..." if len(missing) > 10 else ""
-        return ("smj thermal --stage thermal_fc --retry %s%s" % (head, more))
+    def _retry_hint(slots) -> str:
+        return "smj thermal --stage thermal_fc --retry " + ",".join(map(str, sorted(slots)))
 
-    @staticmethod
-    def _read_forces(stage_dir: Path, expected: int, n_atoms: int) -> np.ndarray:
-        """读全部位移点的力，并拒绝"看着齐、其实不能用"的数据。
-
-        三件事按顺序做:
-
-        1. ``fc_summary.json`` 里记着未收敛的槽位 → 直接失败。不收敛的 SCF 照样
-           会写出力,只用形状/条数检查**发现不了**,而这类力常数看起来完全正常
-           (2026-11-25 检查 110 个槽位时确认过:收敛与否只能从 aims.out 读)。
-        2. 逐个 ``fc/NNNN/forces.json`` 优先(重试后本地可能比汇总文件更新),
-           其次才是数组作业收尾拼好的 ``forces_all.json``。
-        3. 缺槽位时报错并给出可直接执行的 ``--retry`` 命令,而不是让人进
-           ``fc/`` 逐个看。
-        """
-        summary = ThermalFcStage._read_summary(stage_dir)
-        not_converged = list((summary or {}).get("not_converged") or [])
-        if not_converged:
+    @classmethod
+    def _check_scf(cls, summary: dict, expected: int) -> None:
+        if (not isinstance(summary, dict) or type(summary.get("count")) is not int
+                or summary["count"] != expected or not isinstance(summary.get("slots"), list)):
+            raise StageError("fc_summary.json 的槽位数或 slots 格式有误，请重新回取汇总")
+        retry = set()
+        for key in ("missing", "not_converged", "unknown"):
+            indices = summary.get(key, [])
+            if not isinstance(indices, list) or any(
+                    type(s) is not int or not 0 <= s < expected for s in indices):
+                raise StageError("fc_summary.json 的 %s 格式有误，请重新回取汇总" % key)
+            retry.update(indices)
+        seen = set()
+        for item in summary["slots"]:
+            slot = item.get("slot") if isinstance(item, dict) else None
+            if type(slot) is not int or not 0 <= slot < expected or slot in seen:
+                raise StageError("fc_summary.json 含重复或无效槽位，请重新回取汇总")
+            seen.add(slot)
+            if item.get("converged") is not True:
+                retry.add(slot)
+        retry.update(set(range(expected)) - seen)
+        if retry:
             raise StageError(
-                "thermal_fc 有 %d 个位移点的 SCF 未收敛（%s）；这些力不能用来做"
-                "力常数（收敛与否从 aims.out 读，形状检查发现不了）。先用 "
-                "`%s` 重跑，再重新 collect"
-                % (len(not_converged), not_converged[:10],
-                   ThermalFcStage._retry_hint(not_converged)))
+                "thermal_fc 槽位缺力、SCF 未收敛或缺少收敛证据。用 `%s` 重跑后再 collect"
+                % cls._retry_hint(retry))
 
-        found: dict[int, np.ndarray] = {}
-        for slot in range(expected):
-            record = stage_dir / "fc" / ("%04d" % slot) / "forces.json"
-            if not record.is_file():
-                continue
-            try:
-                payload = json.loads(record.read_text(encoding="utf-8"))
-                array = np.asarray(payload["forces"], dtype=float)
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                raise StageError("thermal_fc 读取 %s 失败: %s" % (record, exc)) from exc
-            if array.shape != (n_atoms, 3):
-                raise StageError(
-                    "thermal_fc 的 %s 力数组形状是 %r，应为 (%d, 3)"
-                    % (record, array.shape, n_atoms))
-            found[slot] = array
-        if len(found) == expected:
-            return np.stack([found[slot] for slot in range(expected)], axis=0)
+    @classmethod
+    def _read_forces(cls, stage_dir: Path, expected: int, n_atoms: int) -> np.ndarray:
+        forces, _ = cls._read_force_data(stage_dir, expected, n_atoms)
+        return forces
 
+    @classmethod
+    def _read_force_data(cls, stage_dir: Path, expected: int,
+                         n_atoms: int) -> tuple[np.ndarray, dict | None]:
+        """远端重试只回取汇总；没有汇总的旧目录可从逐槽位文件读取。"""
+        summary_path = stage_dir / "fc_summary.json"
+        summary = cls._read_json(summary_path) if summary_path.is_file() else None
         bundle = stage_dir / "forces_all.json"
         if bundle.is_file():
-            try:
-                payload = json.loads(bundle.read_text(encoding="utf-8"))
-                stacked = np.asarray(payload["forces"], dtype=float)
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                raise StageError(
-                    "thermal_fc 读取 %s 失败: %s" % (bundle, exc)) from exc
-            # 有失败槽位时汇总文件里是 null 占位,必须先看 summary/形状
-            if stacked.shape == (expected, n_atoms, 3):
-                return stacked
+            payload = cls._read_json(bundle)
+            if "summary" in payload:
+                embedded = payload["summary"]
+                if not isinstance(embedded, dict) or (summary is not None and summary != embedded):
+                    raise StageError("forces_all.json 与 fc_summary.json 的收敛证据不符，请重新回取")
+                summary = embedded
+            blocks = payload.get("forces")
+            if not isinstance(blocks, list) or len(blocks) != expected:
+                raise StageError("thermal_fc 的 forces_all.json 位移点数应为 %d" % expected)
+        else:
+            blocks = []
+            for slot in range(expected):
+                record = stage_dir / "fc" / ("%04d" % slot) / "forces.json"
+                blocks.append(cls._read_json(record).get("forces") if record.is_file() else None)
+        if summary is not None:
+            cls._check_scf(summary, expected)
 
-        missing = sorted(set(range(expected)) - set(found))
-        raise StageError(
-            "thermal_fc 缺 %d 个位移点的力（前几个 slot: %s）；数组作业没跑完就 "
-            "collect 会让力常数矩阵少行。用 `%s` 重跑后再 collect"
-            % (len(missing), missing[:10], ThermalFcStage._retry_hint(missing)))
+        missing = [i for i, block in enumerate(blocks) if block is None]
+        if missing:
+            raise StageError("thermal_fc 缺 %d 个位移点的力。用 `%s` 重跑后再 collect"
+                             % (len(missing), cls._retry_hint(missing)))
+        forces = np.empty((expected, n_atoms, 3))
+        for slot, block in enumerate(blocks):
+            try:
+                array = np.asarray(block, dtype=float)
+            except (ValueError, TypeError) as exc:
+                raise StageError("thermal_fc 槽位 %d 力格式错误: %s" % (slot, exc)) from exc
+            if array.shape != (n_atoms, 3) or not np.isfinite(array).all():
+                raise StageError("thermal_fc 槽位 %d 力形状或数值无效。用 `%s` 重跑"
+                                 % (slot, cls._retry_hint([slot])))
+            forces[slot] = array
+        return forces, summary
 
     @staticmethod
     def _elements(geometry: Path) -> list[str]:
